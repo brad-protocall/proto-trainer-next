@@ -17,7 +17,7 @@
 set -euo pipefail
 
 # Configuration
-MAX_ISSUES="${1:-10}"
+MAX_ISSUES="${1:-50}"
 MAX_RETRIES=3
 RETRY_WAIT=30
 EMAIL_TO="brad.pendergraft@protocallservices.com"
