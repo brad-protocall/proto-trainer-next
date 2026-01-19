@@ -7,11 +7,13 @@ import { Assignment } from "@/types";
 
 interface ChatTrainingViewProps {
   assignment: Assignment | null;
+  userId: string;
   onComplete: () => void;
 }
 
 export default function ChatTrainingView({
   assignment,
+  userId,
   onComplete,
 }: ChatTrainingViewProps) {
   const {
@@ -23,6 +25,7 @@ export default function ChatTrainingView({
     error,
     initSession,
   } = useChat({
+    userId,
     scenarioId: assignment?.scenario_id,
     assignmentId: assignment?.id,
   });

@@ -64,10 +64,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Convert transcript to TranscriptTurn format
     const transcriptForEval: TranscriptTurn[] = session.transcript.map((turn) => ({
       id: turn.id,
+      session_id: session.id,
       role: turn.role as TranscriptTurn['role'],
       content: turn.content,
-      turnOrder: turn.turnOrder,
-      createdAt: turn.createdAt,
+      turn_index: turn.turnOrder,
+      created_at: turn.createdAt.toISOString(),
     }))
 
     // Generate evaluation using OpenAI

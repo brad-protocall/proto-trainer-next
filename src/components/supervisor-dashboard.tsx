@@ -11,6 +11,7 @@ import {
   AssignmentStatus,
   ApiResponse,
 } from "@/types";
+import { createAuthFetch } from "@/lib/fetch";
 import BulkImportModal from "./bulk-import-modal";
 
 const SCENARIO_CATEGORIES = [
@@ -97,6 +98,15 @@ export default function SupervisorDashboard() {
   // Global scenarios cache for assignment dropdown
   const [globalScenariosCache, setGlobalScenariosCache] = useState<Scenario[]>([]);
 
+  // Current supervisor user for auth
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  // Create authenticated fetch bound to current user
+  const authFetch = useMemo(
+    () => (currentUser ? createAuthFetch(currentUser.id) : fetch),
+    [currentUser]
+  );
+
   const filteredCounselors = useMemo(() => {
     if (!counselorSearch.trim()) return counselors;
     const term = counselorSearch.toLowerCase();
@@ -123,12 +133,13 @@ export default function SupervisorDashboard() {
   const assignmentCount = selectedCounselorIds.size * selectedScenarioIds.size;
 
   const loadScenarios = useCallback(async () => {
+    if (!currentUser) return;
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
       params.set("is_one_time", String(scenarioFilter === "one-time"));
-      const response = await fetch(`/api/scenarios?${params}`);
+      const response = await authFetch(`/api/scenarios?${params}`);
       const data: ApiResponse<Scenario[]> = await response.json();
       if (!data.ok) throw new Error(data.error.message);
       setScenarios(data.data);
@@ -138,14 +149,15 @@ export default function SupervisorDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [scenarioFilter]);
+  }, [scenarioFilter, currentUser, authFetch]);
 
   const loadAssignments = useCallback(async () => {
+    if (!currentUser) return;
     setAssignmentsLoading(true);
     try {
       const params = new URLSearchParams();
       if (assignmentStatusFilter) params.set("status", assignmentStatusFilter);
-      const response = await fetch(`/api/assignments?${params}`);
+      const response = await authFetch(`/api/assignments?${params}`);
       const data: ApiResponse<Assignment[]> = await response.json();
       if (!data.ok) throw new Error(data.error.message);
       setAssignments(data.data);
@@ -155,10 +167,22 @@ export default function SupervisorDashboard() {
     } finally {
       setAssignmentsLoading(false);
     }
-  }, [assignmentStatusFilter]);
+  }, [assignmentStatusFilter, currentUser, authFetch]);
 
-  // Load accounts and counselors on mount
+  // Load supervisor user on mount
   useEffect(() => {
+    const loadSupervisorUser = async () => {
+      try {
+        const response = await fetch("/api/users?role=supervisor");
+        const data: ApiResponse<User[]> = await response.json();
+        if (data.ok && data.data.length > 0) {
+          setCurrentUser(data.data[0]);
+        }
+      } catch (err) {
+        console.error("Failed to load supervisor user:", err);
+      }
+    };
+    loadSupervisorUser();
     loadAccounts();
     loadCounselors();
   }, []);
@@ -176,9 +200,10 @@ export default function SupervisorDashboard() {
 
   // Load global scenarios for assignment dropdown
   useEffect(() => {
+    if (!currentUser) return;
     const loadGlobalScenarios = async () => {
       try {
-        const response = await fetch("/api/scenarios?is_one_time=false");
+        const response = await authFetch("/api/scenarios?is_one_time=false");
         const data: ApiResponse<Scenario[]> = await response.json();
         if (data.ok) {
           setGlobalScenariosCache(data.data);
@@ -188,7 +213,7 @@ export default function SupervisorDashboard() {
       }
     };
     loadGlobalScenarios();
-  }, []);
+  }, [currentUser, authFetch]);
 
   // Update cache when viewing global scenarios
   useEffect(() => {
@@ -261,7 +286,7 @@ export default function SupervisorDashboard() {
         : "/api/scenarios";
       const method = editingScenario ? "PUT" : "POST";
 
-      const response = await fetch(url, {
+      const response = await authFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
@@ -283,7 +308,7 @@ export default function SupervisorDashboard() {
     if (!window.confirm("Delete this scenario? This cannot be undone.")) return;
 
     try {
-      const response = await fetch(`/api/scenarios/${id}`, { method: "DELETE" });
+      const response = await authFetch(`/api/scenarios/${id}`, { method: "DELETE" });
       const data: ApiResponse<null> = await response.json();
       if (!data.ok) throw new Error(data.error.message);
       await loadScenarios();
@@ -341,7 +366,7 @@ export default function SupervisorDashboard() {
     setBulkResult(null);
 
     try {
-      const response = await fetch("/api/assignments", {
+      const response = await authFetch("/api/assignments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -377,7 +402,7 @@ export default function SupervisorDashboard() {
     if (!window.confirm("Delete this assignment? This cannot be undone.")) return;
 
     try {
-      const response = await fetch(`/api/assignments/${id}`, { method: "DELETE" });
+      const response = await authFetch(`/api/assignments/${id}`, { method: "DELETE" });
       const data: ApiResponse<null> = await response.json();
       if (!data.ok) throw new Error(data.error.message);
       await loadAssignments();

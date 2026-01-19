@@ -25,6 +25,7 @@ import type {
 // ============================================================================
 
 export interface UseRealtimeVoiceOptions {
+  userId: string;
   scenarioId?: string;
   assignmentId?: string;
   onTranscript?: (turn: TranscriptTurn) => void;
@@ -61,9 +62,9 @@ interface RealtimeMessageEvent {
 // ============================================================================
 
 export function useRealtimeVoice(
-  options: UseRealtimeVoiceOptions = {}
+  options: UseRealtimeVoiceOptions
 ): UseRealtimeVoiceReturn {
-  const { scenarioId, assignmentId, onTranscript } = options;
+  const { userId, scenarioId, assignmentId, onTranscript } = options;
 
   // State
   const [isConnected, setIsConnected] = useState(false);
@@ -119,10 +120,11 @@ export function useRealtimeVoice(
           if (currentTranscriptRef.current && onTranscript) {
             const turn: TranscriptTurn = {
               id: `assistant_${Date.now()}`,
+              session_id: "",
               role: "assistant",
               content: currentTranscriptRef.current,
-              createdAt: new Date(),
-              turnOrder: turnIndexRef.current++,
+              turn_index: turnIndexRef.current++,
+              created_at: new Date().toISOString(),
             };
             onTranscript(turn);
             currentTranscriptRef.current = "";
@@ -134,10 +136,11 @@ export function useRealtimeVoice(
           if (event.transcript && onTranscript) {
             const turn: TranscriptTurn = {
               id: `user_${Date.now()}`,
+              session_id: "",
               role: "user",
               content: event.transcript,
-              createdAt: new Date(),
-              turnOrder: turnIndexRef.current++,
+              turn_index: turnIndexRef.current++,
+              created_at: new Date().toISOString(),
             };
             onTranscript(turn);
           }
@@ -181,6 +184,7 @@ export function useRealtimeVoice(
     const wsUrl =
       process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:3004";
     const params = new URLSearchParams();
+    params.set("userId", userId);
     params.set("model", "phone");
     params.set("record", "true");
     if (scenarioId) {
@@ -237,7 +241,7 @@ export function useRealtimeVoice(
       setConnectionStatus("disconnected");
       throw connectError;
     }
-  }, [scenarioId, assignmentId, handleMessage]);
+  }, [userId, scenarioId, assignmentId, handleMessage]);
 
   // ============================================================================
   // Microphone Capture

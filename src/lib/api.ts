@@ -12,19 +12,19 @@ export function apiError(error: ApiError, status = 400): Response {
 
 // Convenience helpers
 export function notFound(message: string): Response {
-  return apiError({ code: 'NOT_FOUND', message }, 404)
+  return apiError({ type: 'NOT_FOUND', message }, 404)
 }
 
 export function conflict(message: string): Response {
-  return apiError({ code: 'CONFLICT', message }, 409)
+  return apiError({ type: 'CONFLICT', message }, 409)
 }
 
 export function unauthorized(message: string): Response {
-  return apiError({ code: 'UNAUTHORIZED', message }, 401)
+  return apiError({ type: 'UNAUTHORIZED', message }, 401)
 }
 
 export function forbidden(message: string): Response {
-  return apiError({ code: 'UNAUTHORIZED', message }, 403)
+  return apiError({ type: 'UNAUTHORIZED', message }, 403)
 }
 
 export function handleApiError(error: unknown): Response {
@@ -32,7 +32,7 @@ export function handleApiError(error: unknown): Response {
 
   if (error instanceof ZodError) {
     return apiError(
-      { code: 'VALIDATION_ERROR', fields: error.flatten().fieldErrors as Record<string, string[]> },
+      { type: 'VALIDATION_ERROR', message: 'Validation failed', details: error.flatten().fieldErrors as Record<string, unknown> },
       400
     )
   }
@@ -40,11 +40,11 @@ export function handleApiError(error: unknown): Response {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     switch (error.code) {
       case 'P2002':
-        return apiError({ code: 'CONFLICT', message: 'Already exists' }, 409)
+        return apiError({ type: 'CONFLICT', message: 'Already exists' }, 409)
       case 'P2025':
-        return apiError({ code: 'NOT_FOUND', message: 'Not found' }, 404)
+        return apiError({ type: 'NOT_FOUND', message: 'Not found' }, 404)
     }
   }
 
-  return apiError({ code: 'INTERNAL_ERROR', message: 'Internal server error' }, 500)
+  return apiError({ type: 'INTERNAL_ERROR', message: 'Internal server error' }, 500)
 }

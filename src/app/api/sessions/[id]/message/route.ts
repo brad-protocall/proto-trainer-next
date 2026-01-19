@@ -62,19 +62,21 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Convert transcript to TranscriptTurn format for OpenAI helper
     const transcriptForAI: TranscriptTurn[] = session.transcript.map((turn) => ({
       id: turn.id,
+      session_id: session.id,
       role: turn.role as TranscriptTurn['role'],
       content: turn.content,
-      turnOrder: turn.turnOrder,
-      createdAt: turn.createdAt,
+      turn_index: turn.turnOrder,
+      created_at: turn.createdAt.toISOString(),
     }))
 
     // Add the user's message to the transcript for AI
     transcriptForAI.push({
       id: 'pending',
+      session_id: session.id,
       role: 'user',
       content: data.content,
-      turnOrder: transcriptForAI.length + 1,
-      createdAt: new Date(),
+      turn_index: transcriptForAI.length + 1,
+      created_at: new Date().toISOString(),
     })
 
     // Get AI response

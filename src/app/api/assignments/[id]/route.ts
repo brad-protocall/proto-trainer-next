@@ -124,7 +124,7 @@ export async function PATCH(
 
     if (!result.success) {
       return apiError(
-        { code: 'VALIDATION_ERROR', fields: result.error.flatten().fieldErrors as Record<string, string[]> },
+        { type: 'VALIDATION_ERROR', message: 'Validation failed', details: result.error.flatten().fieldErrors as Record<string, unknown> },
         400
       )
     }
@@ -169,7 +169,7 @@ export async function PATCH(
       if (assignment.status !== status) {
         if (!canTransitionTo(assignment.status, status)) {
           return apiError(
-            { code: 'VALIDATION_ERROR', fields: { status: [`Invalid status transition: ${assignment.status} -> ${status}`] } },
+            { type: 'VALIDATION_ERROR', message: `Invalid status transition: ${assignment.status} -> ${status}` },
             400
           )
         }
@@ -182,7 +182,7 @@ export async function PATCH(
           updateData.startedAt = null
         } else if (status === 'completed') {
           return apiError(
-            { code: 'VALIDATION_ERROR', fields: { status: ['Cannot manually complete assignment. Complete via evaluation.'] } },
+            { type: 'VALIDATION_ERROR', message: 'Cannot manually complete assignment. Complete via evaluation.' },
             400
           )
         }

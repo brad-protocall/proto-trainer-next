@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
 
     if (!queryResult.success) {
       return apiError(
-        { code: 'VALIDATION_ERROR', fields: queryResult.error.flatten().fieldErrors as Record<string, string[]> },
+        { type: 'VALIDATION_ERROR', message: 'Validation failed', details: queryResult.error.flatten().fieldErrors as Record<string, unknown> },
         400
       )
     }
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
     const result = createAssignmentSchema.safeParse(body)
     if (!result.success) {
       return apiError(
-        { code: 'VALIDATION_ERROR', fields: result.error.flatten().fieldErrors as Record<string, string[]> },
+        { type: 'VALIDATION_ERROR', message: 'Validation failed', details: result.error.flatten().fieldErrors as Record<string, unknown> },
         400
       )
     }
@@ -150,17 +150,17 @@ export async function POST(request: NextRequest) {
       where: { id: scenarioId },
     })
     if (!scenario) {
-      return apiError({ code: 'NOT_FOUND', message: 'Scenario not found' }, 404)
+      return apiError({ type: 'NOT_FOUND', message: 'Scenario not found' }, 404)
     }
 
     const counselor = await prisma.user.findUnique({
       where: { id: counselorId },
     })
     if (!counselor) {
-      return apiError({ code: 'NOT_FOUND', message: 'Counselor not found' }, 404)
+      return apiError({ type: 'NOT_FOUND', message: 'Counselor not found' }, 404)
     }
     if (counselor.role !== 'counselor') {
-      return apiError({ code: 'VALIDATION_ERROR', fields: { counselorId: ['User is not a counselor'] } }, 400)
+      return apiError({ type: 'VALIDATION_ERROR', message: 'Validation failed', details: { counselorId: ['User is not a counselor'] } }, 400)
     }
 
     const existingActive = await prisma.assignment.findFirst({
@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
       },
     })
     if (existingActive) {
-      return apiError({ code: 'CONFLICT', message: 'Active assignment already exists for this counselor and scenario' }, 409)
+      return apiError({ type: 'CONFLICT', message: 'Active assignment already exists for this counselor and scenario' }, 409)
     }
 
     const assignment = await prisma.assignment.create({
@@ -200,7 +200,7 @@ async function handleBulkCreate(body: unknown, userId: string): Promise<Response
   const result = bulkAssignmentSchema.safeParse(body)
   if (!result.success) {
     return apiError(
-      { code: 'VALIDATION_ERROR', fields: result.error.flatten().fieldErrors as Record<string, string[]> },
+      { type: 'VALIDATION_ERROR', message: 'Validation failed', details: result.error.flatten().fieldErrors as Record<string, unknown> },
       400
     )
   }
@@ -210,7 +210,7 @@ async function handleBulkCreate(body: unknown, userId: string): Promise<Response
   const totalPairs = scenarioIds.length * counselorIds.length
   if (totalPairs > MAX_BULK_ASSIGNMENTS) {
     return apiError(
-      { code: 'VALIDATION_ERROR', fields: { bulk: [`Batch too large: maximum ${MAX_BULK_ASSIGNMENTS} assignments per request`] } },
+      { type: 'VALIDATION_ERROR', message: 'Validation failed', details: { bulk: [`Batch too large: maximum ${MAX_BULK_ASSIGNMENTS} assignments per request`] } },
       400
     )
   }
@@ -223,7 +223,7 @@ async function handleBulkCreate(body: unknown, userId: string): Promise<Response
   })
   if (counselors.length !== counselorIds.length) {
     return apiError(
-      { code: 'VALIDATION_ERROR', fields: { counselorIds: ['One or more counselor IDs are invalid or not counselor role'] } },
+      { type: 'VALIDATION_ERROR', message: 'Validation failed', details: { counselorIds: ['One or more counselor IDs are invalid or not counselor role'] } },
       400
     )
   }
@@ -233,7 +233,7 @@ async function handleBulkCreate(body: unknown, userId: string): Promise<Response
   })
   if (scenarios.length !== scenarioIds.length) {
     return apiError(
-      { code: 'VALIDATION_ERROR', fields: { scenarioIds: ['One or more scenario IDs are invalid'] } },
+      { type: 'VALIDATION_ERROR', message: 'Validation failed', details: { scenarioIds: ['One or more scenario IDs are invalid'] } },
       400
     )
   }

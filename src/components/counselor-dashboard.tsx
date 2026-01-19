@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Assignment,
   User,
@@ -8,6 +8,7 @@ import {
   ApiResponse,
   AssignmentStatus,
 } from "@/types";
+import { createAuthFetch } from "@/lib/fetch";
 import EvaluationResults from "./evaluation-results";
 
 interface CounselorDashboardProps {
@@ -33,6 +34,12 @@ export default function CounselorDashboard({
   } | null>(null);
   const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Create authenticated fetch bound to current user
+  const authFetch = useMemo(
+    () => (currentUser ? createAuthFetch(currentUser.id) : fetch),
+    [currentUser]
+  );
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -68,12 +75,13 @@ export default function CounselorDashboard({
   }, []);
 
   const loadAssignments = useCallback(async () => {
+    if (!currentUser) return;
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
       if (statusFilter) params.set("status", statusFilter);
-      const response = await fetch(`/api/assignments?${params}`);
+      const response = await authFetch(`/api/assignments?${params}`);
       const data: ApiResponse<Assignment[]> = await response.json();
       if (!data.ok) throw new Error(data.error.message);
       setAssignments(data.data);
@@ -83,7 +91,7 @@ export default function CounselorDashboard({
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, currentUser, authFetch]);
 
   useEffect(() => {
     loadAssignments();
@@ -95,7 +103,7 @@ export default function CounselorDashboard({
     setError(null);
     try {
       // Update status to in_progress
-      await fetch(`/api/assignments/${assignment.id}`, {
+      await authFetch(`/api/assignments/${assignment.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "in_progress" }),
@@ -116,7 +124,7 @@ export default function CounselorDashboard({
     setLoadingFeedback(assignment.id);
     setError(null);
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `/api/sessions/${assignment.session_id}/evaluate`,
         { method: "POST" }
       );
@@ -142,7 +150,7 @@ export default function CounselorDashboard({
     setLoadingFeedback(assignment.id);
     setError(null);
     try {
-      const response = await fetch(`/api/sessions/${assignment.session_id}`);
+      const response = await authFetch(`/api/sessions/${assignment.session_id}`);
       const data = await response.json();
       if (!data.ok) throw new Error(data.error?.message || "Failed to load feedback");
 
@@ -164,7 +172,7 @@ export default function CounselorDashboard({
     setLoadingDetail("scenario");
     setError(null);
     try {
-      const response = await fetch(`/api/scenarios/${assignment.scenario_id}`);
+      const response = await authFetch(`/api/scenarios/${assignment.scenario_id}`);
       const data = await response.json();
       if (!data.ok) throw new Error(data.error?.message || "Failed to load scenario");
       setDetailModal({
@@ -187,7 +195,7 @@ export default function CounselorDashboard({
     setLoadingDetail("transcript");
     setError(null);
     try {
-      const response = await fetch(`/api/sessions/${assignment.session_id}`);
+      const response = await authFetch(`/api/sessions/${assignment.session_id}`);
       const data = await response.json();
       if (!data.ok) throw new Error(data.error?.message || "Failed to load transcript");
 

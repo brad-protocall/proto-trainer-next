@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { ChatMessage, EvaluationResult, ApiResponse } from "@/types";
 
 interface UseChatOptions {
+  userId: string;
   scenarioId?: string;
   assignmentId?: string;
 }
@@ -39,9 +40,10 @@ interface EvaluationResponse {
 }
 
 export function useChat({
+  userId,
   scenarioId,
   assignmentId,
-}: UseChatOptions = {}): UseChatReturn {
+}: UseChatOptions): UseChatReturn {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -67,7 +69,7 @@ export function useChat({
     try {
       const response = await fetch("/api/sessions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-user-id": userId },
         body: JSON.stringify({ scenario_id: scenarioId, assignment_id: assignmentId }),
         signal: abortControllerRef.current.signal,
       });
@@ -96,7 +98,7 @@ export function useChat({
     } finally {
       setIsLoading(false);
     }
-  }, [scenarioId, assignmentId]);
+  }, [userId, scenarioId, assignmentId]);
 
   const sendMessage = useCallback(
     async (content: string) => {
@@ -119,7 +121,7 @@ export function useChat({
       try {
         const response = await fetch(`/api/sessions/${sessionId}/message`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "x-user-id": userId },
           body: JSON.stringify({ content }),
           signal: abortControllerRef.current.signal,
         });
@@ -157,7 +159,7 @@ export function useChat({
         setIsLoading(false);
       }
     },
-    [sessionId]
+    [userId, sessionId]
   );
 
   const getEvaluation = useCallback(async () => {
@@ -172,6 +174,7 @@ export function useChat({
     try {
       const response = await fetch(`/api/sessions/${sessionId}/evaluate`, {
         method: "POST",
+        headers: { "x-user-id": userId },
         signal: abortControllerRef.current.signal,
       });
 
@@ -202,7 +205,7 @@ export function useChat({
     } finally {
       setIsLoading(false);
     }
-  }, [sessionId]);
+  }, [userId, sessionId]);
 
   const reset = useCallback(() => {
     abortControllerRef.current?.abort();

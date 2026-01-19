@@ -21,13 +21,13 @@ interface ConnectionParams {
   assignmentId?: string;
 }
 
-interface AuthResult {
+type AuthResult = {
   ok: true;
   params: ConnectionParams;
 } | {
   ok: false;
   error: string;
-}
+};
 
 function authenticateConnection(request: IncomingMessage): AuthResult {
   const url = new URL(request.url || "/", `http://localhost:${WS_PORT}`);

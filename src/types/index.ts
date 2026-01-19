@@ -240,3 +240,48 @@ export interface UpdateAssignmentInput {
   status?: AssignmentStatus;
   supervisor_notes?: string;
 }
+
+// API Response Types for routes
+export interface AssignmentResponse {
+  id: string;
+  accountId: string | null;
+  scenarioId: string;
+  scenarioTitle: string;
+  scenarioMode: ScenarioMode;
+  counselorId: string;
+  counselorName: string | null;
+  assignedBy: string;
+  assignedByName: string | null;
+  status: AssignmentStatus;
+  createdAt: string;
+  dueDate: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  sessionId: string | null;
+  evaluationId: string | null;
+  supervisorNotes: string | null;
+  isOverdue: boolean;
+  hasTranscript: boolean;
+}
+
+export interface BulkAssignmentResponse {
+  created: number;
+  skipped: number;
+  skippedPairs?: Array<{ scenarioId: string; counselorId: string }>;
+  assignments?: AssignmentResponse[];
+}
+
+// OpenAI Evaluation Response
+export interface EvaluationFeedbackItem {
+  category: string;
+  score: number;
+  comment: string;
+}
+
+export interface EvaluationResponse {
+  overallScore: number;
+  feedback: EvaluationFeedbackItem[];
+  strengths: string[];
+  areasToImprove: string[];
+  rawResponse: string;
+}

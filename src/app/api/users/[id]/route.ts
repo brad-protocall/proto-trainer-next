@@ -69,7 +69,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     if (!result.success) {
       return apiError(
-        { code: 'VALIDATION_ERROR', fields: result.error.flatten().fieldErrors as Record<string, string[]> },
+        { type: 'VALIDATION_ERROR', message: 'Validation failed', details: result.error.flatten().fieldErrors as Record<string, unknown> },
         400
       )
     }
