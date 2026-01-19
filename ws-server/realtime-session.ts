@@ -1,0 +1,348 @@
+import WebSocket from "ws";
+
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const REALTIME_MODEL = process.env.REALTIME_MODEL || "gpt-4o-realtime-preview";
+const REALTIME_VOICE = process.env.REALTIME_VOICE || "shimmer";
+const OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime";
+
+interface ConnectionParams {
+  scenarioId?: string;
+  assignmentId?: string;
+}
+
+interface TranscriptTurn {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
+}
+
+interface OpenAIMessage {
+  type: string;
+  event_id?: string;
+  session?: {
+    id: string;
+    model: string;
+    voice: string;
+    instructions?: string;
+  };
+  delta?: string;
+  transcript?: string;
+  audio?: string;
+  error?: {
+    type: string;
+    code: string;
+    message: string;
+  };
+  item?: {
+    id: string;
+    type: string;
+    role?: string;
+    content?: Array<{
+      type: string;
+      transcript?: string;
+      text?: string;
+    }>;
+  };
+  response?: {
+    id: string;
+    status: string;
+  };
+}
+
+export class RealtimeSession {
+  private clientWs: WebSocket;
+  private openaiWs: WebSocket | null = null;
+  private params: ConnectionParams;
+  private sessionId: string | null = null;
+  private transcripts: TranscriptTurn[] = [];
+  private currentUserTranscript: string = "";
+  private currentAssistantTranscript: string = "";
+
+  constructor(clientWs: WebSocket, params: ConnectionParams) {
+    this.clientWs = clientWs;
+    this.params = params;
+  }
+
+  async connect(): Promise<void> {
+    if (!OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY environment variable is not set");
+    }
+
+    return new Promise((resolve, reject) => {
+      const url = `${OPENAI_REALTIME_URL}?model=${REALTIME_MODEL}`;
+
+      this.openaiWs = new WebSocket(url, {
+        headers: {
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          "OpenAI-Beta": "realtime=v1",
+        },
+      });
+
+      this.openaiWs.on("open", () => {
+        console.log("[OpenAI] Connected to Realtime API");
+        this.configureSession();
+        resolve();
+      });
+
+      this.openaiWs.on("message", (data: Buffer) => {
+        this.handleOpenAIMessage(data);
+      });
+
+      this.openaiWs.on("error", (error) => {
+        console.error("[OpenAI] WebSocket error:", error);
+        reject(error);
+      });
+
+      this.openaiWs.on("close", (code, reason) => {
+        console.log(
+          `[OpenAI] Connection closed: ${code} - ${reason.toString()}`
+        );
+        // Notify client if OpenAI disconnects
+        if (
+          this.clientWs.readyState === WebSocket.OPEN
+        ) {
+          this.clientWs.send(
+            JSON.stringify({
+              type: "error",
+              error: {
+                type: "connection_closed",
+                code: "openai_disconnected",
+                message: "OpenAI Realtime API connection closed",
+              },
+            })
+          );
+        }
+      });
+
+      // Set up message forwarding from client to OpenAI
+      this.clientWs.on("message", (data: Buffer) => {
+        this.handleClientMessage(data);
+      });
+    });
+  }
+
+  private configureSession(): void {
+    if (!this.openaiWs || this.openaiWs.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    // Build instructions based on scenario
+    const instructions = this.buildInstructions();
+
+    const sessionConfig = {
+      type: "session.update",
+      session: {
+        modalities: ["text", "audio"],
+        voice: REALTIME_VOICE,
+        instructions,
+        input_audio_format: "pcm16",
+        output_audio_format: "pcm16",
+        input_audio_transcription: {
+          model: "whisper-1",
+        },
+        turn_detection: {
+          type: "server_vad",
+          threshold: 0.5,
+          prefix_padding_ms: 300,
+          silence_duration_ms: 500,
+        },
+      },
+    };
+
+    this.openaiWs.send(JSON.stringify(sessionConfig));
+    console.log("[OpenAI] Session configured");
+  }
+
+  private buildInstructions(): string {
+    // Base instructions for the caller simulation
+    const baseInstructions = `You are simulating a caller in a crisis counseling training scenario.
+Your role is to act as a realistic caller who needs support.
+Respond naturally to the counselor's questions and statements.
+Stay in character and provide realistic emotional responses.
+Do not break character or provide meta-commentary about the training.`;
+
+    // In a real implementation, we would fetch the scenario prompt from the database
+    // using this.params.scenarioId and incorporate it here
+    if (this.params.scenarioId) {
+      return `${baseInstructions}\n\nScenario ID: ${this.params.scenarioId}`;
+    }
+
+    return baseInstructions;
+  }
+
+  private handleOpenAIMessage(data: Buffer): void {
+    try {
+      const message: OpenAIMessage = JSON.parse(data.toString());
+
+      // Log message type for debugging
+      console.log(`[OpenAI] Received: ${message.type}`);
+
+      switch (message.type) {
+        case "session.created":
+          this.sessionId = message.session?.id || null;
+          console.log(`[OpenAI] Session created: ${this.sessionId}`);
+          // Forward session info to client
+          this.sendToClient({
+            type: "session.created",
+            session: {
+              id: this.sessionId,
+              model: message.session?.model,
+              voice: message.session?.voice,
+            },
+          });
+          break;
+
+        case "session.updated":
+          console.log("[OpenAI] Session updated");
+          this.sendToClient(message);
+          break;
+
+        case "response.audio.delta":
+          // Forward audio directly to client
+          this.sendToClient({
+            type: "response.audio.delta",
+            delta: message.delta,
+          });
+          break;
+
+        case "response.audio.done":
+          this.sendToClient({ type: "response.audio.done" });
+          break;
+
+        case "response.audio_transcript.delta":
+          // Accumulate assistant transcript
+          if (message.delta) {
+            this.currentAssistantTranscript += message.delta;
+          }
+          // Forward transcript delta to client
+          this.sendToClient({
+            type: "response.audio_transcript.delta",
+            delta: message.delta,
+          });
+          break;
+
+        case "response.audio_transcript.done":
+          // Save completed assistant transcript
+          if (this.currentAssistantTranscript) {
+            this.transcripts.push({
+              role: "assistant",
+              content: this.currentAssistantTranscript,
+              timestamp: new Date(),
+            });
+            console.log(
+              `[Transcript] Assistant: ${this.currentAssistantTranscript.substring(0, 50)}...`
+            );
+          }
+          this.currentAssistantTranscript = "";
+          this.sendToClient({
+            type: "response.audio_transcript.done",
+            transcript: message.transcript,
+          });
+          break;
+
+        case "conversation.item.input_audio_transcription.completed":
+          // User's speech has been transcribed
+          const userTranscript =
+            (message as unknown as { transcript?: string }).transcript || "";
+          if (userTranscript) {
+            this.transcripts.push({
+              role: "user",
+              content: userTranscript,
+              timestamp: new Date(),
+            });
+            console.log(
+              `[Transcript] User: ${userTranscript.substring(0, 50)}...`
+            );
+          }
+          this.sendToClient({
+            type: "input_audio_transcription.completed",
+            transcript: userTranscript,
+          });
+          break;
+
+        case "error":
+          console.error("[OpenAI] Error:", message.error);
+          this.sendToClient({
+            type: "error",
+            error: message.error,
+          });
+          break;
+
+        case "response.done":
+          this.sendToClient({ type: "response.done" });
+          break;
+
+        default:
+          // Forward other messages as-is
+          this.sendToClient(message);
+      }
+    } catch (error) {
+      console.error("[OpenAI] Failed to parse message:", error);
+    }
+  }
+
+  private handleClientMessage(data: Buffer): void {
+    if (!this.openaiWs || this.openaiWs.readyState !== WebSocket.OPEN) {
+      console.warn("[Client] OpenAI WebSocket not ready, dropping message");
+      return;
+    }
+
+    try {
+      const message = JSON.parse(data.toString());
+
+      // Handle special client messages
+      if (message.type === "get_transcripts") {
+        this.sendToClient({
+          type: "transcripts",
+          transcripts: this.transcripts,
+        });
+        return;
+      }
+
+      if (message.type === "request_evaluation") {
+        // Send transcripts back to client for evaluation
+        this.sendToClient({
+          type: "evaluation_ready",
+          transcripts: this.transcripts,
+          sessionId: this.sessionId,
+          assignmentId: this.params.assignmentId,
+        });
+        return;
+      }
+
+      // Forward all other messages to OpenAI
+      console.log(`[Client] Forwarding: ${message.type}`);
+      this.openaiWs.send(JSON.stringify(message));
+    } catch (error) {
+      console.error("[Client] Failed to parse message:", error);
+    }
+  }
+
+  private sendToClient(message: object): void {
+    if (this.clientWs.readyState === WebSocket.OPEN) {
+      this.clientWs.send(JSON.stringify(message));
+    }
+  }
+
+  disconnect(): void {
+    console.log("[Session] Disconnecting...");
+
+    // Log final transcript count
+    console.log(
+      `[Session] Total transcript turns captured: ${this.transcripts.length}`
+    );
+
+    if (this.openaiWs) {
+      this.openaiWs.close();
+      this.openaiWs = null;
+    }
+  }
+
+  getTranscripts(): TranscriptTurn[] {
+    return [...this.transcripts];
+  }
+
+  getSessionId(): string | null {
+    return this.sessionId;
+  }
+}
