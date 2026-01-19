@@ -85,6 +85,13 @@ export function useRealtimeVoice(
   const turnIndexRef = useRef(0);
   const currentTranscriptRef = useRef("");
 
+  // Guards for race conditions
+  const isConnectingRef = useRef(false);
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const MAX_RECONNECT_ATTEMPTS = 3;
+  const RECONNECT_DELAY_MS = 2000;
+
   // Keep isListeningRef in sync with state
   useEffect(() => {
     isListeningRef.current = isListening;
@@ -172,6 +179,13 @@ export function useRealtimeVoice(
   // ============================================================================
 
   const connect = useCallback(async () => {
+    // Guard against concurrent connect calls
+    if (isConnectingRef.current) {
+      console.warn("Connection already in progress");
+      return;
+    }
+    isConnectingRef.current = true;
+
     // Clear previous state
     setError(null);
     setSessionId(null);
@@ -179,6 +193,7 @@ export function useRealtimeVoice(
     setConnectionStatus("connecting");
     turnIndexRef.current = 0;
     currentTranscriptRef.current = "";
+    reconnectAttemptsRef.current = 0;
 
     // Build WebSocket URL
     const wsUrl =
@@ -209,19 +224,36 @@ export function useRealtimeVoice(
       wsRef.current = ws;
 
       ws.onopen = () => {
+        isConnectingRef.current = false;
+        reconnectAttemptsRef.current = 0;
         setIsConnected(true);
         setConnectionStatus("connected");
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
+        isConnectingRef.current = false;
         setIsConnected(false);
-        setConnectionStatus("disconnected");
+
+        // Attempt reconnection if it wasn't a clean close and we haven't exceeded attempts
+        if (event.code !== 1000 && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+          setConnectionStatus("connecting");
+          reconnectAttemptsRef.current++;
+          console.log(`WebSocket closed unexpectedly, attempting reconnect (${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})`);
+
+          reconnectTimeoutRef.current = setTimeout(() => {
+            if (wsRef.current?.readyState === WebSocket.CLOSED) {
+              connect();
+            }
+          }, RECONNECT_DELAY_MS);
+        } else {
+          setConnectionStatus("disconnected");
+        }
       };
 
       ws.onerror = (wsError) => {
         console.error("WebSocket error:", wsError);
         setError("WebSocket connection error");
-        setConnectionStatus("disconnected");
+        isConnectingRef.current = false;
       };
 
       ws.onmessage = (msgEvent) => {
@@ -233,6 +265,7 @@ export function useRealtimeVoice(
         }
       };
     } catch (connectError) {
+      isConnectingRef.current = false;
       const errorMessage =
         connectError instanceof Error
           ? connectError.message
@@ -298,9 +331,9 @@ export function useRealtimeVoice(
         }
       };
 
-      // Connect the audio graph
+      // Connect source to worklet for processing only
+      // DO NOT connect worklet to destination - that would route mic to speakers (feedback loop)
       source.connect(workletNode);
-      workletNode.connect(audioContext.destination);
 
       setIsListening(true);
       setError(null);
@@ -323,8 +356,9 @@ export function useRealtimeVoice(
       mediaStreamRef.current = null;
     }
 
-    // Disconnect and clean up worklet node
+    // Clean up worklet node and its message handler (fixes memory leak)
     if (workletNodeRef.current) {
+      workletNodeRef.current.port.onmessage = null;
       workletNodeRef.current.disconnect();
       workletNodeRef.current = null;
     }
@@ -343,9 +377,16 @@ export function useRealtimeVoice(
   const disconnect = useCallback(() => {
     stopListening();
 
-    // Close WebSocket
+    // Cancel any pending reconnect
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    reconnectAttemptsRef.current = MAX_RECONNECT_ATTEMPTS; // Prevent auto-reconnect
+
+    // Close WebSocket with clean close code
     if (wsRef.current) {
-      wsRef.current.close();
+      wsRef.current.close(1000, "User disconnected");
       wsRef.current = null;
     }
 
@@ -355,6 +396,7 @@ export function useRealtimeVoice(
       audioPlayerRef.current = null;
     }
 
+    isConnectingRef.current = false;
     setIsConnected(false);
     setConnectionStatus("disconnected");
     // Don't clear sessionId - keep it for evaluation
@@ -404,16 +446,23 @@ export function useRealtimeVoice(
 
   useEffect(() => {
     return () => {
+      // Cancel any pending reconnect
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+
       // Clean up all resources
       if (wsRef.current) {
-        wsRef.current.close();
+        wsRef.current.close(1000, "Component unmounted");
       }
 
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       }
 
+      // Clean up worklet node and its message handler (fixes memory leak)
       if (workletNodeRef.current) {
+        workletNodeRef.current.port.onmessage = null;
         workletNodeRef.current.disconnect();
       }
 

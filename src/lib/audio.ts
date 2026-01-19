@@ -41,24 +41,36 @@ export function pcm16ToFloat(pcm16: Int16Array): Float32Array {
 
 /**
  * Encode PCM16 audio data to base64 string
+ * Uses chunked processing to avoid O(n²) string concatenation
  */
 export function base64EncodeAudio(pcm16: Int16Array): string {
   const uint8Array = new Uint8Array(pcm16.buffer);
-  let binary = "";
-  for (let i = 0; i < uint8Array.length; i++) {
-    binary += String.fromCharCode(uint8Array[i]);
+  // Process in chunks to avoid call stack limits with String.fromCharCode
+  const CHUNK_SIZE = 8192;
+  const chunks: string[] = [];
+  for (let i = 0; i < uint8Array.length; i += CHUNK_SIZE) {
+    const chunk = uint8Array.subarray(i, Math.min(i + CHUNK_SIZE, uint8Array.length));
+    chunks.push(String.fromCharCode(...chunk));
   }
-  return btoa(binary);
+  return btoa(chunks.join(""));
 }
 
 /**
  * Decode base64 string to Float32 audio samples
+ * Uses typed array operations for better performance
  */
 export function base64DecodeAudio(base64Data: string): Float32Array {
   const binaryString = atob(base64Data);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+
+  // Process in chunks for better performance
+  const CHUNK_SIZE = 8192;
+  for (let i = 0; i < len; i += CHUNK_SIZE) {
+    const end = Math.min(i + CHUNK_SIZE, len);
+    for (let j = i; j < end; j++) {
+      bytes[j] = binaryString.charCodeAt(j);
+    }
   }
 
   // Convert PCM16 bytes to Float32

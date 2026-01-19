@@ -4,6 +4,10 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const REALTIME_MODEL = process.env.REALTIME_MODEL || "gpt-4o-realtime-preview";
 const REALTIME_VOICE = process.env.REALTIME_VOICE || "shimmer";
 const OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3003";
+
+// UUID v4 regex for validation
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 interface ConnectionParams {
   userId: string;
@@ -58,16 +62,59 @@ export class RealtimeSession {
   private transcripts: TranscriptTurn[] = [];
   private currentUserTranscript: string = "";
   private currentAssistantTranscript: string = "";
+  private scenarioPrompt: string | null = null;
 
   constructor(clientWs: WebSocket, params: ConnectionParams) {
     this.clientWs = clientWs;
     this.params = params;
   }
 
+  /**
+   * Validate and fetch the scenario prompt from the database
+   * Returns null if validation fails or scenario doesn't exist
+   */
+  private async fetchScenarioPrompt(): Promise<string | null> {
+    const { scenarioId } = this.params;
+
+    // If no scenarioId provided, use free practice mode
+    if (!scenarioId) {
+      return null;
+    }
+
+    // Validate scenarioId format to prevent injection
+    if (!UUID_REGEX.test(scenarioId)) {
+      console.warn(`[Session] Invalid scenarioId format: ${scenarioId.substring(0, 50)}`);
+      return null;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/scenarios/${scenarioId}`);
+      if (!response.ok) {
+        console.warn(`[Session] Failed to fetch scenario ${scenarioId}: ${response.status}`);
+        return null;
+      }
+
+      const data = await response.json();
+      if (!data.ok || !data.data?.prompt) {
+        console.warn(`[Session] Scenario ${scenarioId} not found or has no prompt`);
+        return null;
+      }
+
+      console.log(`[Session] Loaded scenario: ${data.data.title}`);
+      return data.data.prompt;
+    } catch (error) {
+      console.error(`[Session] Error fetching scenario:`, error);
+      return null;
+    }
+  }
+
   async connect(): Promise<void> {
     if (!OPENAI_API_KEY) {
       throw new Error("OPENAI_API_KEY environment variable is not set");
     }
+
+    // Fetch scenario prompt before connecting to OpenAI
+    this.scenarioPrompt = await this.fetchScenarioPrompt();
 
     return new Promise((resolve, reject) => {
       const url = `${OPENAI_REALTIME_URL}?model=${REALTIME_MODEL}`;
@@ -162,13 +209,13 @@ Respond naturally to the counselor's questions and statements.
 Stay in character and provide realistic emotional responses.
 Do not break character or provide meta-commentary about the training.`;
 
-    // In a real implementation, we would fetch the scenario prompt from the database
-    // using this.params.scenarioId and incorporate it here
-    if (this.params.scenarioId) {
-      return `${baseInstructions}\n\nScenario ID: ${this.params.scenarioId}`;
+    // Use the fetched scenario prompt if available
+    if (this.scenarioPrompt) {
+      return `${baseInstructions}\n\nScenario:\n${this.scenarioPrompt}`;
     }
 
-    return baseInstructions;
+    // Free practice mode - generic caller
+    return `${baseInstructions}\n\nYou are a general caller seeking support. Begin by describing a challenge you are facing.`;
   }
 
   private handleOpenAIMessage(data: Buffer): void {
@@ -363,13 +410,12 @@ Do not break character or provide meta-commentary about the training.`;
   }
 
   private async persistTranscripts(): Promise<void> {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3003";
 
     try {
       console.log(`[Session] Persisting ${this.transcripts.length} transcript turns...`);
 
       // Create or get session for this assignment
-      const sessionResponse = await fetch(`${apiUrl}/api/sessions`, {
+      const sessionResponse = await fetch(`${API_URL}/api/sessions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -394,7 +440,7 @@ Do not break character or provide meta-commentary about the training.`;
       // Save each transcript turn
       for (let i = 0; i < this.transcripts.length; i++) {
         const turn = this.transcripts[i];
-        const turnResponse = await fetch(`${apiUrl}/api/sessions/${dbSessionId}/message`, {
+        const turnResponse = await fetch(`${API_URL}/api/sessions/${dbSessionId}/message`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

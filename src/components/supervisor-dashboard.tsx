@@ -8,10 +8,10 @@ import {
   Account,
   ScenarioCategory,
   ScenarioMode,
-  AssignmentStatus,
   ApiResponse,
 } from "@/types";
 import { createAuthFetch } from "@/lib/fetch";
+import { formatDate, getStatusColor } from "@/lib/format";
 import BulkImportModal from "./bulk-import-modal";
 
 const SCENARIO_CATEGORIES = [
@@ -409,29 +409,6 @@ export default function SupervisorDashboard() {
     } catch {
       setError("Failed to delete assignment");
     }
-  };
-
-  const getStatusColor = (status: AssignmentStatus) => {
-    switch (status) {
-      case "pending":
-        return "bg-yellow-500/20 text-yellow-300";
-      case "in_progress":
-        return "bg-blue-500/20 text-blue-300";
-      case "completed":
-        return "bg-green-500/20 text-green-300";
-      default:
-        return "bg-gray-500/20 text-gray-300";
-    }
-  };
-
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return null;
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
   };
 
   return (

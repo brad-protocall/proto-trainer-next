@@ -420,7 +420,7 @@ export default function BulkImportModal({
 
                     return (
                       <tr
-                        key={index}
+                        key={`row-${index + 2}-${scenario.title}`}
                         className={`border-b border-gray-800 ${
                           hasRowError ? "bg-red-900/20" : ""
                         }`}
@@ -460,8 +460,8 @@ export default function BulkImportModal({
                   Fix these errors in your CSV and re-upload:
                 </p>
                 <ul className="text-red-400 text-sm space-y-1">
-                  {validationErrors.slice(0, 10).map((err, index) => (
-                    <li key={index}>
+                  {validationErrors.slice(0, 10).map((err) => (
+                    <li key={`${err.row}-${err.field}-${err.message}`}>
                       Row {err.row}: {err.message}
                     </li>
                   ))}
@@ -535,8 +535,8 @@ export default function BulkImportModal({
                 <div className="mt-3">
                   <p className="text-gray-400 text-sm mb-1">Created:</p>
                   <ul className="text-green-400 text-sm space-y-1 max-h-40 overflow-y-auto">
-                    {importResult.created_titles.map((title, index) => (
-                      <li key={index}>• {title}</li>
+                    {importResult.created_titles.map((title) => (
+                      <li key={`created-${title}`}>• {title}</li>
                     ))}
                   </ul>
                 </div>
@@ -548,8 +548,8 @@ export default function BulkImportModal({
                     Skipped (already exist):
                   </p>
                   <ul className="text-yellow-400 text-sm space-y-1">
-                    {importResult.skipped_titles.map((title, index) => (
-                      <li key={index}>• {title}</li>
+                    {importResult.skipped_titles.map((title) => (
+                      <li key={`skipped-${title}`}>• {title}</li>
                     ))}
                   </ul>
                 </div>

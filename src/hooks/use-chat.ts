@@ -3,6 +3,9 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { ChatMessage, EvaluationResult, ApiResponse } from "@/types";
 
+// Maximum number of messages to keep in memory to prevent unbounded growth
+const MAX_MESSAGES = 200;
+
 interface UseChatOptions {
   userId: string;
   scenarioId?: string;
@@ -107,13 +110,17 @@ export function useChat({
       setIsLoading(true);
       setError(null);
 
-      // Optimistic update
+      // Optimistic update with size limit
       const userMessage: ChatMessage = {
         role: "user",
         content,
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, userMessage]);
+      setMessages((prev) => {
+        const updated = [...prev, userMessage];
+        // Keep only the most recent messages if we exceed the limit
+        return updated.length > MAX_MESSAGES ? updated.slice(-MAX_MESSAGES) : updated;
+      });
 
       abortControllerRef.current?.abort();
       abortControllerRef.current = new AbortController();
@@ -132,14 +139,16 @@ export function useChat({
           throw new Error(data.error.message);
         }
 
-        setMessages((prev) => [
-          ...prev,
-          {
+        setMessages((prev) => {
+          const assistantMessage: ChatMessage = {
             role: "assistant",
             content: data.data.response,
             timestamp: new Date(),
-          },
-        ]);
+          };
+          const updated = [...prev, assistantMessage];
+          // Keep only the most recent messages if we exceed the limit
+          return updated.length > MAX_MESSAGES ? updated.slice(-MAX_MESSAGES) : updated;
+        });
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") {
           return;

@@ -86,9 +86,9 @@ export default function ChatTrainingView({
 
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((msg, i) => (
+        {messages.map((msg) => (
           <div
-            key={i}
+            key={msg.timestamp?.toISOString() ?? crypto.randomUUID()}
             className={`flex ${
               msg.role === "user" ? "justify-end" : "justify-start"
             }`}
