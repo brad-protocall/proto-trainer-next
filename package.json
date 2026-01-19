@@ -1,0 +1,33 @@
+{
+  "name": "proto-trainer-next",
+  "version": "0.1.0",
+  "description": "Proto Trainer - Next.js migration of training simulator for crisis counselors",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "ws:dev": "cd ws-server && npx tsx watch index.ts",
+    "ws:start": "cd ws-server && npx tsx index.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "autoprefixer": "^10.4.23",
+    "next": "14.2.35",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "14.2.35",
+    "postcss": "^8",
+    "prisma": "^5.22.0",
+    "tailwindcss": "^3.4.19",
+    "ts-interface-checker": "^1.0.2",
+    "typescript": "^5.9.3"
+  }
+}
