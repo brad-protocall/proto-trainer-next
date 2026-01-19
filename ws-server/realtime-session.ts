@@ -6,6 +6,7 @@ const REALTIME_VOICE = process.env.REALTIME_VOICE || "shimmer";
 const OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime";
 
 interface ConnectionParams {
+  userId: string;
   scenarioId?: string;
   assignmentId?: string;
 }
@@ -324,17 +325,93 @@ Do not break character or provide meta-commentary about the training.`;
     }
   }
 
-  disconnect(): void {
+  async disconnect(): Promise<void> {
     console.log("[Session] Disconnecting...");
+
+    // Flush any in-flight transcript
+    if (this.currentAssistantTranscript) {
+      this.transcripts.push({
+        role: "assistant",
+        content: this.currentAssistantTranscript,
+        timestamp: new Date(),
+      });
+      this.currentAssistantTranscript = "";
+    }
+    if (this.currentUserTranscript) {
+      this.transcripts.push({
+        role: "user",
+        content: this.currentUserTranscript,
+        timestamp: new Date(),
+      });
+      this.currentUserTranscript = "";
+    }
 
     // Log final transcript count
     console.log(
       `[Session] Total transcript turns captured: ${this.transcripts.length}`
     );
 
+    // Persist transcripts if we have an assignment and transcripts
+    if (this.params.assignmentId && this.transcripts.length > 0) {
+      await this.persistTranscripts();
+    }
+
     if (this.openaiWs) {
       this.openaiWs.close();
       this.openaiWs = null;
+    }
+  }
+
+  private async persistTranscripts(): Promise<void> {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3003";
+
+    try {
+      console.log(`[Session] Persisting ${this.transcripts.length} transcript turns...`);
+
+      // Create or get session for this assignment
+      const sessionResponse = await fetch(`${apiUrl}/api/sessions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assignmentId: this.params.assignmentId,
+          userId: this.params.userId,
+        }),
+      });
+
+      if (!sessionResponse.ok) {
+        console.error(`[Session] Failed to create session: ${sessionResponse.status}`);
+        return;
+      }
+
+      const sessionData = await sessionResponse.json();
+      if (!sessionData.ok) {
+        console.error("[Session] Failed to create session:", sessionData.error);
+        return;
+      }
+
+      const dbSessionId = sessionData.data.id;
+
+      // Save each transcript turn
+      for (let i = 0; i < this.transcripts.length; i++) {
+        const turn = this.transcripts[i];
+        const turnResponse = await fetch(`${apiUrl}/api/sessions/${dbSessionId}/message`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            role: turn.role,
+            content: turn.content,
+            turnOrder: i,
+          }),
+        });
+
+        if (!turnResponse.ok) {
+          console.warn(`[Session] Failed to save turn ${i}: ${turnResponse.status}`);
+        }
+      }
+
+      console.log(`[Session] Transcripts persisted to session ${dbSessionId}`);
+    } catch (error) {
+      console.error("[Session] Failed to persist transcripts:", error);
     }
   }
 

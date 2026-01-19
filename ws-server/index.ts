@@ -7,18 +7,44 @@ import { RealtimeSession } from "./realtime-session.js";
 // Load environment variables from parent directory
 config({ path: "../.env" });
 
-const WS_PORT = parseInt(process.env.WS_PORT || "3001", 10);
+// Fail fast if required environment variables are missing
+if (!process.env.OPENAI_API_KEY) {
+  console.error("[WS] FATAL: OPENAI_API_KEY environment variable is required");
+  process.exit(1);
+}
+
+const WS_PORT = parseInt(process.env.WS_PORT || "3004", 10);
 
 interface ConnectionParams {
+  userId: string;
   scenarioId?: string;
   assignmentId?: string;
 }
 
-function parseQueryParams(request: IncomingMessage): ConnectionParams {
+interface AuthResult {
+  ok: true;
+  params: ConnectionParams;
+} | {
+  ok: false;
+  error: string;
+}
+
+function authenticateConnection(request: IncomingMessage): AuthResult {
   const url = new URL(request.url || "/", `http://localhost:${WS_PORT}`);
+
+  // Require userId for all connections
+  const userId = url.searchParams.get("userId");
+  if (!userId) {
+    return { ok: false, error: "Missing required userId parameter" };
+  }
+
   return {
-    scenarioId: url.searchParams.get("scenarioId") || undefined,
-    assignmentId: url.searchParams.get("assignmentId") || undefined,
+    ok: true,
+    params: {
+      userId,
+      scenarioId: url.searchParams.get("scenarioId") || undefined,
+      assignmentId: url.searchParams.get("assignmentId") || undefined,
+    },
   };
 }
 
@@ -42,10 +68,17 @@ const wss = new WebSocketServer({ server });
 const sessions = new Map<WebSocket, RealtimeSession>();
 
 wss.on("connection", async (ws: WebSocket, request: IncomingMessage) => {
-  const params = parseQueryParams(request);
+  // Authenticate the connection
+  const auth = authenticateConnection(request);
+  if (!auth.ok) {
+    console.warn(`[WS] Authentication failed: ${auth.error}`);
+    ws.close(4001, auth.error);
+    return;
+  }
 
+  const { params } = auth;
   console.log(
-    `[WS] New connection - scenarioId: ${params.scenarioId}, assignmentId: ${params.assignmentId}`
+    `[WS] New connection - userId: ${params.userId}, scenarioId: ${params.scenarioId}, assignmentId: ${params.assignmentId}`
   );
 
   // Create a new RealtimeSession for this connection
@@ -65,8 +98,11 @@ wss.on("connection", async (ws: WebSocket, request: IncomingMessage) => {
     console.log("[WS] Client disconnected");
     const session = sessions.get(ws);
     if (session) {
-      session.disconnect();
       sessions.delete(ws);
+      // Persist transcripts before final cleanup
+      session.disconnect().catch((err) => {
+        console.error("[WS] Error during disconnect:", err);
+      });
     }
   });
 
@@ -74,8 +110,10 @@ wss.on("connection", async (ws: WebSocket, request: IncomingMessage) => {
     console.error("[WS] WebSocket error:", error);
     const session = sessions.get(ws);
     if (session) {
-      session.disconnect();
       sessions.delete(ws);
+      session.disconnect().catch((err) => {
+        console.error("[WS] Error during disconnect:", err);
+      });
     }
   });
 });
