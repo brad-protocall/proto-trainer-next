@@ -2,31 +2,80 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Loading spinner animation */
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
+/* Loading spinner animation (from Loading.css) */
+.lds-facebook {
+  display: inline-block;
+  position: relative;
+  width: 64px;
+  height: 64px;
+}
+
+.lds-facebook div {
+  display: inline-block;
+  position: absolute;
+  left: 8px;
+  width: 8px;
+  background: theme("colors.slate.200");
+  animation: lds-facebook 1.2s cubic-bezier(0, 0.5, 0.5, 1) infinite;
+}
+
+.lds-facebook div:nth-child(1) {
+  left: 8px;
+  animation-delay: -0.24s;
+}
+
+.lds-facebook div:nth-child(2) {
+  left: 24px;
+  animation-delay: -0.12s;
+}
+
+.lds-facebook div:nth-child(3) {
+  left: 40px;
+  animation-delay: 0;
+}
+
+@keyframes lds-facebook {
+  0% {
+    top: 8px;
+    height: 64px;
+  }
+  50%,
+  100% {
+    top: 24px;
+    height: 32px;
   }
 }
 
-.animate-spin {
-  animation: spin 1s linear infinite;
+/* Markdown styles for chat messages */
+.markdown {
+  @apply leading-relaxed;
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
+.markdown p {
+  @apply mb-4;
 }
 
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
+.markdown ul,
+.markdown ol {
+  @apply mb-4 pl-6;
 }
 
-::-webkit-scrollbar-thumb {
-  background: #888;
-  border-radius: 4px;
+.markdown li {
+  @apply mb-2;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #555;
+.markdown code {
+  @apply bg-gray-800 px-1 py-0.5 rounded text-sm;
+}
+
+.markdown pre {
+  @apply bg-gray-800 p-4 rounded-lg overflow-x-auto mb-4;
+}
+
+.markdown strong {
+  @apply font-bold;
+}
+
+.markdown em {
+  @apply italic;
 }

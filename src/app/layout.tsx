@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Proto Trainer",
-  description: "Crisis counselor training with voice roleplay and AI evaluation",
+  title: "Proto Training Guide",
+  description: "AI-powered training simulator for crisis counselors",
 };
 
 export default function RootLayout({
@@ -13,7 +13,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="font-marfa antialiased">{children}</body>
+      <body className="bg-slate-700 min-h-screen antialiased">{children}</body>
     </html>
   );
 }
