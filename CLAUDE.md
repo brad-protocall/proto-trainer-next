@@ -154,3 +154,39 @@ npx prisma studio                     # GUI browser
 
 - Original App: `../Proto Training Guide/`
 - Migration Plan: `../plans/proto-training-guide-nextjs-migration.md`
+
+---
+
+## Resume Context (2026-01-18)
+
+### What Was Completed
+
+1. **PR #23 Merged** - Auth patterns applied to all API routes
+   - Added `requireAuth()`, `requireSupervisor()`, `canAccessResource()` to `src/lib/auth.ts`
+   - Fixed session turnOrder race condition with atomic transactions
+2. **PRs 14-19 Closed** - Superseded by PR #23
+3. **Code Reviews Done** - PRs 20, 21, 22 reviewed with 16 findings
+
+### Open PRs Needing Fixes
+
+| PR | Branch | P1 Issues |
+|----|--------|-----------|
+| #20 | feat/ui-components | ESLint suppressions |
+| #21 | auto/issue-10 | Needs rebase + stale closure fix |
+| #22 | issue-11-ws-server | Auth, port, transcript loss, startup validation |
+
+### Next Steps
+
+1. **Triage P1 todos**: `ls todos/*-pending-p1-*.md`
+2. **Fix PR #21**: `gh pr checkout 21 && git rebase main`
+3. **Fix PR #22**: Port default, auth, transcript persistence
+4. **Merge PRs** after P1 fixes
+5. **Run compound workflow** when work complete
+
+### Quick Commands
+
+```bash
+ls todos/                      # See all 16 findings
+cat todos/006-pending-p1-*.md  # PR #21 rebase issue
+cat todos/011-pending-p1-*.md  # PR #22 auth issue
+```
