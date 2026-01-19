@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+ws-server/node_modules/
+
+# Build
+.next/
+out/
+dist/
+
+# Database
+*.db
+*.db-journal
+prisma/dev.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage/
+.nyc_output/
