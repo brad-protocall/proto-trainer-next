@@ -10,13 +10,20 @@ const config: Config = {
     extend: {
       colors: {
         "brand-navy": "#1F3354",
-        "brand-orange": "#F58657",
-        "brand-orange-hover": "#e07548",
-        "brand-orange-light": "#ff9a70",
-        "brand-cream": "#F9F2E8",
+        "brand-orange": {
+          DEFAULT: "#F58657",
+          hover: "#e07548",
+          light: "#ff9a70",
+        },
+        "brand-cream": {
+          dark: "#F5EBDB",
+          DEFAULT: "#F9F2E8",
+          light: "#FFFBF5",
+        },
       },
       fontFamily: {
-        marfa: ["Marfa Sans", "sans-serif"],
+        marfa: ["Marfa Sans", "system-ui", "-apple-system", "sans-serif"],
+        mono: ["ui-monospace", "SFMono-Regular", "monospace"],
       },
     },
   },
