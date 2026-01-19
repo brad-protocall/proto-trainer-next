@@ -14,15 +14,15 @@ export type ApiResponse<T> =
   | { ok: false; error: ApiError }
 
 // ============================================
-// Domain Types
+// Domain Types (matching SQLite string enums)
 // ============================================
 
-export type UserRole = 'SUPERVISOR' | 'COUNSELOR'
-export type ScenarioMode = 'PHONE' | 'CHAT'
-export type ScenarioCategory = 'ONBOARDING' | 'REFRESHER' | 'ADVANCED' | 'ASSESSMENT'
-export type AssignmentStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED'
-export type SessionStatus = 'ACTIVE' | 'COMPLETED' | 'ABANDONED'
-export type TranscriptRole = 'USER' | 'ASSISTANT'
+export type UserRole = 'supervisor' | 'counselor'
+export type ScenarioMode = 'phone' | 'chat'
+export type ScenarioCategory = 'onboarding' | 'refresher' | 'advanced' | 'assessment'
+export type AssignmentStatus = 'pending' | 'in_progress' | 'completed'
+export type SessionStatus = 'active' | 'completed' | 'abandoned'
+export type TranscriptRole = 'user' | 'assistant'
 
 // ============================================
 // WebSocket/Realtime Types
@@ -71,9 +71,11 @@ export interface ChatMessage {
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected'
 
 export interface TranscriptTurn {
+  id: string
   role: TranscriptRole
   content: string
-  timestamp: Date
+  turnOrder: number
+  createdAt: Date
 }
 
 // ============================================
@@ -132,5 +134,55 @@ export interface Account {
   id: string
   name: string
   policiesProceduresPath: string | null
-  policiesVectorFileId: string | null
+  vectorStoreId: string | null
+}
+
+// ============================================
+// Assignment Response Types
+// ============================================
+
+export interface AssignmentResponse {
+  id: string
+  accountId: string | null
+  scenarioId: string
+  scenarioTitle: string
+  scenarioMode: ScenarioMode
+  counselorId: string
+  counselorName: string | null
+  assignedBy: string
+  assignedByName: string | null
+  status: AssignmentStatus
+  createdAt: string
+  dueDate: string | null
+  startedAt: string | null
+  completedAt: string | null
+  sessionId: string | null
+  evaluationId: string | null
+  supervisorNotes: string | null
+  isOverdue: boolean
+  hasTranscript: boolean
+}
+
+export interface BulkAssignmentResponse {
+  created: number
+  skipped: number
+  skippedPairs: Array<{ counselorId: string; scenarioId: string }>
+}
+
+// ============================================
+// OpenAI Evaluation Response Types
+// ============================================
+
+export interface EvaluationFeedback {
+  category: string
+  score: number
+  comment: string
+}
+
+export interface EvaluationResponse {
+  overallScore: number
+  feedback: EvaluationFeedback[]
+  strengths: string[]
+  areasToImprove: string[]
+  rawResponse: string
 }

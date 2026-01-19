@@ -1,17 +1,23 @@
 import { z } from 'zod'
 
-// Domain enum schemas as string literals
-const UserRoleSchema = z.enum(['SUPERVISOR', 'COUNSELOR'])
-const ScenarioModeSchema = z.enum(['PHONE', 'CHAT'])
-const ScenarioCategorySchema = z.enum(['ONBOARDING', 'REFRESHER', 'ADVANCED', 'ASSESSMENT'])
-const AssignmentStatusSchema = z.enum(['PENDING', 'IN_PROGRESS', 'COMPLETED'])
+// Domain enum schemas as string literals (lowercase to match DB)
+const UserRoleSchema = z.enum(['supervisor', 'counselor'])
+const ScenarioModeSchema = z.enum(['phone', 'chat'])
+const ScenarioCategorySchema = z.enum(['onboarding', 'refresher', 'advanced', 'assessment'])
+const AssignmentStatusSchema = z.enum(['pending', 'in_progress', 'completed'])
 
 // User validation
 export const createUserSchema = z.object({
   externalId: z.string().min(1),
   displayName: z.string().optional(),
   email: z.string().email().optional(),
-  role: UserRoleSchema.default('COUNSELOR'),
+  role: UserRoleSchema.default('counselor'),
+})
+
+export const updateUserSchema = z.object({
+  displayName: z.string().optional(),
+  email: z.string().email().optional().nullable(),
+  role: UserRoleSchema.optional(),
 })
 
 // Account validation
@@ -51,17 +57,25 @@ export const bulkAssignmentSchema = z.object({
   scenarioIds: z.array(z.string().uuid()).min(1),
   counselorIds: z.array(z.string().uuid()).min(1),
   dueDate: z.string().datetime().optional(),
+  supervisorNotes: z.string().optional(),
 })
 
 export const updateAssignmentSchema = z.object({
   status: AssignmentStatusSchema.optional(),
-  supervisorNotes: z.string().optional(),
+  dueDate: z.string().datetime().optional().nullable(),
+  supervisorNotes: z.string().optional().nullable(),
+})
+
+export const assignmentQuerySchema = z.object({
+  counselorId: z.string().uuid().optional(),
+  status: z.string().optional(),
+  scenarioId: z.string().uuid().optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(100),
 })
 
 // Session validation
 export const createSessionSchema = z.object({
-  scenarioId: z.string().uuid().optional(),
-  assignmentId: z.string().uuid().optional(),
+  assignmentId: z.string().uuid(),
 })
 
 // Chat message validation
@@ -71,6 +85,7 @@ export const sendMessageSchema = z.object({
 
 // Inferred types
 export type CreateUserInput = z.infer<typeof createUserSchema>
+export type UpdateUserInput = z.infer<typeof updateUserSchema>
 export type CreateAccountInput = z.infer<typeof createAccountSchema>
 export type CreateScenarioInput = z.infer<typeof createScenarioSchema>
 export type UpdateScenarioInput = z.infer<typeof updateScenarioSchema>

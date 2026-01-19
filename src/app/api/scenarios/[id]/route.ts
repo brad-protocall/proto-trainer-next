@@ -1,14 +1,23 @@
 import { NextRequest } from 'next/server'
 import prisma from '@/lib/prisma'
-import { apiSuccess, apiError, handleApiError } from '@/lib/api'
+import { apiSuccess, apiError, handleApiError, notFound } from '@/lib/api'
 import { updateScenarioSchema } from '@/lib/validators'
+import { requireAuth, requireSupervisor } from '@/lib/auth'
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+interface RouteParams {
+  params: Promise<{ id: string }>
+}
+
+/**
+ * GET /api/scenarios/[id]
+ * Get a specific scenario - any authenticated user
+ */
+export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params
+
+    const authResult = await requireAuth(request)
+    if (authResult.error) return authResult.error
 
     const scenario = await prisma.scenario.findUnique({
       where: { id },
@@ -19,7 +28,7 @@ export async function GET(
     })
 
     if (!scenario) {
-      return apiError({ code: 'NOT_FOUND', message: 'Scenario not found' }, 404)
+      return notFound('Scenario not found')
     }
 
     return apiSuccess(scenario)
@@ -28,12 +37,25 @@ export async function GET(
   }
 }
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+/**
+ * PUT /api/scenarios/[id]
+ * Update a scenario - supervisor only
+ */
+export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params
+
+    const authResult = await requireSupervisor(request)
+    if (authResult.error) return authResult.error
+
+    const existingScenario = await prisma.scenario.findUnique({
+      where: { id },
+    })
+
+    if (!existingScenario) {
+      return notFound('Scenario not found')
+    }
+
     const body = await request.json()
     const result = updateScenarioSchema.safeParse(body)
 
@@ -59,18 +81,30 @@ export async function PUT(
   }
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+/**
+ * DELETE /api/scenarios/[id]
+ * Delete a scenario - supervisor only
+ */
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params
+
+    const authResult = await requireSupervisor(request)
+    if (authResult.error) return authResult.error
+
+    const scenario = await prisma.scenario.findUnique({
+      where: { id },
+    })
+
+    if (!scenario) {
+      return notFound('Scenario not found')
+    }
 
     await prisma.scenario.delete({
       where: { id },
     })
 
-    return apiSuccess({ deleted: true })
+    return new Response(null, { status: 204 })
   } catch (error) {
     return handleApiError(error)
   }

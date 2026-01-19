@@ -2,12 +2,29 @@ import type { ApiError, ApiResponse } from '@/types'
 import { ZodError } from 'zod'
 import { Prisma } from '@prisma/client'
 
-export function apiSuccess<T>(data: T): Response {
-  return Response.json({ ok: true, data } satisfies ApiResponse<T>)
+export function apiSuccess<T>(data: T, status = 200): Response {
+  return Response.json({ ok: true, data } satisfies ApiResponse<T>, { status })
 }
 
 export function apiError(error: ApiError, status = 400): Response {
   return Response.json({ ok: false, error } satisfies ApiResponse<never>, { status })
+}
+
+// Convenience helpers
+export function notFound(message: string): Response {
+  return apiError({ code: 'NOT_FOUND', message }, 404)
+}
+
+export function conflict(message: string): Response {
+  return apiError({ code: 'CONFLICT', message }, 409)
+}
+
+export function unauthorized(message: string): Response {
+  return apiError({ code: 'UNAUTHORIZED', message }, 401)
+}
+
+export function forbidden(message: string): Response {
+  return apiError({ code: 'UNAUTHORIZED', message }, 403)
 }
 
 export function handleApiError(error: unknown): Response {

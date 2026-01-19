@@ -1,10 +1,18 @@
 import { NextRequest } from 'next/server'
 import prisma from '@/lib/prisma'
-import { apiSuccess, apiError, handleApiError } from '@/lib/api'
+import { apiSuccess, apiError, handleApiError, notFound } from '@/lib/api'
 import { createScenarioSchema, scenarioQuerySchema } from '@/lib/validators'
+import { requireAuth, requireSupervisor } from '@/lib/auth'
 
+/**
+ * GET /api/scenarios
+ * List scenarios - any authenticated user
+ */
 export async function GET(request: NextRequest) {
   try {
+    const authResult = await requireAuth(request)
+    if (authResult.error) return authResult.error
+
     const searchParams = Object.fromEntries(request.nextUrl.searchParams)
     const queryResult = scenarioQuerySchema.safeParse(searchParams)
 
@@ -26,13 +34,15 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/**
+ * POST /api/scenarios
+ * Create a scenario - supervisor only
+ */
 export async function POST(request: NextRequest) {
   try {
-    // Get user ID from header (matches current app's simple auth)
-    const userId = request.headers.get('x-user-id')
-    if (!userId) {
-      return apiError({ code: 'UNAUTHORIZED', message: 'User ID required' }, 401)
-    }
+    const authResult = await requireSupervisor(request)
+    if (authResult.error) return authResult.error
+    const user = authResult.user
 
     const body = await request.json()
     const result = createScenarioSchema.safeParse(body)
@@ -44,6 +54,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Verify account exists if accountId is provided
+    if (result.data.accountId) {
+      const account = await prisma.account.findUnique({
+        where: { id: result.data.accountId },
+      })
+      if (!account) {
+        return notFound('Account not found')
+      }
+    }
+
     const scenario = await prisma.scenario.create({
       data: {
         title: result.data.title,
@@ -51,10 +71,10 @@ export async function POST(request: NextRequest) {
         prompt: result.data.prompt,
         mode: result.data.mode,
         category: result.data.category,
-        accountId: result.data.accountId,
+        accountId: result.data.accountId!,
         isOneTime: result.data.isOneTime,
         relevantPolicySections: result.data.relevantPolicySections,
-        createdById: userId,
+        createdBy: user.id,
       },
       include: {
         creator: { select: { displayName: true } },
@@ -62,7 +82,7 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    return apiSuccess(scenario)
+    return apiSuccess(scenario, 201)
   } catch (error) {
     return handleApiError(error)
   }
