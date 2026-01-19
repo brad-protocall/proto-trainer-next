@@ -1,139 +1,232 @@
-// Audio utilities for voice training
+/**
+ * Audio utilities for WebSocket voice communication
+ *
+ * Handles:
+ * - PCM16 encoding/decoding
+ * - Base64 conversion
+ * - Queued audio playback
+ */
+
+// ============================================================================
+// PCM16 Encoding/Decoding
+// ============================================================================
 
 /**
- * AudioPlayer class for queued playback of PCM16 audio
+ * Convert Float32 audio samples to PCM16 Int16Array
  */
-export class AudioPlayer {
-  private audioContext: AudioContext | null = null
-  private queue: Float32Array[] = []
-  private isPlaying = false
-  private sampleRate = 24000
+export function floatToPcm16(float32Array: Float32Array): Int16Array {
+  const pcm16 = new Int16Array(float32Array.length);
+  for (let i = 0; i < float32Array.length; i++) {
+    // Clamp to [-1, 1] then scale to [-32768, 32767]
+    const sample = Math.max(-1, Math.min(1, float32Array[i]));
+    pcm16[i] = sample < 0 ? sample * 32768 : sample * 32767;
+  }
+  return pcm16;
+}
 
-  constructor(sampleRate = 24000) {
-    this.sampleRate = sampleRate
+/**
+ * Convert PCM16 Int16Array to Float32 audio samples
+ */
+export function pcm16ToFloat(pcm16: Int16Array): Float32Array {
+  const float32 = new Float32Array(pcm16.length);
+  for (let i = 0; i < pcm16.length; i++) {
+    float32[i] = pcm16[i] / 32768;
+  }
+  return float32;
+}
+
+// ============================================================================
+// Base64 Encoding/Decoding
+// ============================================================================
+
+/**
+ * Encode PCM16 audio data to base64 string
+ */
+export function base64EncodeAudio(pcm16: Int16Array): string {
+  const uint8Array = new Uint8Array(pcm16.buffer);
+  let binary = "";
+  for (let i = 0; i < uint8Array.length; i++) {
+    binary += String.fromCharCode(uint8Array[i]);
+  }
+  return btoa(binary);
+}
+
+/**
+ * Decode base64 string to Float32 audio samples
+ */
+export function base64DecodeAudio(base64Data: string): Float32Array {
+  const binaryString = atob(base64Data);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
   }
 
-  private async ensureContext() {
-    if (!this.audioContext || this.audioContext.state === 'closed') {
-      this.audioContext = new AudioContext({ sampleRate: this.sampleRate })
-    }
-    if (this.audioContext.state === 'suspended') {
-      await this.audioContext.resume()
-    }
-    return this.audioContext
+  // Convert PCM16 bytes to Float32
+  const pcm16 = new Int16Array(bytes.buffer);
+  return pcm16ToFloat(pcm16);
+}
+
+// ============================================================================
+// AudioPlayer Class
+// ============================================================================
+
+export interface AudioPlayerOptions {
+  sampleRate?: number;
+  maxQueueSize?: number;
+  onPlaybackStart?: () => void;
+  onPlaybackEnd?: () => void;
+}
+
+/**
+ * AudioPlayer class for queued playback of audio chunks
+ *
+ * Handles:
+ * - Audio context management
+ * - Queued playback of audio chunks
+ * - Interruption for user speech
+ */
+export class AudioPlayer {
+  private audioContext: AudioContext | null = null;
+  private audioQueue: Float32Array[] = [];
+  private isPlaying = false;
+  private currentSource: AudioBufferSourceNode | null = null;
+  private sampleRate: number;
+  private maxQueueSize: number;
+  private onPlaybackStart: (() => void) | undefined;
+  private onPlaybackEnd: (() => void) | undefined;
+
+  constructor(options: AudioPlayerOptions = {}) {
+    this.sampleRate = options.sampleRate ?? 24000;
+    this.maxQueueSize = options.maxQueueSize ?? 150;
+    this.onPlaybackStart = options.onPlaybackStart;
+    this.onPlaybackEnd = options.onPlaybackEnd;
   }
 
   /**
-   * Enqueue base64-encoded PCM16 audio for playback
+   * Initialize the audio context (must be called after user interaction)
    */
-  enqueue(base64Audio: string) {
-    const pcm16 = base64ToFloat32(base64Audio)
-    this.queue.push(pcm16)
-    this.processQueue()
-  }
-
-  private async processQueue() {
-    if (this.isPlaying || this.queue.length === 0) return
-
-    this.isPlaying = true
-    const context = await this.ensureContext()
-
-    while (this.queue.length > 0) {
-      const audioData = this.queue.shift()!
-      await this.playBuffer(context, audioData)
+  async initialize(): Promise<void> {
+    if (this.audioContext) {
+      return;
     }
 
-    this.isPlaying = false
-  }
+    this.audioContext = new AudioContext({ sampleRate: this.sampleRate });
 
-  private playBuffer(context: AudioContext, audioData: Float32Array): Promise<void> {
-    return new Promise((resolve) => {
-      const buffer = context.createBuffer(1, audioData.length, this.sampleRate)
-      // Copy data from source array to buffer channel
-      const channelData = buffer.getChannelData(0)
-      channelData.set(audioData)
-
-      const source = context.createBufferSource()
-      source.buffer = buffer
-      source.connect(context.destination)
-      source.onended = () => resolve()
-      source.start()
-    })
-  }
-
-  stop() {
-    this.queue = []
-    if (this.audioContext && this.audioContext.state !== 'closed') {
-      this.audioContext.close().catch(console.error)
-      this.audioContext = null
+    // Resume context if it's suspended (browser autoplay policy)
+    if (this.audioContext.state === "suspended") {
+      await this.audioContext.resume();
     }
-    this.isPlaying = false
-  }
-}
-
-/**
- * Convert Float32Array to base64-encoded PCM16
- */
-export function base64EncodeAudio(float32Data: Float32Array): string {
-  const int16Data = new Int16Array(float32Data.length)
-
-  for (let i = 0; i < float32Data.length; i++) {
-    const s = Math.max(-1, Math.min(1, float32Data[i]))
-    int16Data[i] = s < 0 ? s * 0x8000 : s * 0x7fff
   }
 
-  const bytes = new Uint8Array(int16Data.buffer)
-  let binary = ''
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i])
-  }
-  return btoa(binary)
-}
+  /**
+   * Queue audio data for playback
+   */
+  queueAudio(audioData: Float32Array): void {
+    // Prevent queue overflow
+    if (this.audioQueue.length > this.maxQueueSize) {
+      console.warn("Audio queue overflow, clearing backlog");
+      this.audioQueue = [];
+    }
 
-/**
- * Convert base64-encoded PCM16 to Float32Array
- */
-export function base64ToFloat32(base64: string): Float32Array {
-  const binary = atob(base64)
-  const bytes = new Uint8Array(binary.length)
+    this.audioQueue.push(audioData);
 
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i)
+    if (!this.isPlaying) {
+      this.playNextChunk();
+    }
   }
 
-  const int16Data = new Int16Array(bytes.buffer)
-  const float32Data = new Float32Array(int16Data.length)
-
-  for (let i = 0; i < int16Data.length; i++) {
-    float32Data[i] = int16Data[i] / (int16Data[i] < 0 ? 0x8000 : 0x7fff)
+  /**
+   * Queue base64-encoded audio for playback
+   */
+  queueBase64Audio(base64Data: string): void {
+    const audioData = base64DecodeAudio(base64Data);
+    this.queueAudio(audioData);
   }
 
-  return float32Data
-}
+  /**
+   * Play the next chunk in the queue
+   */
+  private playNextChunk(): void {
+    if (!this.audioContext) {
+      console.error("AudioPlayer not initialized");
+      return;
+    }
 
-/**
- * Convert PCM16 Int16Array to Float32Array
- */
-export function pcm16ToFloat32(int16Data: Int16Array): Float32Array {
-  const float32Data = new Float32Array(int16Data.length)
+    if (this.audioQueue.length === 0) {
+      this.isPlaying = false;
+      this.currentSource = null;
+      this.onPlaybackEnd?.();
+      return;
+    }
 
-  for (let i = 0; i < int16Data.length; i++) {
-    float32Data[i] = int16Data[i] / (int16Data[i] < 0 ? 0x8000 : 0x7fff)
+    if (!this.isPlaying) {
+      this.onPlaybackStart?.();
+    }
+
+    this.isPlaying = true;
+    const audioData = this.audioQueue.shift()!;
+
+    const buffer = this.audioContext.createBuffer(
+      1,
+      audioData.length,
+      this.sampleRate
+    );
+    // Create a new Float32Array with explicit ArrayBuffer to satisfy TypeScript
+    const channelData = new Float32Array(audioData.length);
+    channelData.set(audioData);
+    buffer.copyToChannel(channelData, 0);
+
+    const source = this.audioContext.createBufferSource();
+    source.buffer = buffer;
+    source.connect(this.audioContext.destination);
+    source.onended = () => this.playNextChunk();
+    source.start();
+
+    this.currentSource = source;
   }
 
-  return float32Data
-}
+  /**
+   * Stop playback and clear queue (e.g., when user starts speaking)
+   */
+  stopPlayback(): void {
+    this.audioQueue = [];
+    this.isPlaying = false;
 
-/**
- * Convert Float32Array to PCM16 Int16Array
- */
-export function float32ToPcm16(float32Data: Float32Array): Int16Array {
-  const int16Data = new Int16Array(float32Data.length)
+    if (this.currentSource) {
+      try {
+        this.currentSource.stop();
+      } catch {
+        // Source may have already ended
+      }
+      this.currentSource = null;
+    }
 
-  for (let i = 0; i < float32Data.length; i++) {
-    const s = Math.max(-1, Math.min(1, float32Data[i]))
-    int16Data[i] = s < 0 ? s * 0x8000 : s * 0x7fff
+    this.onPlaybackEnd?.();
   }
 
-  return int16Data
+  /**
+   * Check if audio is currently playing
+   */
+  getIsPlaying(): boolean {
+    return this.isPlaying;
+  }
+
+  /**
+   * Get the current queue size
+   */
+  getQueueSize(): number {
+    return this.audioQueue.length;
+  }
+
+  /**
+   * Close the audio context and clean up resources
+   */
+  async close(): Promise<void> {
+    this.stopPlayback();
+
+    if (this.audioContext) {
+      await this.audioContext.close();
+      this.audioContext = null;
+    }
+  }
 }
