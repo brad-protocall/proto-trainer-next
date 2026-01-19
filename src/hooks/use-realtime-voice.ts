@@ -119,11 +119,10 @@ export function useRealtimeVoice(
           if (currentTranscriptRef.current && onTranscript) {
             const turn: TranscriptTurn = {
               id: `assistant_${Date.now()}`,
-              sessionId: sessionId ?? "",
               role: "assistant",
               content: currentTranscriptRef.current,
-              timestamp: new Date(),
-              turnIndex: turnIndexRef.current++,
+              createdAt: new Date(),
+              turnOrder: turnIndexRef.current++,
             };
             onTranscript(turn);
             currentTranscriptRef.current = "";
@@ -135,11 +134,10 @@ export function useRealtimeVoice(
           if (event.transcript && onTranscript) {
             const turn: TranscriptTurn = {
               id: `user_${Date.now()}`,
-              sessionId: sessionId ?? "",
               role: "user",
               content: event.transcript,
-              timestamp: new Date(),
-              turnIndex: turnIndexRef.current++,
+              createdAt: new Date(),
+              turnOrder: turnIndexRef.current++,
             };
             onTranscript(turn);
           }
@@ -153,7 +151,7 @@ export function useRealtimeVoice(
         case "error":
           console.error("Realtime API error:", event.error);
           setError(event.error?.message ?? "Unknown error");
-          setConnectionStatus("error");
+          setConnectionStatus("disconnected");
           break;
 
         default:
@@ -163,7 +161,7 @@ export function useRealtimeVoice(
           }
       }
     },
-    [sessionId, onTranscript]
+    [onTranscript]
   );
 
   // ============================================================================
@@ -219,7 +217,7 @@ export function useRealtimeVoice(
       ws.onerror = (wsError) => {
         console.error("WebSocket error:", wsError);
         setError("WebSocket connection error");
-        setConnectionStatus("error");
+        setConnectionStatus("disconnected");
       };
 
       ws.onmessage = (msgEvent) => {
@@ -236,7 +234,7 @@ export function useRealtimeVoice(
           ? connectError.message
           : "Connection failed";
       setError(errorMessage);
-      setConnectionStatus("error");
+      setConnectionStatus("disconnected");
       throw connectError;
     }
   }, [scenarioId, assignmentId, handleMessage]);
