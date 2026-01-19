@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Note: SQLite doesn't support enums, so we use String with application-level validation
+// UserRole: supervisor | counselor
+// ScenarioMode: phone | chat
+// ScenarioCategory: onboarding | remediation | assessment
+// AssignmentStatus: pending | in_progress | completed
+// SessionStatus: active | completed | abandoned
+// TranscriptRole: user | assistant | system
+
+model User {
+  id          String   @id @default(cuid())
+  externalId  String   @unique @map("external_id")
+  displayName String   @map("display_name")
+  email       String?
+  role        String   // supervisor | counselor
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  createdScenarios Scenario[]   @relation("CreatedScenarios")
+  assignments      Assignment[] @relation("CounselorAssignments")
+  supervisedAssignments Assignment[] @relation("SupervisorAssignments")
+
+  @@map("users")
+}
+
+model Account {
+  id                    String   @id @default(cuid())
+  name                  String
+  policiesProceduresPath String? @map("policies_procedures_path")
+  vectorStoreId         String?  @map("vector_store_id")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  scenarios Scenario[]
+
+  @@map("accounts")
+}
+
+model Scenario {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  prompt      String
+  mode        String   // phone | chat
+  category    String   // onboarding | remediation | assessment
+  accountId   String   @map("account_id")
+  createdBy   String   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  account     Account      @relation(fields: [accountId], references: [id])
+  creator     User         @relation("CreatedScenarios", fields: [createdBy], references: [id])
+  assignments Assignment[]
+
+  @@map("scenarios")
+}
+
+model Assignment {
+  id              String    @id @default(cuid())
+  scenarioId      String    @map("scenario_id")
+  counselorId     String    @map("counselor_id")
+  assignedBy      String    @map("assigned_by")
+  status          String    @default("pending") // pending | in_progress | completed
+  supervisorNotes String?   @map("supervisor_notes")
+  dueDate         DateTime? @map("due_date")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  scenario   Scenario    @relation(fields: [scenarioId], references: [id])
+  counselor  User        @relation("CounselorAssignments", fields: [counselorId], references: [id])
+  supervisor User        @relation("SupervisorAssignments", fields: [assignedBy], references: [id])
+  session    Session?
+  evaluation Evaluation?
+
+  @@map("assignments")
+}
+
+model Session {
+  id           String    @id @default(cuid())
+  assignmentId String    @unique @map("assignment_id")
+  status       String    @default("active") // active | completed | abandoned
+  startedAt    DateTime  @default(now()) @map("started_at")
+  endedAt      DateTime? @map("ended_at")
+
+  assignment Assignment       @relation(fields: [assignmentId], references: [id])
+  transcript TranscriptTurn[]
+
+  @@map("sessions")
+}
+
+model TranscriptTurn {
+  id        String   @id @default(cuid())
+  sessionId String   @map("session_id")
+  role      String   // user | assistant | system
+  content   String
+  turnOrder Int      @map("turn_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("transcript_turns")
+}
+
+model Evaluation {
+  id             String   @id @default(cuid())
+  assignmentId   String   @unique @map("assignment_id")
+  overallScore   Float    @map("overall_score")
+  feedbackJson   String   @map("feedback_json")
+  strengths      String
+  areasToImprove String   @map("areas_to_improve")
+  rawResponse    String?  @map("raw_response")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id])
+
+  @@map("evaluations")
+}
+
+model Recording {
+  id        String   @id @default(cuid())
+  sessionId String   @map("session_id")
+  filePath  String   @map("file_path")
+  duration  Int?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("recordings")
+}
