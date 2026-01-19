@@ -2,9 +2,17 @@ import { NextRequest } from 'next/server'
 import prisma from '@/lib/prisma'
 import { apiSuccess, apiError, handleApiError } from '@/lib/api'
 import { createUserSchema } from '@/lib/validators'
+import { requireSupervisor } from '@/lib/auth'
 
-export async function GET() {
+/**
+ * GET /api/users
+ * List all users - supervisor only
+ */
+export async function GET(request: NextRequest) {
   try {
+    const authResult = await requireSupervisor(request)
+    if (authResult.error) return authResult.error
+
     const users = await prisma.user.findMany({
       orderBy: { displayName: 'asc' },
     })
@@ -15,8 +23,15 @@ export async function GET() {
   }
 }
 
+/**
+ * POST /api/users
+ * Create a new user - supervisor only
+ */
 export async function POST(request: NextRequest) {
   try {
+    const authResult = await requireSupervisor(request)
+    if (authResult.error) return authResult.error
+
     const body = await request.json()
     const result = createUserSchema.safeParse(body)
 
@@ -36,7 +51,7 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    return apiSuccess(user)
+    return apiSuccess(user, 201)
   } catch (error) {
     return handleApiError(error)
   }
