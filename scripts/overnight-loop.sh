@@ -89,7 +89,7 @@ get_ready_issues() {
         --state open \
         --limit "$MAX_ISSUES" \
         --json number,title,body \
-        --jq '.[] | @base64'
+        --jq 'sort_by(.number) | .[] | @base64'
 }
 
 #######################################
