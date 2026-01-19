@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Scenario,
   Assignment,
@@ -122,6 +122,41 @@ export default function SupervisorDashboard() {
 
   const assignmentCount = selectedCounselorIds.size * selectedScenarioIds.size;
 
+  const loadScenarios = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      params.set("is_one_time", String(scenarioFilter === "one-time"));
+      const response = await fetch(`/api/scenarios?${params}`);
+      const data: ApiResponse<Scenario[]> = await response.json();
+      if (!data.ok) throw new Error(data.error.message);
+      setScenarios(data.data);
+    } catch (err) {
+      setError("Failed to load scenarios");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [scenarioFilter]);
+
+  const loadAssignments = useCallback(async () => {
+    setAssignmentsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (assignmentStatusFilter) params.set("status", assignmentStatusFilter);
+      const response = await fetch(`/api/assignments?${params}`);
+      const data: ApiResponse<Assignment[]> = await response.json();
+      if (!data.ok) throw new Error(data.error.message);
+      setAssignments(data.data);
+    } catch (err) {
+      setError("Failed to load assignments");
+      console.error(err);
+    } finally {
+      setAssignmentsLoading(false);
+    }
+  }, [assignmentStatusFilter]);
+
   // Load accounts and counselors on mount
   useEffect(() => {
     loadAccounts();
@@ -131,15 +166,13 @@ export default function SupervisorDashboard() {
   // Reload scenarios when filter changes
   useEffect(() => {
     loadScenarios();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scenarioFilter]);
+  }, [loadScenarios]);
 
   useEffect(() => {
     if (activeTab === "assignments") {
       loadAssignments();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, assignmentStatusFilter]);
+  }, [activeTab, loadAssignments]);
 
   // Load global scenarios for assignment dropdown
   useEffect(() => {
@@ -164,24 +197,6 @@ export default function SupervisorDashboard() {
     }
   }, [scenarios, scenarioFilter]);
 
-  const loadScenarios = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams();
-      params.set("is_one_time", String(scenarioFilter === "one-time"));
-      const response = await fetch(`/api/scenarios?${params}`);
-      const data: ApiResponse<Scenario[]> = await response.json();
-      if (!data.ok) throw new Error(data.error.message);
-      setScenarios(data.data);
-    } catch (err) {
-      setError("Failed to load scenarios");
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const loadAccounts = async () => {
     try {
       const response = await fetch("/api/accounts");
@@ -199,23 +214,6 @@ export default function SupervisorDashboard() {
       if (data.ok) setCounselors(data.data);
     } catch (err) {
       console.error("Failed to load counselors", err);
-    }
-  };
-
-  const loadAssignments = async () => {
-    setAssignmentsLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (assignmentStatusFilter) params.set("status", assignmentStatusFilter);
-      const response = await fetch(`/api/assignments?${params}`);
-      const data: ApiResponse<Assignment[]> = await response.json();
-      if (!data.ok) throw new Error(data.error.message);
-      setAssignments(data.data);
-    } catch (err) {
-      setError("Failed to load assignments");
-      console.error(err);
-    } finally {
-      setAssignmentsLoading(false);
     }
   };
 

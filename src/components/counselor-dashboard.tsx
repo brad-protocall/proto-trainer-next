@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Assignment,
   User,
@@ -67,12 +67,7 @@ export default function CounselorDashboard({
     loadCounselorUser();
   }, []);
 
-  useEffect(() => {
-    loadAssignments();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
-
-  const loadAssignments = async () => {
+  const loadAssignments = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -88,7 +83,11 @@ export default function CounselorDashboard({
     } finally {
       setLoading(false);
     }
-  };
+  }, [statusFilter]);
+
+  useEffect(() => {
+    loadAssignments();
+  }, [loadAssignments]);
 
   const handleStartTraining = async (assignment: Assignment) => {
     setStartingId(assignment.id);
