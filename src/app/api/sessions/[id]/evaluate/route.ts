@@ -46,13 +46,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return notFound('Session not found')
     }
 
-    // Check ownership
-    if (!canAccessResource(user, session.assignment.counselorId)) {
+    // For assignment-based sessions, check ownership via assignment
+    // For free practice sessions, check via userId
+    const ownerId = session.assignment?.counselorId ?? session.userId
+    if (!ownerId || !canAccessResource(user, ownerId)) {
       return forbidden('Cannot evaluate another user\'s session')
     }
 
-    // Check if evaluation already exists
-    if (session.assignment.evaluation) {
+    // Check if evaluation already exists (only for assignment-based sessions)
+    if (session.assignment?.evaluation) {
       return conflict('Evaluation already exists for this assignment')
     }
 
@@ -71,47 +73,79 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       created_at: turn.createdAt.toISOString(),
     }))
 
+    // Get scenario info - either from assignment or directly from session
+    const scenario = session.assignment?.scenario
+    const scenarioTitle = scenario?.title ?? 'Free Practice Session'
+    const scenarioDescription = scenario?.description ?? null
+    const vectorStoreId = scenario?.account?.vectorStoreId ?? undefined
+
     // Generate evaluation using OpenAI
     const evaluationResult = await generateEvaluation({
-      scenarioTitle: session.assignment.scenario.title,
-      scenarioDescription: session.assignment.scenario.description,
+      scenarioTitle,
+      scenarioDescription,
       transcript: transcriptForEval,
-      vectorStoreId: session.assignment.scenario.account.vectorStoreId ?? undefined,
+      vectorStoreId,
     })
 
     // Save evaluation and update session/assignment in a transaction
-    const [evaluation] = await prisma.$transaction([
-      // Create evaluation
-      prisma.evaluation.create({
-        data: {
-          assignmentId: session.assignmentId,
-          overallScore: evaluationResult.overallScore,
-          feedbackJson: JSON.stringify(evaluationResult.feedback),
-          strengths: evaluationResult.strengths.join('\n'),
-          areasToImprove: evaluationResult.areasToImprove.join('\n'),
-          rawResponse: evaluationResult.rawResponse,
-        },
-      }),
-      // Update session status
-      prisma.session.update({
-        where: { id },
-        data: {
+    // For free practice sessions (no assignmentId), we only update the session
+    if (session.assignmentId) {
+      const [evaluation] = await prisma.$transaction([
+        // Create evaluation
+        prisma.evaluation.create({
+          data: {
+            assignmentId: session.assignmentId,
+            overallScore: evaluationResult.overallScore,
+            feedbackJson: JSON.stringify(evaluationResult.feedback),
+            strengths: evaluationResult.strengths.join('\n'),
+            areasToImprove: evaluationResult.areasToImprove.join('\n'),
+            rawResponse: evaluationResult.rawResponse,
+          },
+        }),
+        // Update session status
+        prisma.session.update({
+          where: { id },
+          data: {
+            status: 'completed',
+            endedAt: new Date(),
+          },
+        }),
+        // Update assignment status
+        prisma.assignment.update({
+          where: { id: session.assignmentId },
+          data: {
+            status: 'completed',
+            completedAt: new Date(),
+          },
+        }),
+      ])
+
+      return apiSuccess({
+        evaluation,
+        session: {
+          id: session.id,
           status: 'completed',
           endedAt: new Date(),
         },
-      }),
-      // Update assignment status
-      prisma.assignment.update({
-        where: { id: session.assignmentId },
-        data: {
-          status: 'completed',
-          completedAt: new Date(),
-        },
-      }),
-    ])
+      })
+    }
+
+    // Free practice session - just update session status, return evaluation result without saving
+    await prisma.session.update({
+      where: { id },
+      data: {
+        status: 'completed',
+        endedAt: new Date(),
+      },
+    })
 
     return apiSuccess({
-      evaluation,
+      evaluation: {
+        overallScore: evaluationResult.overallScore,
+        feedback: evaluationResult.feedback,
+        strengths: evaluationResult.strengths,
+        areasToImprove: evaluationResult.areasToImprove,
+      },
       session: {
         id: session.id,
         status: 'completed',
