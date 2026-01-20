@@ -33,13 +33,18 @@ interface MessageResponse {
   response: string;
 }
 
-interface EvaluationResponse {
-  evaluation: string;
-  transcript_turns: Array<{
-    role: "user" | "assistant";
-    content: string;
-    turn_index: number;
-  }>;
+interface EvaluateApiResponse {
+  evaluation: {
+    id?: string;
+    evaluation: string;
+    grade: string | null;
+    numericScore: number;
+  };
+  session: {
+    id: string;
+    status: string;
+    endedAt: string;
+  };
 }
 
 export function useChat({
@@ -187,22 +192,15 @@ export function useChat({
         signal: abortControllerRef.current.signal,
       });
 
-      const data: ApiResponse<EvaluationResponse> = await response.json();
+      const data: ApiResponse<EvaluateApiResponse> = await response.json();
 
       if (!data.ok) {
         throw new Error(data.error.message);
       }
 
+      // Set evaluation with full markdown content
       setEvaluation({
-        evaluation: data.data.evaluation,
-        transcript_turns: data.data.transcript_turns.map((turn) => ({
-          id: `turn-${turn.turn_index}`,
-          session_id: sessionId,
-          role: turn.role,
-          content: turn.content,
-          turn_index: turn.turn_index,
-          created_at: new Date().toISOString(),
-        })),
+        evaluation: data.data.evaluation.evaluation,
       });
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {

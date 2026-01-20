@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { apiSuccess, handleApiError, notFound, conflict, forbidden } from '@/lib/api'
 import { createSessionSchema } from '@/lib/validators'
-import { generateInitialGreeting } from '@/lib/openai'
+import { generateInitialGreeting, getDefaultChextPrompt } from '@/lib/openai'
 import { requireAuth, canAccessResource } from '@/lib/auth'
 import type { User } from '@prisma/client'
 
@@ -142,9 +142,8 @@ async function handleFreePracticeSession(
     scenarioPrompt = scenario.prompt
   }
 
-  // Generate initial greeting - use scenario prompt if provided, otherwise generic
-  const defaultPrompt = 'You are a caller who is experiencing a crisis. Start the conversation naturally as someone reaching out for help.'
-  const initialGreeting = await generateInitialGreeting(scenarioPrompt ?? defaultPrompt)
+  // Generate initial greeting - use scenario prompt if provided, otherwise default chext prompt
+  const initialGreeting = await generateInitialGreeting(scenarioPrompt ?? getDefaultChextPrompt())
 
   // Create session and initial transcript turn in a transaction
   const session = await prisma.$transaction(async (tx) => {

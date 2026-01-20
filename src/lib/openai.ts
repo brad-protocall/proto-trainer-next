@@ -1,12 +1,20 @@
 import OpenAI from 'openai'
 import fs from 'fs'
 import type { TranscriptTurn, EvaluationResponse } from '@/types'
-import { loadPromptWithVariables, getEvaluatorPromptFile } from './prompts'
+import { loadPrompt, getEvaluatorPromptFile, getChextSimulatorPromptFile } from './prompts'
 
 // Initialize OpenAI client
 export const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
+
+/**
+ * Get the default chext (chat/text) simulator prompt for free practice.
+ * Used when no scenario prompt is provided.
+ */
+export function getDefaultChextPrompt(): string {
+  return loadPrompt(getChextSimulatorPromptFile())
+}
 
 // Helper for chat completions (simple message array)
 export async function getChatCompletionSimple(
@@ -18,7 +26,7 @@ export async function getChatCompletionSimple(
   }
 ) {
   const response = await openai.chat.completions.create({
-    model: options?.model ?? process.env.CHAT_MODEL ?? 'gpt-4o',
+    model: options?.model ?? process.env.CHAT_MODEL ?? 'gpt-4.1',
     messages,
     temperature: options?.temperature ?? 0.7,
     max_tokens: options?.maxTokens ?? 1000,
@@ -30,7 +38,7 @@ export async function getChatCompletionSimple(
 // Helper for generating initial greeting from scenario prompt
 export async function generateInitialGreeting(scenarioPrompt: string): Promise<string> {
   const response = await openai.chat.completions.create({
-    model: process.env.CHAT_MODEL ?? 'gpt-4o',
+    model: process.env.CHAT_MODEL ?? 'gpt-4.1',
     messages: [
       {
         role: 'system',
@@ -61,7 +69,7 @@ export async function getChatCompletion(options: {
   ]
 
   const response = await openai.chat.completions.create({
-    model: process.env.CHAT_MODEL ?? 'gpt-4o',
+    model: process.env.CHAT_MODEL ?? 'gpt-4.1',
     messages,
     temperature: 0.8,
     max_tokens: 500,
@@ -127,7 +135,7 @@ export async function getSimulatorResponse(
     model?: string
   }
 ) {
-  const model = options?.model ?? process.env.CHAT_MODEL ?? 'gpt-4o'
+  const model = options?.model ?? process.env.CHAT_MODEL ?? 'gpt-4.1'
 
   const response = await openai.chat.completions.create({
     model,
@@ -183,82 +191,104 @@ export async function uploadPolicyToVectorStore(
   return { fileId: file.id, vectorStoreId: vectorStore.id }
 }
 
+/**
+ * Convert letter grade to numeric score
+ */
+function gradeToScore(grade: string | null): number {
+  const gradeMap: Record<string, number> = {
+    'A': 95, 'A+': 98, 'A-': 92,
+    'B': 85, 'B+': 88, 'B-': 82,
+    'C': 75, 'C+': 78, 'C-': 72,
+    'D': 65, 'D+': 68, 'D-': 62,
+    'F': 50,
+  }
+  return grade ? (gradeMap[grade.toUpperCase()] ?? 0) : 0
+}
+
+/**
+ * Extract letter grade from markdown evaluation
+ */
+function extractGrade(evaluation: string): string | null {
+  // Look for "## Grade: X" pattern
+  const match = evaluation.match(/##\s*Grade:\s*([A-F][+-]?)/i)
+  return match ? match[1].toUpperCase() : null
+}
+
 // Helper for generating evaluation (for session evaluate route)
 export async function generateEvaluation(options: {
   scenarioTitle: string
   scenarioDescription: string | null
+  scenarioEvaluatorContext?: string | null
   transcript: TranscriptTurn[]
   vectorStoreId?: string
 }): Promise<EvaluationResponse> {
-  const { scenarioTitle, scenarioDescription, transcript, vectorStoreId } = options
+  const { scenarioTitle, scenarioDescription, scenarioEvaluatorContext, transcript, vectorStoreId } = options
 
+  // Load evaluator prompt from file
+  const systemPrompt = loadPrompt(getEvaluatorPromptFile())
+
+  // Format transcript
   const transcriptText = transcript
     .map((turn) => `${turn.role === 'user' ? 'Counselor' : 'Caller'}: ${turn.content}`)
     .join('\n\n')
 
-  // Load evaluator prompt from file with variable interpolation
-  const systemPrompt = loadPromptWithVariables(
-    getEvaluatorPromptFile(),
-    {
-      SCENARIO_TITLE: scenarioTitle,
-      SCENARIO_DESCRIPTION: scenarioDescription ? `Description: ${scenarioDescription}` : '',
-      VECTOR_STORE_INSTRUCTION: vectorStoreId
-        ? "Use the file_search tool to reference the organization's policies and procedures when evaluating the counselor's adherence to protocols."
-        : '',
-    }
-  )
+  // Build user message with context
+  let userMessage = ''
+
+  // Add scenario context if available
+  if (scenarioTitle || scenarioDescription || scenarioEvaluatorContext) {
+    userMessage += '## SCENARIO EVALUATOR CONTEXT\n'
+    if (scenarioTitle) userMessage += `**Scenario:** ${scenarioTitle}\n`
+    if (scenarioDescription) userMessage += `**Description:** ${scenarioDescription}\n`
+    if (scenarioEvaluatorContext) userMessage += `**Evaluation Criteria:**\n${scenarioEvaluatorContext}\n`
+    userMessage += '\n'
+  }
+
+  // Add transcript
+  userMessage += `## TRANSCRIPT\n\n${transcriptText}`
 
   // Use Responses API with file_search tool when vector store exists
   if (vectorStoreId) {
     const response = await openai.responses.create({
-      model: process.env.EVALUATOR_MODEL ?? 'gpt-4o',
-      input: [
-        { role: 'user', content: `${systemPrompt}\n\nTranscript:\n\n${transcriptText}` },
-      ],
+      model: process.env.EVALUATOR_MODEL ?? 'gpt-4.1',
+      instructions: systemPrompt,
+      input: userMessage,
       tools: [
         {
           type: 'file_search',
           vector_store_ids: [vectorStoreId],
         },
       ],
-      text: {
-        format: { type: 'json_object' },
-      },
       temperature: 0.3,
     })
 
-    const content = response.output_text ?? '{}'
-    const parsed = JSON.parse(content)
+    const evaluation = response.output_text ?? ''
+    const grade = extractGrade(evaluation)
 
     return {
-      overallScore: parsed.overallScore ?? 0,
-      feedback: parsed.feedback ?? [],
-      strengths: parsed.strengths ?? [],
-      areasToImprove: parsed.areasToImprove ?? [],
-      rawResponse: content,
+      evaluation,
+      grade,
+      numericScore: gradeToScore(grade),
     }
   }
 
   // Standard chat completion when no vector store
   const response = await openai.chat.completions.create({
-    model: process.env.EVALUATOR_MODEL ?? 'gpt-4o',
+    model: process.env.EVALUATOR_MODEL ?? 'gpt-4.1',
     messages: [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: `Transcript:\n\n${transcriptText}` },
+      { role: 'user', content: userMessage },
     ],
     temperature: 0.3,
-    max_tokens: 2000,
-    response_format: { type: 'json_object' },
+    max_tokens: 3000,
   })
 
-  const content = response.choices[0].message.content ?? '{}'
-  const parsed = JSON.parse(content)
+  const evaluation = response.choices[0].message.content ?? ''
+  const grade = extractGrade(evaluation)
 
   return {
-    overallScore: parsed.overallScore ?? 0,
-    feedback: parsed.feedback ?? [],
-    strengths: parsed.strengths ?? [],
-    areasToImprove: parsed.areasToImprove ?? [],
-    rawResponse: content,
+    evaluation,
+    grade,
+    numericScore: gradeToScore(grade),
   }
 }

@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { apiSuccess, handleApiError, notFound, conflict, forbidden } from '@/lib/api'
 import { sendMessageSchema } from '@/lib/validators'
-import { getChatCompletion } from '@/lib/openai'
+import { getChatCompletion, getDefaultChextPrompt } from '@/lib/openai'
 import { requireAuth, canAccessResource } from '@/lib/auth'
 import type { TranscriptTurn } from '@/types'
 
@@ -81,9 +81,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       created_at: new Date().toISOString(),
     })
 
-    // Get scenario prompt - either from assignment or use a default for free practice
-    const scenarioPrompt = session.assignment?.scenario?.prompt ??
-      'You are a caller who is experiencing a crisis. Respond naturally as someone who needs help but may be hesitant to open up. Be realistic and emotionally authentic.'
+    // Get scenario prompt - either from assignment or use default chext prompt for free practice
+    const scenarioPrompt = session.assignment?.scenario?.prompt ?? getDefaultChextPrompt()
     const vectorStoreId = session.assignment?.scenario?.account?.vectorStoreId ?? undefined
 
     // Get AI response

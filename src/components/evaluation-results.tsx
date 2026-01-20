@@ -1,5 +1,7 @@
 "use client";
 
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { EvaluationResult } from "@/types";
 
 interface EvaluationResultsProps {
@@ -38,15 +40,10 @@ export default function EvaluationResults({
           </button>
         </div>
 
-        <div className="prose prose-sm max-w-none">
-          <div className="whitespace-pre-wrap text-gray-700">
+        <div className="prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-800">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {evaluation.evaluation}
-          </div>
-        </div>
-
-        <div className="mt-4 pt-4 border-t text-sm text-gray-500">
-          Evaluated {evaluation.transcript_turns?.length || 0} conversation
-          turns
+          </ReactMarkdown>
         </div>
 
         <div className="mt-4 flex justify-end">

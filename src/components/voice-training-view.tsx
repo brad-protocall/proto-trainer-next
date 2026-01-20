@@ -2,6 +2,8 @@
 
 import { useState, useCallback } from "react";
 import Image from "next/image";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useRealtimeVoice } from "@/hooks/use-realtime-voice";
 import { Assignment, TranscriptTurn, ConnectionStatus } from "@/types";
 
@@ -214,8 +216,10 @@ export default function VoiceTrainingView({
             <h3 className="text-white font-marfa font-bold mb-3">
               Session Feedback
             </h3>
-            <div className="text-gray-300 text-sm font-marfa whitespace-pre-wrap">
-              {evaluation.evaluation}
+            <div className="prose prose-sm prose-invert max-w-none prose-headings:text-white prose-p:text-gray-300 prose-li:text-gray-300 prose-strong:text-white">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {evaluation.evaluation}
+              </ReactMarkdown>
             </div>
           </div>
           <button

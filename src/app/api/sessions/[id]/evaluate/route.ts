@@ -77,12 +77,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const scenario = session.assignment?.scenario
     const scenarioTitle = scenario?.title ?? 'Free Practice Session'
     const scenarioDescription = scenario?.description ?? null
+    const scenarioEvaluatorContext = scenario?.evaluatorContextPath ?? null // TODO: Load from file if needed
     const vectorStoreId = scenario?.account?.vectorStoreId ?? undefined
 
     // Generate evaluation using OpenAI
     const evaluationResult = await generateEvaluation({
       scenarioTitle,
       scenarioDescription,
+      scenarioEvaluatorContext,
       transcript: transcriptForEval,
       vectorStoreId,
     })
@@ -91,15 +93,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // For free practice sessions (no assignmentId), we only update the session
     if (session.assignmentId) {
       const [evaluation] = await prisma.$transaction([
-        // Create evaluation
+        // Create evaluation - store full markdown in feedbackJson
         prisma.evaluation.create({
           data: {
             assignmentId: session.assignmentId,
-            overallScore: evaluationResult.overallScore,
-            feedbackJson: JSON.stringify(evaluationResult.feedback),
-            strengths: evaluationResult.strengths.join('\n'),
-            areasToImprove: evaluationResult.areasToImprove.join('\n'),
-            rawResponse: evaluationResult.rawResponse,
+            overallScore: evaluationResult.numericScore,
+            feedbackJson: evaluationResult.evaluation,
+            strengths: evaluationResult.grade ?? '',
+            areasToImprove: '',
+            rawResponse: evaluationResult.evaluation,
           },
         }),
         // Update session status
@@ -121,7 +123,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       ])
 
       return apiSuccess({
-        evaluation,
+        evaluation: {
+          id: evaluation.id,
+          evaluation: evaluationResult.evaluation,
+          grade: evaluationResult.grade,
+          numericScore: evaluationResult.numericScore,
+        },
         session: {
           id: session.id,
           status: 'completed',
@@ -141,10 +148,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     return apiSuccess({
       evaluation: {
-        overallScore: evaluationResult.overallScore,
-        feedback: evaluationResult.feedback,
-        strengths: evaluationResult.strengths,
-        areasToImprove: evaluationResult.areasToImprove,
+        evaluation: evaluationResult.evaluation,
+        grade: evaluationResult.grade,
+        numericScore: evaluationResult.numericScore,
       },
       session: {
         id: session.id,

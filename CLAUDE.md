@@ -161,33 +161,53 @@ npx prisma studio                     # GUI browser
 
 ### Current State: Ready for User Testing
 
-All feature parity work is complete. Prompts have been externalized for easy A/B testing.
+All prompts finalized and system updated to show full markdown evaluations.
 
 ### What's Done
 
 1. **Feature Parity** - All 6 phases merged (Issues #25-#30, PRs #31-#35)
 2. **Bug Fixes** - Session ID mismatch and free practice persistence fixed
-3. **Prompt Matching** - Realtime prompts now match original PTG word-for-word
-4. **File-Based Prompts** - Evaluator and caller prompts externalized for A/B testing
+3. **OpenAI Key** - Configured in `.env`
+4. **Model Selection** - All APIs default to `gpt-4.1` (Chat, Evaluator); Realtime uses `gpt-4o-realtime-preview`
+5. **Complete Prompts System** - All three prompts finalized and file-based
 
 ### Prompts System
 
-Prompts are stored in `prompts/` directory for easy editing and A/B testing:
+All prompts externalized in `prompts/` directory:
 
 ```
 prompts/
-├── evaluator-v1.txt      # Evaluator prompt (edit for A/B testing)
-└── realtime-caller.txt   # Voice training caller prompt
+├── chext-simulator.txt    # Chat/text training (new)
+├── realtime-caller.txt    # Voice training caller
+└── evaluator-v1.txt       # Evaluation feedback (markdown output)
 ```
 
-**To A/B test:**
-1. Create `prompts/evaluator-v2.txt` with your variant
-2. Set `EVALUATOR_PROMPT_FILE=evaluator-v2.txt` in `.env`
-3. Restart server
+**Environment variables:**
+- `CHAT_MODEL=gpt-4.1` - Model for chat simulator
+- `EVALUATOR_MODEL=gpt-4.1` - Model for evaluator
+- `REALTIME_MODEL=gpt-4o-realtime-preview` - Model for voice
+- `CHEXT_SIMULATOR_PROMPT_FILE` - Override chat prompt file
+- `REALTIME_CALLER_PROMPT_FILE` - Override voice prompt file
+- `EVALUATOR_PROMPT_FILE` - Override evaluator prompt file
+
+### Evaluation System
+
+Evaluator now returns **full markdown feedback** (not JSON):
+- Quick Summary, Key Learning Objective, Evidence from Transcript
+- Recommended Improvements, Knowledge Base Alignment
+- Self-Reflection Prompts, Letter Grade (A-F) with Rationale
+
+Frontend renders markdown with `react-markdown`.
 
 ### Next Step
 
-Add `OPENAI_API_KEY` to `.env` and run user testing
+Start both servers and run user testing:
+```bash
+npm run dev      # Terminal 1 - Next.js on :3003
+npm run ws:dev   # Terminal 2 - WebSocket on :3004
+```
+
+Open http://localhost:3003
 
 ---
 

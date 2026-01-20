@@ -57,3 +57,10 @@ export function getEvaluatorPromptFile(): string {
 export function getRealtimeCallerPromptFile(): string {
   return process.env.REALTIME_CALLER_PROMPT_FILE ?? 'realtime-caller.txt'
 }
+
+/**
+ * Get the chext (chat/text) simulator prompt filename from environment or default.
+ */
+export function getChextSimulatorPromptFile(): string {
+  return process.env.CHEXT_SIMULATOR_PROMPT_FILE ?? 'chext-simulator.txt'
+}

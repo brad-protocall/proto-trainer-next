@@ -231,18 +231,13 @@ export interface BulkAssignmentResponse {
 }
 
 // OpenAI Evaluation Response
-export interface EvaluationFeedbackItem {
-  category: string;
-  score: number;
-  comment: string;
-}
-
 export interface EvaluationResponse {
-  overallScore: number;
-  feedback: EvaluationFeedbackItem[];
-  strengths: string[];
-  areasToImprove: string[];
-  rawResponse: string;
+  /** Full markdown evaluation with all sections */
+  evaluation: string;
+  /** Letter grade extracted from evaluation (A, B, C, D, F) */
+  grade: string | null;
+  /** Numeric score derived from grade (A=95, B=85, C=75, D=65, F=50) */
+  numericScore: number;
 }
 
 // Session Response Types
