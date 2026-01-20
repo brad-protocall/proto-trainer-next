@@ -27,6 +27,8 @@ export type ScenarioCategory =
 export type AssignmentStatus = "pending" | "in_progress" | "completed";
 export type SessionStatus = "active" | "completed" | "abandoned";
 export type TranscriptRole = "user" | "assistant" | "system";
+export type ModelType = "phone" | "chat";
+export type SessionType = "assignment" | "free_practice";
 
 // WebSocket Types
 export type RealtimeMessageType =
@@ -76,7 +78,7 @@ export interface RealtimeVoice {
   description: string;
 }
 
-// Domain Interfaces
+// Domain Interfaces (API response shapes with snake_case from DB)
 export interface User {
   id: string;
   external_id: string;
@@ -91,6 +93,7 @@ export interface Account {
   id: string;
   name: string;
   policies_procedures_path: string | null;
+  vector_store_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -121,6 +124,7 @@ export interface Assignment {
   due_date: string | null;
   completed_at: string | null;
   supervisor_notes: string | null;
+  require_recording?: boolean;
   session_id: string | null;
   created_at: string;
   updated_at: string;
@@ -137,7 +141,9 @@ export interface Assignment {
 export interface Session {
   id: string;
   assignment_id: string | null;
+  user_id: string | null;
   scenario_id: string | null;
+  model_type: ModelType;
   status: SessionStatus;
   started_at: string;
   ended_at: string | null;
@@ -156,9 +162,12 @@ export interface TranscriptTurn {
 
 export interface Evaluation {
   id: string;
-  session_id: string;
-  evaluation: string;
-  transcript_turns?: TranscriptTurn[];
+  assignment_id: string;
+  overall_score: number;
+  feedback_json: string;
+  strengths: string;
+  areas_to_improve: string;
+  raw_response: string | null;
   created_at: string;
 }
 
@@ -166,7 +175,8 @@ export interface Recording {
   id: string;
   session_id: string;
   file_path: string;
-  duration_seconds: number | null;
+  duration: number | null;
+  file_size_bytes: number | null;
   created_at: string;
 }
 
@@ -189,59 +199,7 @@ export type ConnectionStatus =
   | "connected"
   | "error";
 
-// Form Types
-export interface CreateUserInput {
-  external_id: string;
-  display_name?: string;
-  email?: string;
-  role: UserRole;
-}
-
-export interface CreateAccountInput {
-  name: string;
-  policies_procedures_path?: string;
-}
-
-export interface CreateScenarioInput {
-  title: string;
-  description?: string;
-  prompt: string;
-  mode?: ScenarioMode;
-  category?: ScenarioCategory;
-  account_id?: string;
-  relevant_policy_sections?: string;
-}
-
-export interface UpdateScenarioInput {
-  title?: string;
-  description?: string;
-  prompt?: string;
-  mode?: ScenarioMode;
-  category?: ScenarioCategory;
-  account_id?: string | null;
-  relevant_policy_sections?: string | null;
-}
-
-export interface CreateAssignmentInput {
-  scenario_id: string;
-  counselor_id: string;
-  due_date?: string;
-  supervisor_notes?: string;
-}
-
-export interface BulkAssignmentInput {
-  scenario_ids: string[];
-  counselor_ids: string[];
-  due_date?: string;
-  supervisor_notes?: string;
-}
-
-export interface UpdateAssignmentInput {
-  status?: AssignmentStatus;
-  supervisor_notes?: string;
-}
-
-// API Response Types for routes
+// API Response Types for routes (camelCase for JSON responses)
 export interface AssignmentResponse {
   id: string;
   accountId: string | null;
@@ -260,6 +218,7 @@ export interface AssignmentResponse {
   sessionId: string | null;
   evaluationId: string | null;
   supervisorNotes: string | null;
+  requireRecording?: boolean;
   isOverdue: boolean;
   hasTranscript: boolean;
 }
@@ -284,4 +243,18 @@ export interface EvaluationResponse {
   strengths: string[];
   areasToImprove: string[];
   rawResponse: string;
+}
+
+// Session Response Types
+export interface SessionResponse {
+  id: string;
+  assignmentId: string | null;
+  userId: string | null;
+  scenarioId: string | null;
+  modelType: ModelType;
+  status: SessionStatus;
+  startedAt: string;
+  endedAt: string | null;
+  transcript?: TranscriptTurn[];
+  recording?: Recording;
 }

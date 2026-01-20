@@ -59,8 +59,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return notFound('Session not found')
     }
 
-    // Check ownership - only the assigned counselor or supervisors can view
-    if (!canAccessResource(user, session.assignment.counselorId)) {
+    // Check ownership - only the assigned counselor/session owner or supervisors can view
+    const ownerId = session.assignment?.counselorId ?? session.userId
+    if (!ownerId || !canAccessResource(user, ownerId)) {
       return forbidden('Cannot view another user\'s session')
     }
 

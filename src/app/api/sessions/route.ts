@@ -4,10 +4,17 @@ import { apiSuccess, handleApiError, notFound, conflict, forbidden } from '@/lib
 import { createSessionSchema } from '@/lib/validators'
 import { generateInitialGreeting } from '@/lib/openai'
 import { requireAuth, canAccessResource } from '@/lib/auth'
+import type { User } from '@prisma/client'
 
 /**
  * POST /api/sessions
- * Create a new chat session for an assignment and return initial AI greeting
+ * Create a new chat session for an assignment or free practice
+ *
+ * For assignment-based sessions:
+ *   { type: 'assignment', assignmentId: string }
+ *
+ * For free practice sessions:
+ *   { type: 'free_practice', userId: string, modelType: 'phone' | 'chat', scenarioId?: string }
  */
 export async function POST(request: NextRequest) {
   try {
@@ -18,79 +25,159 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const data = createSessionSchema.parse(body)
 
-    // Check if assignment exists and is in a valid state
-    const assignment = await prisma.assignment.findUnique({
-      where: { id: data.assignmentId },
-      include: {
-        scenario: true,
-        session: true,
-      },
-    })
-
-    if (!assignment) {
-      return notFound('Assignment not found')
+    if (data.type === 'assignment') {
+      return handleAssignmentSession(data.assignmentId, user)
+    } else {
+      return handleFreePracticeSession(data, user)
     }
-
-    // Check ownership - only the assigned counselor can create a session
-    if (!canAccessResource(user, assignment.counselorId)) {
-      return forbidden('Cannot create session for another user\'s assignment')
-    }
-
-    // Check if a session already exists for this assignment
-    if (assignment.session) {
-      return conflict('A session already exists for this assignment')
-    }
-
-    // Check assignment status
-    if (assignment.status === 'completed') {
-      return conflict('Cannot create session for completed assignment')
-    }
-
-    // Generate initial greeting from AI
-    const initialGreeting = await generateInitialGreeting(assignment.scenario.prompt)
-
-    // Create session and initial transcript turn in a transaction
-    const session = await prisma.$transaction(async (tx) => {
-      // Create the session
-      const newSession = await tx.session.create({
-        data: {
-          assignmentId: data.assignmentId,
-          status: 'active',
-        },
-      })
-
-      // Create the initial AI greeting turn
-      await tx.transcriptTurn.create({
-        data: {
-          sessionId: newSession.id,
-          role: 'assistant',
-          content: initialGreeting,
-          turnOrder: 1,
-        },
-      })
-
-      // Update assignment status to in_progress
-      await tx.assignment.update({
-        where: { id: data.assignmentId },
-        data: {
-          status: 'in_progress',
-          startedAt: new Date(),
-        },
-      })
-
-      // Return session with transcript
-      return tx.session.findUnique({
-        where: { id: newSession.id },
-        include: {
-          transcript: {
-            orderBy: { turnOrder: 'asc' },
-          },
-        },
-      })
-    })
-
-    return apiSuccess(session, 201)
   } catch (error) {
     return handleApiError(error)
   }
+}
+
+/**
+ * Handle assignment-based session creation
+ */
+async function handleAssignmentSession(
+  assignmentId: string,
+  user: User
+) {
+  // Check if assignment exists and is in a valid state
+  const assignment = await prisma.assignment.findUnique({
+    where: { id: assignmentId },
+    include: {
+      scenario: true,
+      session: true,
+    },
+  })
+
+  if (!assignment) {
+    return notFound('Assignment not found')
+  }
+
+  // Check ownership - only the assigned counselor can create a session
+  if (!canAccessResource(user, assignment.counselorId)) {
+    return forbidden('Cannot create session for another user\'s assignment')
+  }
+
+  // Check if a session already exists for this assignment
+  if (assignment.session) {
+    return conflict('A session already exists for this assignment')
+  }
+
+  // Check assignment status
+  if (assignment.status === 'completed') {
+    return conflict('Cannot create session for completed assignment')
+  }
+
+  // Generate initial greeting from AI
+  const initialGreeting = await generateInitialGreeting(assignment.scenario.prompt)
+
+  // Create session and initial transcript turn in a transaction
+  const session = await prisma.$transaction(async (tx) => {
+    // Create the session
+    const newSession = await tx.session.create({
+      data: {
+        assignmentId,
+        modelType: assignment.scenario.mode,
+        status: 'active',
+      },
+    })
+
+    // Create the initial AI greeting turn
+    await tx.transcriptTurn.create({
+      data: {
+        sessionId: newSession.id,
+        role: 'assistant',
+        content: initialGreeting,
+        turnOrder: 1,
+      },
+    })
+
+    // Update assignment status to in_progress
+    await tx.assignment.update({
+      where: { id: assignmentId },
+      data: {
+        status: 'in_progress',
+        startedAt: new Date(),
+      },
+    })
+
+    // Return session with transcript
+    return tx.session.findUnique({
+      where: { id: newSession.id },
+      include: {
+        transcript: {
+          orderBy: { turnOrder: 'asc' },
+        },
+      },
+    })
+  })
+
+  return apiSuccess(session, 201)
+}
+
+/**
+ * Handle free practice session creation
+ */
+async function handleFreePracticeSession(
+  data: { type: 'free_practice'; userId: string; modelType: 'phone' | 'chat'; scenarioId?: string },
+  user: User
+) {
+  // Verify the userId matches the authenticated user
+  if (!canAccessResource(user, data.userId)) {
+    return forbidden('Cannot create session for another user')
+  }
+
+  // If scenarioId provided, verify it exists
+  let scenarioPrompt: string | null = null
+  if (data.scenarioId) {
+    const scenario = await prisma.scenario.findUnique({
+      where: { id: data.scenarioId },
+      select: { prompt: true },
+    })
+    if (!scenario) {
+      return notFound('Scenario not found')
+    }
+    scenarioPrompt = scenario.prompt
+  }
+
+  // Generate initial greeting - use scenario prompt if provided, otherwise generic
+  const defaultPrompt = 'You are a caller who is experiencing a crisis. Start the conversation naturally as someone reaching out for help.'
+  const initialGreeting = await generateInitialGreeting(scenarioPrompt ?? defaultPrompt)
+
+  // Create session and initial transcript turn in a transaction
+  const session = await prisma.$transaction(async (tx) => {
+    // Create the session
+    const newSession = await tx.session.create({
+      data: {
+        userId: data.userId,
+        scenarioId: data.scenarioId,
+        modelType: data.modelType,
+        status: 'active',
+      },
+    })
+
+    // Create the initial AI greeting turn
+    await tx.transcriptTurn.create({
+      data: {
+        sessionId: newSession.id,
+        role: 'assistant',
+        content: initialGreeting,
+        turnOrder: 1,
+      },
+    })
+
+    // Return session with transcript
+    return tx.session.findUnique({
+      where: { id: newSession.id },
+      include: {
+        transcript: {
+          orderBy: { turnOrder: 'asc' },
+        },
+      },
+    })
+  })
+
+  return apiSuccess(session, 201)
 }

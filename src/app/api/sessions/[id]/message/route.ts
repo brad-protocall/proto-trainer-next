@@ -50,8 +50,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return notFound('Session not found')
     }
 
-    // Check ownership
-    if (!canAccessResource(user, session.assignment.counselorId)) {
+    // For assignment-based sessions, check ownership via assignment
+    // For free practice sessions, check via userId
+    const ownerId = session.assignment?.counselorId ?? session.userId
+    if (!ownerId || !canAccessResource(user, ownerId)) {
       return forbidden('Cannot send message to another user\'s session')
     }
 
@@ -79,11 +81,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       created_at: new Date().toISOString(),
     })
 
+    // Get scenario prompt - either from assignment or use a default for free practice
+    const scenarioPrompt = session.assignment?.scenario?.prompt ??
+      'You are a caller who is experiencing a crisis. Respond naturally as someone who needs help but may be hesitant to open up. Be realistic and emotionally authentic.'
+    const vectorStoreId = session.assignment?.scenario?.account?.vectorStoreId ?? undefined
+
     // Get AI response
     const aiResponse = await getChatCompletion({
-      scenarioPrompt: session.assignment.scenario.prompt,
+      scenarioPrompt,
       transcript: transcriptForAI,
-      vectorStoreId: session.assignment.scenario.account.vectorStoreId ?? undefined,
+      vectorStoreId,
     })
 
     // ATOMIC: Save both messages in a transaction with atomic turnOrder calculation

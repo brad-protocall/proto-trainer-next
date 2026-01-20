@@ -19,6 +19,7 @@ function buildAssignmentResponse(assignment: {
   startedAt: Date | null
   completedAt: Date | null
   supervisorNotes: string | null
+  requireRecording: boolean
   scenario: { title: string; mode: string }
   counselor: { displayName: string | null }
   supervisor: { displayName: string | null }
@@ -48,6 +49,7 @@ function buildAssignmentResponse(assignment: {
     sessionId: assignment.session?.id ?? null,
     evaluationId: assignment.evaluation?.id ?? null,
     supervisorNotes: assignment.supervisorNotes,
+    requireRecording: assignment.requireRecording,
     isOverdue,
     hasTranscript,
   }

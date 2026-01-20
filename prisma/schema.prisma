@@ -19,6 +19,7 @@ model User {
   counselorAssignments  Assignment[] @relation("CounselorAssignments")
   supervisorAssignments Assignment[] @relation("SupervisorAssignments")
   scenariosCreated      Scenario[]
+  sessions              Session[]    @relation("UserSessions")
 
   @@map("users")
 }
@@ -55,22 +56,24 @@ model Scenario {
   account     Account      @relation(fields: [accountId], references: [id])
   creator     User         @relation(fields: [createdBy], references: [id])
   assignments Assignment[]
+  sessions    Session[]    @relation("ScenarioSessions")
 
   @@map("scenarios")
 }
 
 model Assignment {
-  id              String    @id @default(uuid())
-  accountId       String?   @map("account_id")
-  scenarioId      String    @map("scenario_id")
-  counselorId     String    @map("counselor_id")
-  assignedBy      String    @map("assigned_by")
-  status          String    @default("pending") // AssignmentStatus: pending, in_progress, completed
-  createdAt       DateTime  @default(now()) @map("created_at")
-  dueDate         DateTime? @map("due_date")
-  startedAt       DateTime? @map("started_at")
-  completedAt     DateTime? @map("completed_at")
-  supervisorNotes String?   @map("supervisor_notes")
+  id               String    @id @default(uuid())
+  accountId        String?   @map("account_id")
+  scenarioId       String    @map("scenario_id")
+  counselorId      String    @map("counselor_id")
+  assignedBy       String    @map("assigned_by")
+  status           String    @default("pending") // AssignmentStatus: pending, in_progress, completed
+  createdAt        DateTime  @default(now()) @map("created_at")
+  dueDate          DateTime? @map("due_date")
+  startedAt        DateTime? @map("started_at")
+  completedAt      DateTime? @map("completed_at")
+  supervisorNotes  String?   @map("supervisor_notes")
+  requireRecording Boolean   @default(false) @map("require_recording")
 
   account    Account?    @relation(fields: [accountId], references: [id], onDelete: SetNull)
   scenario   Scenario    @relation(fields: [scenarioId], references: [id], onDelete: Restrict)
@@ -84,13 +87,19 @@ model Assignment {
 
 model Session {
   id           String    @id @default(uuid())
-  assignmentId String    @unique @map("assignment_id")
+  assignmentId String?   @unique @map("assignment_id")
+  userId       String?   @map("user_id")
+  scenarioId   String?   @map("scenario_id")
+  modelType    String    @default("chat") @map("model_type") // ModelType: phone, chat
   status       String    @default("active") // SessionStatus: active, completed, abandoned
   startedAt    DateTime  @default(now()) @map("started_at")
   endedAt      DateTime? @map("ended_at")
 
-  assignment Assignment       @relation(fields: [assignmentId], references: [id])
+  assignment Assignment?      @relation(fields: [assignmentId], references: [id])
+  user       User?            @relation("UserSessions", fields: [userId], references: [id])
+  scenario   Scenario?        @relation("ScenarioSessions", fields: [scenarioId], references: [id])
   transcript TranscriptTurn[]
+  recording  Recording?
 
   @@map("sessions")
 }
@@ -124,11 +133,14 @@ model Evaluation {
 }
 
 model Recording {
-  id        String   @id @default(uuid())
-  sessionId String   @map("session_id")
-  filePath  String   @map("file_path")
-  duration  Int?
-  createdAt DateTime @default(now()) @map("created_at")
+  id            String   @id @default(uuid())
+  sessionId     String   @unique @map("session_id")
+  filePath      String   @map("file_path")
+  duration      Int?
+  fileSizeBytes Int?     @map("file_size_bytes")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@map("recordings")
 }

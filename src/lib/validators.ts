@@ -73,10 +73,21 @@ export const assignmentQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(100),
 })
 
-// Session validation
-export const createSessionSchema = z.object({
-  assignmentId: z.string().uuid(),
-})
+// Session validation - discriminated union for assignment vs free practice
+const ModelTypeSchema = z.enum(['phone', 'chat'])
+
+export const createSessionSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('assignment'),
+    assignmentId: z.string().uuid(),
+  }),
+  z.object({
+    type: z.literal('free_practice'),
+    userId: z.string().uuid(),
+    scenarioId: z.string().uuid().optional(),
+    modelType: ModelTypeSchema,
+  }),
+])
 
 // Chat message validation
 export const sendMessageSchema = z.object({
