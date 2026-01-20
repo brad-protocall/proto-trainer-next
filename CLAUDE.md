@@ -157,84 +157,64 @@ npx prisma studio                     # GUI browser
 
 ---
 
-## Resume Context (2026-01-19)
+## Resume Context (2026-01-20 Morning)
 
-### Current State: Ready for User Testing
+### Current State: Feature Parity PRs Ready for Review
 
-All code review findings have been resolved. The application is ready for end-to-end testing.
+All 6 feature parity issues have been processed by Ralph. 4 PRs are open and ready for review/merge.
 
-### What Was Completed
+### What Happened This Session
 
-1. **All PRs Merged** - #20, #21, #22, #23 merged to main
-2. **All P1 Issues Fixed** (10 total)
-   - WebSocket authentication (userId parameter)
-   - HTTP authentication (x-user-id headers via `authFetch`)
-   - Type alignment (TranscriptTurn snake_case, ApiError fields)
-   - Build errors resolved
-3. **All P2 Issues Fixed** (11 total)
-   - Performance: Base64 encoding O(n²) → chunked processing
-   - Memory: Audio handler cleanup, transcript limits (MAX_MESSAGES=200)
-   - Audio: Removed mic-to-speaker feedback loop
-   - Reliability: WebSocket auto-reconnect (3 attempts, 2s delay)
-   - Security: UUID validation for scenarioId (prevents injection)
-   - Testing: Added vitest + 11 WebSocket server tests
-   - Architecture: Created reusable UI components, shared utilities
-4. **Documentation Created**
-   - `docs/solutions/integration-issues/auth-type-consistency-fixes.md`
+1. **Investigated Ralph overnight crash** - Script stopped after issue #28
+   - Root cause: `add_comment` function lacked error handling
+   - Script uses `set -euo pipefail`, so failed comment crashed everything
+   - Issues #29 and #30 were never processed
 
-### New Files Created
+2. **Fixed the bug** - Added error handling to `scripts/overnight-loop.sh` line 119
+   - Committed fix to main: `a350205`
 
-| File | Purpose |
-|------|---------|
-| `src/lib/format.ts` | Shared formatting utilities (formatDate, getStatusColor, etc.) |
-| `src/lib/fetch.ts` | Authenticated fetch helper (authFetch, createAuthFetch) |
-| `src/components/ui/` | Reusable UI components (StatusBadge, DetailModal, DropdownMenu) |
-| `vitest.config.ts` | Test configuration |
-| `ws-server/index.test.ts` | WebSocket server tests (11 tests) |
+3. **Restarted overnight loop** - Successfully processed remaining issues #29, #30
 
-### Testing Commands
+### Feature Parity Status
 
-```bash
-# Start the application
-npm run dev              # Next.js on port 3003
-npm run ws:dev           # WebSocket server on port 3004
+| Issue | Phase | Description | Status | PR |
+|-------|-------|-------------|--------|-----|
+| #25 | 1 | Schema Migration & Type Cleanup | ✅ Merged | #31 |
+| #26 | 2 | Free Practice Mode | ✅ Merged | (in #31) |
+| #27 | 3 | Voice Training UI | 🔄 Open | #32 |
+| #28 | 4 | Recording System | 🔄 Open | #33 |
+| #29 | 5 | Bulk Import & Context Upload | 🔄 Open | #34 |
+| #30 | 6 | Vector Store & One-Time Scenarios | 🔄 Open | #35 |
 
-# Run tests
-npm test                 # Run all tests
-npm run test:watch       # Watch mode
+### Next Steps
 
-# Build verification
-npm run build            # Production build (should pass)
-```
-
-### User Testing Checklist
-
-1. **Supervisor Dashboard** (`http://localhost:3003/supervisor`)
-   - [ ] Create a new scenario
-   - [ ] Assign scenario to counselor
-   - [ ] View assignments list
-
-2. **Counselor Dashboard** (`http://localhost:3003/counselor`)
-   - [ ] View assigned scenarios
-   - [ ] Start chat training session
-   - [ ] Complete conversation and get feedback
-
-3. **Voice Training** (requires WebSocket server)
-   - [ ] Start voice session
-   - [ ] Verify audio capture works
-   - [ ] Test disconnect/reconnect
-
-### Known Limitations
-
-- Authentication uses simple x-user-id header (no JWT)
-- SQLite database (dev only, not for production)
-- Voice training requires headphones to avoid feedback
+1. **Review open PRs** - Run `/compound-engineering:workflows:review` on PRs #32-35
+2. **Merge PRs** - After review approval
+3. **Integration test** - Verify all features work together
+4. **User testing** - Test the full counselor and supervisor flows
 
 ### Quick Commands
 
 ```bash
-npm test                       # Run 11 WebSocket tests
-npm run build                  # Verify build passes
-ls todos/*-complete-*.md       # View completed todos
-cat docs/solutions/**/*.md     # View solution documentation
+# List open PRs
+gh pr list --state open
+
+# Review a specific PR
+gh pr view 32
+
+# Merge a PR
+gh pr merge 32 --squash
+
+# Run the app
+npm run dev        # Next.js on port 3003
+npm run ws:dev     # WebSocket on port 3004
 ```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `plans/proto-training-guide-feature-parity.md` | Implementation plan |
+| `docs/FEATURE-SPECIFICATIONS.md` | Original feature spec |
+| `scripts/overnight-loop.sh` | Ralph automation (now with fix) |
+| `logs/overnight-2026-01-20/` | Today's processing logs |
