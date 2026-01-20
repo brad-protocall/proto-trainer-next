@@ -1,6 +1,7 @@
 import OpenAI from 'openai'
 import fs from 'fs'
 import type { TranscriptTurn, EvaluationResponse } from '@/types'
+import { loadPromptWithVariables, getEvaluatorPromptFile } from './prompts'
 
 // Initialize OpenAI client
 export const openai = new OpenAI({
@@ -195,27 +196,17 @@ export async function generateEvaluation(options: {
     .map((turn) => `${turn.role === 'user' ? 'Counselor' : 'Caller'}: ${turn.content}`)
     .join('\n\n')
 
-  const systemPrompt = `You are an expert evaluator of crisis counselor training sessions.
-
-Scenario: ${scenarioTitle}
-${scenarioDescription ? `Description: ${scenarioDescription}` : ''}
-${vectorStoreId ? '\nUse the file_search tool to reference the organization\'s policies and procedures when evaluating the counselor\'s adherence to protocols.' : ''}
-
-Evaluate the counselor's performance in this training session. Provide:
-1. An overall score from 0-100
-2. Feedback on specific categories (empathy, active listening, safety assessment, de-escalation, resource provision)
-3. Key strengths
-4. Areas for improvement
-
-Respond in JSON format:
-{
-  "overallScore": <number 0-100>,
-  "feedback": [
-    {"category": "<category>", "score": <0-100>, "comment": "<specific feedback>"}
-  ],
-  "strengths": ["<strength 1>", "<strength 2>"],
-  "areasToImprove": ["<area 1>", "<area 2>"]
-}`
+  // Load evaluator prompt from file with variable interpolation
+  const systemPrompt = loadPromptWithVariables(
+    getEvaluatorPromptFile(),
+    {
+      SCENARIO_TITLE: scenarioTitle,
+      SCENARIO_DESCRIPTION: scenarioDescription ? `Description: ${scenarioDescription}` : '',
+      VECTOR_STORE_INSTRUCTION: vectorStoreId
+        ? "Use the file_search tool to reference the organization's policies and procedures when evaluating the counselor's adherence to protocols."
+        : '',
+    }
+  )
 
   // Use Responses API with file_search tool when vector store exists
   if (vectorStoreId) {

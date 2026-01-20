@@ -2,6 +2,7 @@ import WebSocket from "ws";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { encodeWav, calculateDuration } from "./wav-encoder.js";
+import { loadPrompt, getRealtimeCallerPromptFile } from "./prompts.js";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const REALTIME_MODEL = process.env.REALTIME_MODEL || "gpt-4o-realtime-preview";
@@ -267,16 +268,16 @@ export class RealtimeSession {
   }
 
   private buildInstructions(): string {
-    // Base instructions for the caller simulation (matches original PTG realtime_api.py:110)
-    const baseInstructions = `You are a crisis caller in a realistic roleplay training scenario for crisis counselors. Stay in character as someone experiencing emotional distress. Be responsive to the counselor's attempts to help, showing realistic emotional reactions. Do not break character or provide meta-commentary about the roleplay.`;
-
     // Use the fetched scenario prompt if available (overrides base instructions like original)
     if (this.scenarioPrompt) {
       return this.scenarioPrompt;
     }
 
-    // Free practice mode - use base instructions
-    return baseInstructions;
+    // Free practice mode - load base instructions from file
+    // Fallback to hardcoded prompt if file not found (for resilience)
+    const fallbackPrompt = "You are a crisis caller in a realistic roleplay training scenario for crisis counselors. Stay in character as someone experiencing emotional distress. Be responsive to the counselor's attempts to help, showing realistic emotional reactions. Do not break character or provide meta-commentary about the roleplay.";
+
+    return loadPrompt(getRealtimeCallerPromptFile(), fallbackPrompt);
   }
 
   private handleOpenAIMessage(data: Buffer): void {
