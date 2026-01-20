@@ -116,7 +116,10 @@ add_comment() {
     local issue_number="$1"
     local comment="$2"
 
-    gh issue comment "$issue_number" --body "$comment"
+    gh issue comment "$issue_number" --body "$comment" || {
+        log "  Warning: Failed to add comment to issue #$issue_number (non-fatal)"
+        return 0
+    }
 }
 
 #######################################
