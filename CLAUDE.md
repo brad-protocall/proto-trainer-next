@@ -161,22 +161,33 @@ npx prisma studio                     # GUI browser
 
 ### Current State: Ready for User Testing
 
-All feature parity work is complete. The app is ready for user testing.
+All feature parity work is complete. Prompts have been externalized for easy A/B testing.
 
-### Feature Parity Status (Complete)
+### What's Done
 
-| Issue | Phase | Description | Status | PR |
-|-------|-------|-------------|--------|-----|
-| #25 | 1 | Schema Migration & Type Cleanup | ✅ Merged | #31 |
-| #26 | 2 | Free Practice Mode | ✅ Merged | (in #31) |
-| #27 | 3 | Voice Training UI | ✅ Merged | #32 |
-| #28 | 4 | Recording System | ✅ Merged | #33 |
-| #29 | 5 | Bulk Import & Context Upload | ✅ Merged | #34 |
-| #30 | 6 | Vector Store & One-Time Scenarios | ✅ Merged | #35 |
+1. **Feature Parity** - All 6 phases merged (Issues #25-#30, PRs #31-#35)
+2. **Bug Fixes** - Session ID mismatch and free practice persistence fixed
+3. **Prompt Matching** - Realtime prompts now match original PTG word-for-word
+4. **File-Based Prompts** - Evaluator and caller prompts externalized for A/B testing
 
-### Post-Merge Fixes Applied
+### Prompts System
 
-- `1811eb4` - Fixed voice session ID mismatch and free practice persistence
+Prompts are stored in `prompts/` directory for easy editing and A/B testing:
+
+```
+prompts/
+├── evaluator-v1.txt      # Evaluator prompt (edit for A/B testing)
+└── realtime-caller.txt   # Voice training caller prompt
+```
+
+**To A/B test:**
+1. Create `prompts/evaluator-v2.txt` with your variant
+2. Set `EVALUATOR_PROMPT_FILE=evaluator-v2.txt` in `.env`
+3. Restart server
+
+### Next Step
+
+Add `OPENAI_API_KEY` to `.env` and run user testing
 
 ---
 
@@ -282,7 +293,8 @@ npx prisma studio
 
 | File | Purpose |
 |------|---------|
-| `plans/proto-training-guide-feature-parity.md` | Implementation plan |
-| `docs/FEATURE-SPECIFICATIONS.md` | Original feature spec |
+| `prompts/evaluator-v1.txt` | Evaluator prompt (edit for A/B testing) |
+| `prompts/realtime-caller.txt` | Voice caller prompt |
 | `ws-server/realtime-session.ts` | Voice session handling |
 | `src/app/training/voice/` | Voice training UI |
+| `src/lib/prompts.ts` | Prompt loader utility |
