@@ -157,57 +157,125 @@ npx prisma studio                     # GUI browser
 
 ---
 
-## Resume Context (2026-01-20 Morning)
+## Resume Context (2026-01-20)
 
-### Current State: Feature Parity PRs Ready for Review
+### Current State: Ready for User Testing
 
-All 6 feature parity issues have been processed by Ralph. 4 PRs are open and ready for review/merge.
+All feature parity work is complete. The app is ready for user testing.
 
-### What Happened This Session
-
-1. **Investigated Ralph overnight crash** - Script stopped after issue #28
-   - Root cause: `add_comment` function lacked error handling
-   - Script uses `set -euo pipefail`, so failed comment crashed everything
-   - Issues #29 and #30 were never processed
-
-2. **Fixed the bug** - Added error handling to `scripts/overnight-loop.sh` line 119
-   - Committed fix to main: `a350205`
-
-3. **Restarted overnight loop** - Successfully processed remaining issues #29, #30
-
-### Feature Parity Status
+### Feature Parity Status (Complete)
 
 | Issue | Phase | Description | Status | PR |
 |-------|-------|-------------|--------|-----|
 | #25 | 1 | Schema Migration & Type Cleanup | ✅ Merged | #31 |
 | #26 | 2 | Free Practice Mode | ✅ Merged | (in #31) |
-| #27 | 3 | Voice Training UI | 🔄 Open | #32 |
-| #28 | 4 | Recording System | 🔄 Open | #33 |
-| #29 | 5 | Bulk Import & Context Upload | 🔄 Open | #34 |
-| #30 | 6 | Vector Store & One-Time Scenarios | 🔄 Open | #35 |
+| #27 | 3 | Voice Training UI | ✅ Merged | #32 |
+| #28 | 4 | Recording System | ✅ Merged | #33 |
+| #29 | 5 | Bulk Import & Context Upload | ✅ Merged | #34 |
+| #30 | 6 | Vector Store & One-Time Scenarios | ✅ Merged | #35 |
 
-### Next Steps
+### Post-Merge Fixes Applied
 
-1. **Review open PRs** - Run `/compound-engineering:workflows:review` on PRs #32-35
-2. **Merge PRs** - After review approval
-3. **Integration test** - Verify all features work together
-4. **User testing** - Test the full counselor and supervisor flows
+- `1811eb4` - Fixed voice session ID mismatch and free practice persistence
+
+---
+
+## User Testing Checklist
+
+### Prerequisites
+
+1. **Environment Setup**
+   ```bash
+   # Ensure .env has required keys
+   cp .env.example .env
+   # Edit .env and add your OPENAI_API_KEY
+   ```
+
+2. **Required Environment Variables**
+   ```env
+   OPENAI_API_KEY=sk-...          # REQUIRED - for AI features
+   DATABASE_URL="file:./dev.db"   # Default SQLite
+   NEXT_PUBLIC_WS_URL=ws://localhost:3004  # WebSocket URL
+   ```
+
+3. **Start Both Servers**
+   ```bash
+   # Terminal 1 - Next.js app
+   npm run dev
+
+   # Terminal 2 - WebSocket server (for voice)
+   npm run ws:dev
+   ```
+
+4. **Open Browser**
+   ```
+   http://localhost:3003
+   ```
+
+### Test Data Available
+
+| Type | ID | Name |
+|------|-----|------|
+| Supervisor | `00000000-0000-0000-0000-000000000001` | Test Supervisor |
+| Counselor | `32d86730-7a31-4a30-9b53-e6c238706bf6` | Test Counselor |
+| Scenarios | 4 available | Various training scenarios |
+
+### Test Flows
+
+#### Counselor Flow
+- [ ] Select "Counselor" on home page
+- [ ] View Free Practice section
+- [ ] Click "Practice by Voice" → microphone prompt → speak with AI
+- [ ] Click "Practice by Text" → chat with AI
+- [ ] View assigned training (if assignments exist)
+- [ ] Complete training and click "Get Feedback"
+- [ ] Review AI evaluation
+
+#### Supervisor Flow
+- [ ] Select "Supervisor" on home page
+- [ ] View Scenarios tab
+- [ ] Toggle Global / One-Time filter
+- [ ] Click "Import Scenarios" → test bulk import
+- [ ] Create a new scenario
+- [ ] View Assignments tab
+- [ ] Create assignment for counselor
+- [ ] View recordings (if any exist)
+
+#### Voice Training Specific
+- [ ] Browser prompts for microphone access
+- [ ] Connection status shows "Connected"
+- [ ] Speaking shows transcript in real-time
+- [ ] AI responds with voice
+- [ ] "Get Feedback" generates evaluation
+- [ ] Session is saved to database
+
+### Known Limitations (Prototype)
+
+1. **No real authentication** - Uses role selector, not login
+2. **Microphone required** - Voice training needs browser mic access
+3. **OpenAI API costs** - Each session uses API credits
+4. **Missing logos** - Some image 404s (cosmetic only)
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Voice training blank page | Check WebSocket server is running on :3004 |
+| "Session not found" on evaluation | Verify OPENAI_API_KEY is set |
+| 401 Unauthorized errors | Expected - prototype uses simplified auth |
+| No scenarios showing | Run `npx prisma db seed` to populate data |
 
 ### Quick Commands
 
 ```bash
-# List open PRs
-gh pr list --state open
+# Reset database
+npx prisma migrate reset
 
-# Review a specific PR
-gh pr view 32
+# View database
+npx prisma studio
 
-# Merge a PR
-gh pr merge 32 --squash
-
-# Run the app
-npm run dev        # Next.js on port 3003
-npm run ws:dev     # WebSocket on port 3004
+# Check server logs
+# (logs appear in terminal where servers are running)
 ```
 
 ### Key Files
@@ -216,5 +284,5 @@ npm run ws:dev     # WebSocket on port 3004
 |------|---------|
 | `plans/proto-training-guide-feature-parity.md` | Implementation plan |
 | `docs/FEATURE-SPECIFICATIONS.md` | Original feature spec |
-| `scripts/overnight-loop.sh` | Ralph automation (now with fix) |
-| `logs/overnight-2026-01-20/` | Today's processing logs |
+| `ws-server/realtime-session.ts` | Voice session handling |
+| `src/app/training/voice/` | Voice training UI |
