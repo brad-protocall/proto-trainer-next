@@ -84,6 +84,53 @@ export class RealtimeSession {
   }
 
   /**
+   * Create a database session at the start of the connection
+   * This gives us a stable session ID to use for evaluation
+   */
+  private async createDbSession(): Promise<void> {
+    try {
+      const sessionBody = this.params.assignmentId
+        ? {
+            type: "assignment",
+            assignmentId: this.params.assignmentId,
+          }
+        : {
+            type: "free_practice",
+            userId: this.params.userId,
+            modelType: "voice",
+            scenarioId: this.params.scenarioId,
+          };
+
+      const response = await fetch(`${API_URL}/api/sessions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": this.params.userId,
+        },
+        body: JSON.stringify(sessionBody),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.ok && data.data?.id) {
+          this.dbSessionId = data.data.id;
+          console.log(`[Session] Created DB session: ${this.dbSessionId}`);
+
+          // Send DB session ID to client (this is what they should use for evaluation)
+          this.sendToClient({
+            type: "session.id",
+            session_id: this.dbSessionId,
+          });
+        }
+      } else {
+        console.error(`[Session] Failed to create DB session: ${response.status}`);
+      }
+    } catch (error) {
+      console.error("[Session] Error creating DB session:", error);
+    }
+  }
+
+  /**
    * Validate and fetch the scenario prompt from the database
    * Returns null if validation fails or scenario doesn't exist
    */
@@ -140,9 +187,13 @@ export class RealtimeSession {
         },
       });
 
-      this.openaiWs.on("open", () => {
+      this.openaiWs.on("open", async () => {
         console.log("[OpenAI] Connected to Realtime API");
         this.configureSession();
+
+        // Create DB session immediately so client has the correct session ID
+        await this.createDbSession();
+
         resolve();
       });
 
@@ -484,8 +535,8 @@ Do not break character or provide meta-commentary about the training.`;
       `[Session] Total transcript turns captured: ${this.transcripts.length}`
     );
 
-    // Persist transcripts if we have an assignment and transcripts
-    if (this.params.assignmentId && this.transcripts.length > 0) {
+    // Persist transcripts if we have any (supports both assignment and free practice)
+    if (this.transcripts.length > 0) {
       await this.persistTranscripts();
     }
 
@@ -504,40 +555,24 @@ Do not break character or provide meta-commentary about the training.`;
   }
 
   private async persistTranscripts(): Promise<void> {
+    // Use the session created at connection time
+    if (!this.dbSessionId) {
+      console.error("[Session] No DB session ID available for persisting transcripts");
+      return;
+    }
 
     try {
-      console.log(`[Session] Persisting ${this.transcripts.length} transcript turns...`);
+      console.log(`[Session] Persisting ${this.transcripts.length} transcript turns to session ${this.dbSessionId}...`);
 
-      // Create or get session for this assignment
-      const sessionResponse = await fetch(`${API_URL}/api/sessions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          assignmentId: this.params.assignmentId,
-          userId: this.params.userId,
-        }),
-      });
-
-      if (!sessionResponse.ok) {
-        console.error(`[Session] Failed to create session: ${sessionResponse.status}`);
-        return;
-      }
-
-      const sessionData = await sessionResponse.json();
-      if (!sessionData.ok) {
-        console.error("[Session] Failed to create session:", sessionData.error);
-        return;
-      }
-
-      const dbSessionId = sessionData.data.id;
-      this.dbSessionId = dbSessionId;
-
-      // Save each transcript turn
+      // Save each transcript turn to the existing session
       for (let i = 0; i < this.transcripts.length; i++) {
         const turn = this.transcripts[i];
-        const turnResponse = await fetch(`${API_URL}/api/sessions/${dbSessionId}/message`, {
+        const turnResponse = await fetch(`${API_URL}/api/sessions/${this.dbSessionId}/message`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-id": this.params.userId,
+          },
           body: JSON.stringify({
             role: turn.role,
             content: turn.content,
@@ -550,7 +585,7 @@ Do not break character or provide meta-commentary about the training.`;
         }
       }
 
-      console.log(`[Session] Transcripts persisted to session ${dbSessionId}`);
+      console.log(`[Session] Transcripts persisted to session ${this.dbSessionId}`);
     } catch (error) {
       console.error("[Session] Failed to persist transcripts:", error);
     }
