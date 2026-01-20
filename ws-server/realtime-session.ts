@@ -267,20 +267,16 @@ export class RealtimeSession {
   }
 
   private buildInstructions(): string {
-    // Base instructions for the caller simulation
-    const baseInstructions = `You are simulating a caller in a crisis counseling training scenario.
-Your role is to act as a realistic caller who needs support.
-Respond naturally to the counselor's questions and statements.
-Stay in character and provide realistic emotional responses.
-Do not break character or provide meta-commentary about the training.`;
+    // Base instructions for the caller simulation (matches original PTG realtime_api.py:110)
+    const baseInstructions = `You are a crisis caller in a realistic roleplay training scenario for crisis counselors. Stay in character as someone experiencing emotional distress. Be responsive to the counselor's attempts to help, showing realistic emotional reactions. Do not break character or provide meta-commentary about the roleplay.`;
 
-    // Use the fetched scenario prompt if available
+    // Use the fetched scenario prompt if available (overrides base instructions like original)
     if (this.scenarioPrompt) {
-      return `${baseInstructions}\n\nScenario:\n${this.scenarioPrompt}`;
+      return this.scenarioPrompt;
     }
 
-    // Free practice mode - generic caller
-    return `${baseInstructions}\n\nYou are a general caller seeking support. Begin by describing a challenge you are facing.`;
+    // Free practice mode - use base instructions
+    return baseInstructions;
   }
 
   private handleOpenAIMessage(data: Buffer): void {
