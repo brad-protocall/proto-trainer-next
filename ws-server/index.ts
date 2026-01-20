@@ -19,6 +19,7 @@ interface ConnectionParams {
   userId: string;
   scenarioId?: string;
   assignmentId?: string;
+  record?: boolean;
 }
 
 type AuthResult = {
@@ -44,6 +45,7 @@ function authenticateConnection(request: IncomingMessage): AuthResult {
       userId,
       scenarioId: url.searchParams.get("scenarioId") || undefined,
       assignmentId: url.searchParams.get("assignmentId") || undefined,
+      record: url.searchParams.get("record") === "true",
     },
   };
 }
@@ -78,7 +80,7 @@ wss.on("connection", async (ws: WebSocket, request: IncomingMessage) => {
 
   const { params } = auth;
   console.log(
-    `[WS] New connection - userId: ${params.userId}, scenarioId: ${params.scenarioId}, assignmentId: ${params.assignmentId}`
+    `[WS] New connection - userId: ${params.userId}, scenarioId: ${params.scenarioId}, assignmentId: ${params.assignmentId}, record: ${params.record}`
   );
 
   // Create a new RealtimeSession for this connection

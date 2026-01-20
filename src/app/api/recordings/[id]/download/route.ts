@@ -1,0 +1,124 @@
+import { NextRequest } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { notFound, forbidden, handleApiError } from '@/lib/api'
+import { requireAuth, canAccessResource } from '@/lib/auth'
+import { createReadStream, statSync } from 'fs'
+import path from 'path'
+
+interface RouteParams {
+  params: Promise<{ id: string }>
+}
+
+/**
+ * GET /api/recordings/[id]/download
+ * Download a recording with Range header support for streaming
+ */
+export async function GET(request: NextRequest, { params }: RouteParams) {
+  try {
+    const authResult = await requireAuth(request)
+    if (authResult.error) return authResult.error
+    const user = authResult.user
+
+    const { id } = await params
+
+    // Find recording
+    const recording = await prisma.recording.findUnique({
+      where: { id },
+      include: {
+        session: {
+          select: {
+            userId: true,
+            assignment: {
+              select: { counselorId: true },
+            },
+          },
+        },
+      },
+    })
+
+    if (!recording) {
+      return notFound('Recording not found')
+    }
+
+    // Check authorization - counselors can only download their own recordings
+    const ownerId = recording.session.assignment?.counselorId ?? recording.session.userId
+    if (ownerId && !canAccessResource(user, ownerId)) {
+      return forbidden('Access denied')
+    }
+
+    // Get file path
+    const filePath = path.join(process.cwd(), recording.filePath)
+
+    // Check if file exists and get stats
+    let stat
+    try {
+      stat = statSync(filePath)
+    } catch {
+      return notFound('Recording file not found')
+    }
+
+    const fileSize = stat.size
+    const range = request.headers.get('range')
+
+    // Parse Range header if present
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-')
+      const start = parseInt(parts[0], 10)
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1
+
+      if (start >= fileSize) {
+        return new Response('Range not satisfiable', {
+          status: 416,
+          headers: {
+            'Content-Range': `bytes */${fileSize}`,
+          },
+        })
+      }
+
+      const chunkSize = end - start + 1
+      const stream = createReadStream(filePath, { start, end })
+
+      // Convert Node stream to Web ReadableStream
+      const webStream = new ReadableStream({
+        start(controller) {
+          stream.on('data', (chunk) => controller.enqueue(chunk))
+          stream.on('end', () => controller.close())
+          stream.on('error', (err) => controller.error(err))
+        },
+      })
+
+      return new Response(webStream, {
+        status: 206,
+        headers: {
+          'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': String(chunkSize),
+          'Content-Type': 'audio/wav',
+          'Content-Disposition': `attachment; filename="${id}.wav"`,
+        },
+      })
+    }
+
+    // No Range header - return full file
+    const stream = createReadStream(filePath)
+    const webStream = new ReadableStream({
+      start(controller) {
+        stream.on('data', (chunk) => controller.enqueue(chunk))
+        stream.on('end', () => controller.close())
+        stream.on('error', (err) => controller.error(err))
+      },
+    })
+
+    return new Response(webStream, {
+      status: 200,
+      headers: {
+        'Accept-Ranges': 'bytes',
+        'Content-Length': String(fileSize),
+        'Content-Type': 'audio/wav',
+        'Content-Disposition': `attachment; filename="${id}.wav"`,
+      },
+    })
+  } catch (error) {
+    return handleApiError(error)
+  }
+}

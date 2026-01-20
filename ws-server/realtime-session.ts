@@ -1,4 +1,7 @@
 import WebSocket from "ws";
+import { writeFile, mkdir } from "fs/promises";
+import path from "path";
+import { encodeWav, calculateDuration } from "./wav-encoder.js";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const REALTIME_MODEL = process.env.REALTIME_MODEL || "gpt-4o-realtime-preview";
@@ -13,6 +16,7 @@ interface ConnectionParams {
   userId: string;
   scenarioId?: string;
   assignmentId?: string;
+  record?: boolean;
 }
 
 interface TranscriptTurn {
@@ -59,14 +63,24 @@ export class RealtimeSession {
   private openaiWs: WebSocket | null = null;
   private params: ConnectionParams;
   private sessionId: string | null = null;
+  private dbSessionId: string | null = null;
   private transcripts: TranscriptTurn[] = [];
   private currentUserTranscript: string = "";
   private currentAssistantTranscript: string = "";
   private scenarioPrompt: string | null = null;
 
+  // Audio recording
+  private audioChunks: Buffer[] = [];
+  private isRecording: boolean;
+
   constructor(clientWs: WebSocket, params: ConnectionParams) {
     this.clientWs = clientWs;
     this.params = params;
+    this.isRecording = params.record === true;
+
+    if (this.isRecording) {
+      console.log("[Session] Recording enabled for this session");
+    }
   }
 
   /**
@@ -246,6 +260,10 @@ Do not break character or provide meta-commentary about the training.`;
           break;
 
         case "response.audio.delta":
+          // Capture audio if recording is enabled
+          if (this.isRecording && message.delta) {
+            this.captureAudio(message.delta);
+          }
           // Forward audio directly to client
           this.sendToClient({
             type: "response.audio.delta",
@@ -358,6 +376,11 @@ Do not break character or provide meta-commentary about the training.`;
         return;
       }
 
+      // Capture user audio if recording is enabled
+      if (this.isRecording && message.type === "input_audio_buffer.append" && message.audio) {
+        this.captureAudio(message.audio);
+      }
+
       // Forward all other messages to OpenAI
       console.log(`[Client] Forwarding: ${message.type}`);
       this.openaiWs.send(JSON.stringify(message));
@@ -369,6 +392,69 @@ Do not break character or provide meta-commentary about the training.`;
   private sendToClient(message: object): void {
     if (this.clientWs.readyState === WebSocket.OPEN) {
       this.clientWs.send(JSON.stringify(message));
+    }
+  }
+
+  /**
+   * Capture audio chunk for recording
+   */
+  private captureAudio(base64Data: string): void {
+    try {
+      const audioBuffer = Buffer.from(base64Data, "base64");
+      this.audioChunks.push(audioBuffer);
+    } catch (error) {
+      console.error("[Session] Failed to capture audio chunk:", error);
+    }
+  }
+
+  /**
+   * Save captured audio as WAV file and create recording in database
+   */
+  private async saveRecording(dbSessionId: string): Promise<void> {
+    if (this.audioChunks.length === 0) {
+      console.log("[Session] No audio chunks to save");
+      return;
+    }
+
+    try {
+      // Combine all audio chunks
+      const totalSize = this.audioChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+      console.log(`[Session] Combining ${this.audioChunks.length} audio chunks (${totalSize} bytes)`);
+
+      const combinedAudio = Buffer.concat(this.audioChunks);
+      const wavBuffer = encodeWav(combinedAudio);
+      const duration = calculateDuration(combinedAudio.length);
+
+      // Create recordings directory
+      const recordingsDir = path.join(process.cwd(), "..", "uploads", "recordings");
+      await mkdir(recordingsDir, { recursive: true });
+
+      // Save WAV file
+      const filename = `${dbSessionId}.wav`;
+      const filePath = path.join(recordingsDir, filename);
+      await writeFile(filePath, wavBuffer);
+
+      console.log(`[Session] Recording saved: ${filePath} (${wavBuffer.length} bytes, ${duration}s)`);
+
+      // Create recording entry in database via API
+      const response = await fetch(`${API_URL}/api/recordings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: dbSessionId,
+          filePath: `uploads/recordings/${filename}`,
+          duration,
+          fileSizeBytes: wavBuffer.length,
+        }),
+      });
+
+      if (!response.ok) {
+        console.error(`[Session] Failed to create recording entry: ${response.status}`);
+      } else {
+        console.log(`[Session] Recording entry created in database`);
+      }
+    } catch (error) {
+      console.error("[Session] Failed to save recording:", error);
     }
   }
 
@@ -403,6 +489,14 @@ Do not break character or provide meta-commentary about the training.`;
       await this.persistTranscripts();
     }
 
+    // Save recording if enabled and we have a session
+    if (this.isRecording && this.dbSessionId) {
+      await this.saveRecording(this.dbSessionId);
+    }
+
+    // Clear audio chunks to free memory
+    this.audioChunks = [];
+
     if (this.openaiWs) {
       this.openaiWs.close();
       this.openaiWs = null;
@@ -436,6 +530,7 @@ Do not break character or provide meta-commentary about the training.`;
       }
 
       const dbSessionId = sessionData.data.id;
+      this.dbSessionId = dbSessionId;
 
       // Save each transcript turn
       for (let i = 0; i < this.transcripts.length; i++) {
