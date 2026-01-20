@@ -7,6 +7,7 @@ import { requireAuth, requireSupervisor } from '@/lib/auth'
 /**
  * GET /api/scenarios
  * List scenarios - any authenticated user
+ * By default, excludes one-time scenarios unless ?isOneTime=true is specified
  */
 export async function GET(request: NextRequest) {
   try {
@@ -16,11 +17,30 @@ export async function GET(request: NextRequest) {
     const searchParams = Object.fromEntries(request.nextUrl.searchParams)
     const queryResult = scenarioQuerySchema.safeParse(searchParams)
 
+    // Build where clause
+    const where: Record<string, unknown> = {}
+
+    if (queryResult.success) {
+      if (queryResult.data.category) {
+        where.category = queryResult.data.category
+      }
+      if (queryResult.data.mode) {
+        where.mode = queryResult.data.mode
+      }
+      // Handle isOneTime filter
+      if (queryResult.data.isOneTime !== undefined) {
+        where.isOneTime = queryResult.data.isOneTime === 'true'
+      } else {
+        // Default: exclude one-time scenarios from list
+        where.isOneTime = false
+      }
+    } else {
+      // Default: exclude one-time scenarios from list
+      where.isOneTime = false
+    }
+
     const scenarios = await prisma.scenario.findMany({
-      where: {
-        ...(queryResult.success && queryResult.data.category && { category: queryResult.data.category }),
-        ...(queryResult.success && queryResult.data.mode && { mode: queryResult.data.mode }),
-      },
+      where,
       include: {
         creator: { select: { displayName: true } },
         account: { select: { name: true } },
