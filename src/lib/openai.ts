@@ -1,4 +1,5 @@
 import OpenAI from 'openai'
+import fs from 'fs'
 import type { TranscriptTurn, EvaluationResponse } from '@/types'
 
 // Initialize OpenAI client
@@ -143,6 +144,44 @@ export async function getSimulatorResponse(
   return response.choices[0].message.content
 }
 
+// Vector Store Functions
+
+/**
+ * Find an existing vector store by name or create a new one
+ */
+async function findOrCreateVectorStore(name: string) {
+  const stores = await openai.vectorStores.list()
+  const existing = stores.data.find((s) => s.name === name)
+  if (existing) return existing
+
+  return openai.vectorStores.create({ name })
+}
+
+/**
+ * Upload a policy file to OpenAI and add it to a vector store for the account
+ */
+export async function uploadPolicyToVectorStore(
+  accountId: string,
+  filePath: string
+): Promise<{ fileId: string; vectorStoreId: string }> {
+  // 1. Upload to OpenAI Files API
+  const file = await openai.files.create({
+    file: fs.createReadStream(filePath),
+    purpose: 'assistants',
+  })
+
+  // 2. Create or get vector store
+  const vectorStoreName = `account-${accountId}-policies`
+  const vectorStore = await findOrCreateVectorStore(vectorStoreName)
+
+  // 3. Add file to vector store
+  await openai.vectorStores.files.create(vectorStore.id, {
+    file_id: file.id,
+  })
+
+  return { fileId: file.id, vectorStoreId: vectorStore.id }
+}
+
 // Helper for generating evaluation (for session evaluate route)
 export async function generateEvaluation(options: {
   scenarioTitle: string
@@ -150,7 +189,7 @@ export async function generateEvaluation(options: {
   transcript: TranscriptTurn[]
   vectorStoreId?: string
 }): Promise<EvaluationResponse> {
-  const { scenarioTitle, scenarioDescription, transcript } = options
+  const { scenarioTitle, scenarioDescription, transcript, vectorStoreId } = options
 
   const transcriptText = transcript
     .map((turn) => `${turn.role === 'user' ? 'Counselor' : 'Caller'}: ${turn.content}`)
@@ -160,6 +199,7 @@ export async function generateEvaluation(options: {
 
 Scenario: ${scenarioTitle}
 ${scenarioDescription ? `Description: ${scenarioDescription}` : ''}
+${vectorStoreId ? '\nUse the file_search tool to reference the organization\'s policies and procedures when evaluating the counselor\'s adherence to protocols.' : ''}
 
 Evaluate the counselor's performance in this training session. Provide:
 1. An overall score from 0-100
@@ -177,6 +217,38 @@ Respond in JSON format:
   "areasToImprove": ["<area 1>", "<area 2>"]
 }`
 
+  // Use Responses API with file_search tool when vector store exists
+  if (vectorStoreId) {
+    const response = await openai.responses.create({
+      model: process.env.EVALUATOR_MODEL ?? 'gpt-4o',
+      input: [
+        { role: 'user', content: `${systemPrompt}\n\nTranscript:\n\n${transcriptText}` },
+      ],
+      tools: [
+        {
+          type: 'file_search',
+          vector_store_ids: [vectorStoreId],
+        },
+      ],
+      text: {
+        format: { type: 'json_object' },
+      },
+      temperature: 0.3,
+    })
+
+    const content = response.output_text ?? '{}'
+    const parsed = JSON.parse(content)
+
+    return {
+      overallScore: parsed.overallScore ?? 0,
+      feedback: parsed.feedback ?? [],
+      strengths: parsed.strengths ?? [],
+      areasToImprove: parsed.areasToImprove ?? [],
+      rawResponse: content,
+    }
+  }
+
+  // Standard chat completion when no vector store
   const response = await openai.chat.completions.create({
     model: process.env.EVALUATOR_MODEL ?? 'gpt-4o',
     messages: [

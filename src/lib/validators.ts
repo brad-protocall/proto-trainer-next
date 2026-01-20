@@ -43,6 +43,7 @@ export const updateScenarioSchema = createScenarioSchema.partial()
 export const scenarioQuerySchema = z.object({
   category: ScenarioCategorySchema.optional(),
   mode: ScenarioModeSchema.optional(),
+  isOneTime: z.enum(['true', 'false']).optional(),
 })
 
 // Assignment validation
