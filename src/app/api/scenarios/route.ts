@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
       const defaultAccount = await prisma.account.findFirst()
       if (!defaultAccount) {
         return apiError(
-          { type: 'CONFIGURATION_ERROR', message: 'No accounts configured. Please create an account first.' },
+          { type: 'INTERNAL_ERROR', message: 'No accounts configured. Please create an account first.' },
           500
         )
       }

@@ -71,9 +71,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       )
     }
 
+    // Extract accountId separately - Prisma requires string or omission, not null
+    const { accountId, ...updateData } = result.data
     const scenario = await prisma.scenario.update({
       where: { id },
-      data: result.data,
+      data: accountId ? { ...updateData, accountId } : updateData,
       include: {
         creator: { select: { displayName: true } },
         account: { select: { name: true } },
@@ -166,9 +168,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       )
     }
 
+    // Extract accountId separately - Prisma requires string or omission, not null
+    const { accountId, ...updateData } = result.data
     const scenario = await prisma.scenario.update({
       where: { id },
-      data: result.data,
+      data: accountId ? { ...updateData, accountId } : updateData,
       include: {
         creator: { select: { displayName: true } },
         account: { select: { name: true } },
