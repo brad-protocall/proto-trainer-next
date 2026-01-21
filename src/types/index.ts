@@ -20,10 +20,10 @@ export type ApiResponse<T> =
 export type UserRole = "counselor" | "supervisor" | "admin";
 export type ScenarioMode = "phone" | "chat";
 export type ScenarioCategory =
+  | "cohort_training"
   | "onboarding"
-  | "refresher"
-  | "advanced"
-  | "assessment";
+  | "expert_skill_path"
+  | "account_specific";
 export type AssignmentStatus = "pending" | "in_progress" | "completed";
 export type SessionStatus = "active" | "completed" | "abandoned";
 export type TranscriptRole = "user" | "assistant" | "system";

@@ -11,7 +11,7 @@ const importScenarioSchema = z.object({
   description: z.string().optional(),
   prompt: z.string().min(1),
   mode: z.enum(['phone', 'chat']).default('phone'),
-  category: z.enum(['onboarding', 'refresher', 'advanced', 'assessment']).optional(),
+  category: z.enum(['cohort_training', 'onboarding', 'expert_skill_path', 'account_specific']).optional(),
   evaluatorContext: z.string().optional(),
   accountId: z.string().uuid().optional(),
   isOneTime: z.boolean().default(false),

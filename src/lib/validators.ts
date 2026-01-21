@@ -3,7 +3,7 @@ import { z } from 'zod'
 // Domain enum schemas as string literals (lowercase to match DB)
 const UserRoleSchema = z.enum(['supervisor', 'counselor'])
 const ScenarioModeSchema = z.enum(['phone', 'chat'])
-const ScenarioCategorySchema = z.enum(['onboarding', 'refresher', 'advanced', 'assessment'])
+const ScenarioCategorySchema = z.enum(['cohort_training', 'onboarding', 'expert_skill_path', 'account_specific'])
 const AssignmentStatusSchema = z.enum(['pending', 'in_progress', 'completed'])
 
 // User validation
