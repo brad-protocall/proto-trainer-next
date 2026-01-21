@@ -157,57 +157,158 @@ npx prisma studio                     # GUI browser
 
 ---
 
-## Resume Context (2026-01-20)
+## Ralph Autonomous Agent Guidelines
 
-### Current State: Ready for User Testing
+**CRITICAL**: These guidelines exist because of bugs introduced during overnight autonomous sessions. See `docs/solutions/integration-issues/api-frontend-contract-mismatch-bulk-assignments.md` for detailed examples.
 
-All prompts finalized and system updated to show full markdown evaluations.
+### Before Changing API Response Fields
 
-### What's Done
-
-1. **Feature Parity** - All 6 phases merged (Issues #25-#30, PRs #31-#35)
-2. **Bug Fixes** - Session ID mismatch and free practice persistence fixed
-3. **OpenAI Key** - Configured in `.env`
-4. **Model Selection** - All APIs default to `gpt-4.1` (Chat, Evaluator); Realtime uses `gpt-4o-realtime-preview`
-5. **Complete Prompts System** - All three prompts finalized and file-based
-
-### Prompts System
-
-All prompts externalized in `prompts/` directory:
-
-```
-prompts/
-├── chext-simulator.txt    # Chat/text training (new)
-├── realtime-caller.txt    # Voice training caller
-└── evaluator-v1.txt       # Evaluation feedback (markdown output)
-```
-
-**Environment variables:**
-- `CHAT_MODEL=gpt-4.1` - Model for chat simulator
-- `EVALUATOR_MODEL=gpt-4.1` - Model for evaluator
-- `REALTIME_MODEL=gpt-4o-realtime-preview` - Model for voice
-- `CHEXT_SIMULATOR_PROMPT_FILE` - Override chat prompt file
-- `REALTIME_CALLER_PROMPT_FILE` - Override voice prompt file
-- `EVALUATOR_PROMPT_FILE` - Override evaluator prompt file
-
-### Evaluation System
-
-Evaluator now returns **full markdown feedback** (not JSON):
-- Quick Summary, Key Learning Objective, Evidence from Transcript
-- Recommended Improvements, Knowledge Base Alignment
-- Self-Reflection Prompts, Letter Grade (A-F) with Rationale
-
-Frontend renders markdown with `react-markdown`.
-
-### Next Step
-
-Start both servers and run user testing:
 ```bash
+# ALWAYS search for all usages before renaming
+grep -r "fieldName" src/ --include="*.ts" --include="*.tsx"
+
+# Make changes in ALL files atomically (same commit)
+# Verify no old references remain after changes
+```
+
+### API-Frontend Contract Rules
+
+1. **Types first**: Update `src/types/index.ts` BEFORE changing API implementation
+2. **Run type check**: `npx tsc --noEmit` after EVERY file change
+3. **Never use `any`** for API responses - use typed interfaces
+4. **Zod schemas** in `src/lib/validators.ts` must match TypeScript types
+
+### UX Feedback Timing
+
+| Feedback Type | Auto-Close? | Why |
+|--------------|-------------|-----|
+| Pure success | Yes (1.5s) | Quick confirmation |
+| Success with warnings | NO | User needs to read details |
+| Partial success | NO | User must see what failed |
+| Error | NO | User must understand the error |
+
+**Rule**: If `skipped > 0` or `blocked.length > 0`, keep modal open for manual close.
+
+### Naming Conventions (This Codebase)
+
+| Layer | Convention | Example |
+|-------|------------|---------|
+| Database (Prisma) | snake_case | `created_at` |
+| API Response | camelCase | `createdAt` |
+| TypeScript Types | snake_case (legacy) | `created_at` |
+| Frontend State | camelCase | `createdAt` |
+
+**Warning**: There's inconsistency. When in doubt, check existing similar code.
+
+### Pre-Completion Checklist
+
+Before marking ANY task complete:
+
+```bash
+# All must pass
+npx tsc --noEmit          # Zero type errors
+npm run lint              # Zero lint errors
+grep -r "oldName" src/    # Zero results for renamed things
+```
+
+### Known Pitfalls
+
+1. **camelCase/snake_case**: API returns camelCase, some types use snake_case
+2. **Auth headers**: API calls need `x-user-id` header (see `src/lib/fetch.ts`)
+3. **Modal timing**: Never auto-close modals showing actionable feedback
+4. **Bulk operations**: Always handle partial success case
+
+---
+
+## Resume Context (2026-01-20 Evening)
+
+### Current State: User Testing In Progress
+
+Most features working. One pending issue to verify.
+
+### Session Fixes Applied
+
+1. **Voice Training - OpenAI Connection** ✅
+   - Fixed: WebSocket server wasn't reading OPENAI_API_KEY due to ES module timing
+   - Solution: Changed `ws-server/realtime-session.ts` to use lazy getter functions instead of top-level constants
+   - Files: `ws-server/realtime-session.ts`
+
+2. **Voice Training - DB Session Creation** ✅
+   - Fixed: Was sending `modelType: "voice"` but API expected `"phone"`
+   - Solution: Changed to `modelType: "phone"` in realtime-session.ts
+   - Files: `ws-server/realtime-session.ts`
+
+3. **Voice Training - Evaluation Auth** ✅
+   - Fixed: `requestEvaluation` was missing `x-user-id` header
+   - Solution: Added header to fetch call
+   - Files: `src/hooks/use-realtime-voice.ts`
+
+4. **Chat Free Practice** ✅
+   - Fixed: Page only checked for `assignmentId === "free"` not `"free-practice"`
+   - Fixed: `useChat` hook sent old API format instead of discriminated union
+   - Files: `src/app/training/chat/[assignmentId]/page.tsx`, `src/hooks/use-chat.ts`
+
+5. **Scenario Form Fields** ✅
+   - Added: Evaluator Context field with Write Text / Upload File toggle
+   - Added: Organization Account dropdown
+   - Added: Relevant Policy Sections field
+   - Files: `src/components/supervisor-dashboard.tsx`
+
+6. **Auth Deadlock** ✅
+   - Fixed: GET `/api/users` required auth but dashboard needed user first
+   - Solution: Made GET endpoint public for prototype
+   - Files: `src/app/api/users/route.ts`
+
+7. **Bulk Import Mapping** ✅
+   - Fixed: Frontend sent `evaluator_context` (snake_case) but API expected `evaluatorContext`
+   - Files: `src/components/bulk-import-modal.tsx`
+
+8. **Logo Files** ✅
+   - Added: `public/protocall-logo.svg` and `public/logo-main.svg`
+
+9. **Seed Data** ✅
+   - Created: `prisma/seed.ts` with 5 counselors for testing
+   - Added: `npm run db:seed` command
+   - Counselors: Test Counselor, Sarah Johnson, Michael Chen, Emily Rodriguez, David Kim
+
+10. **CSV Template** ✅
+    - Created: `public/scenario-import-template.csv` for bulk scenario import
+
+### Pending Issue to Verify
+
+**Assignment Creation** - Still showing "Validation failed"
+- Changes made but not yet tested:
+  - Changed frontend to send `undefined` instead of `null` for optional fields
+  - Updated validator to accept `.nullable()` for dueDate and supervisorNotes
+  - Added console.error logging to see actual validation error
+- Files modified: `src/components/supervisor-dashboard.tsx`, `src/lib/validators.ts`, `src/app/api/assignments/route.ts`
+- **Next step**: Hard refresh and try creating assignment - check server logs for specific error
+
+### Test Status
+
+| Feature | Status |
+|---------|--------|
+| Logo display | ✅ Working |
+| Role toggle buttons | ✅ Working |
+| Scenario creation | ✅ Working |
+| Chat free practice | ✅ Working |
+| Voice free practice | ✅ Working (OpenAI connects, sessions saved) |
+| Voice evaluation | ✅ Fixed (needs re-test when can speak) |
+| Assignment creation | ⚠️ Pending verification |
+| Bulk scenario import | ✅ Template ready |
+
+### Quick Start for Next Session
+
+```bash
+# Start servers
 npm run dev      # Terminal 1 - Next.js on :3003
 npm run ws:dev   # Terminal 2 - WebSocket on :3004
+
+# If counselors missing, run seed
+npm run db:seed
 ```
 
-Open http://localhost:3003
+Then test assignment creation - it should work now after hard refresh.
 
 ---
 
@@ -215,106 +316,57 @@ Open http://localhost:3003
 
 ### Prerequisites
 
-1. **Environment Setup**
-   ```bash
-   # Ensure .env has required keys
-   cp .env.example .env
-   # Edit .env and add your OPENAI_API_KEY
-   ```
+```bash
+# Start both servers
+npm run dev      # Terminal 1
+npm run ws:dev   # Terminal 2
+```
 
-2. **Required Environment Variables**
-   ```env
-   OPENAI_API_KEY=sk-...          # REQUIRED - for AI features
-   DATABASE_URL="file:./dev.db"   # Default SQLite
-   NEXT_PUBLIC_WS_URL=ws://localhost:3004  # WebSocket URL
-   ```
-
-3. **Start Both Servers**
-   ```bash
-   # Terminal 1 - Next.js app
-   npm run dev
-
-   # Terminal 2 - WebSocket server (for voice)
-   npm run ws:dev
-   ```
-
-4. **Open Browser**
-   ```
-   http://localhost:3003
-   ```
+Open http://localhost:3003
 
 ### Test Data Available
 
-| Type | ID | Name |
-|------|-----|------|
-| Supervisor | `00000000-0000-0000-0000-000000000001` | Test Supervisor |
-| Counselor | `32d86730-7a31-4a30-9b53-e6c238706bf6` | Test Counselor |
-| Scenarios | 4 available | Various training scenarios |
+| Type | Count | Examples |
+|------|-------|----------|
+| Supervisor | 1 | Test Supervisor |
+| Counselors | 5 | Test Counselor, Sarah Johnson, Michael Chen, Emily Rodriguez, David Kim |
+| Scenarios | 5+ | Various test scenarios |
 
 ### Test Flows
 
 #### Counselor Flow
-- [ ] Select "Counselor" on home page
-- [ ] View Free Practice section
-- [ ] Click "Practice by Voice" → microphone prompt → speak with AI
-- [ ] Click "Practice by Text" → chat with AI
-- [ ] View assigned training (if assignments exist)
-- [ ] Complete training and click "Get Feedback"
-- [ ] Review AI evaluation
+- [x] Select "Counselor" on home page
+- [x] View Free Practice section
+- [x] Click "Practice by Voice" → connects to OpenAI, roleplay works
+- [x] Click "Practice by Text" → chat with AI works
+- [ ] Voice evaluation - needs re-test
+- [ ] Chat evaluation - needs test
 
 #### Supervisor Flow
-- [ ] Select "Supervisor" on home page
-- [ ] View Scenarios tab
-- [ ] Toggle Global / One-Time filter
-- [ ] Click "Import Scenarios" → test bulk import
-- [ ] Create a new scenario
-- [ ] View Assignments tab
-- [ ] Create assignment for counselor
-- [ ] View recordings (if any exist)
-
-#### Voice Training Specific
-- [ ] Browser prompts for microphone access
-- [ ] Connection status shows "Connected"
-- [ ] Speaking shows transcript in real-time
-- [ ] AI responds with voice
-- [ ] "Get Feedback" generates evaluation
-- [ ] Session is saved to database
-
-### Known Limitations (Prototype)
-
-1. **No real authentication** - Uses role selector, not login
-2. **Microphone required** - Voice training needs browser mic access
-3. **OpenAI API costs** - Each session uses API credits
-4. **Missing logos** - Some image 404s (cosmetic only)
+- [x] Select "Supervisor" on home page
+- [x] View Scenarios tab
+- [x] Toggle Global / One-Time filter
+- [x] Create a new scenario
+- [ ] Create assignment for counselor - **VERIFY THIS**
+- [x] Import Scenarios → template available
 
 ### Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
-| Voice training blank page | Check WebSocket server is running on :3004 |
-| "Session not found" on evaluation | Verify OPENAI_API_KEY is set |
-| 401 Unauthorized errors | Expected - prototype uses simplified auth |
-| No scenarios showing | Run `npx prisma db seed` to populate data |
+| Voice stuck on "Connecting..." | Restart WebSocket server: `npm run ws:dev` |
+| Assignment validation failed | Hard refresh (Cmd+Shift+R), check server logs |
+| No counselors in dropdown | Run `npm run db:seed` |
+| No scenarios | Run seed or create via UI |
 
-### Quick Commands
+### Key Files Modified This Session
 
-```bash
-# Reset database
-npx prisma migrate reset
-
-# View database
-npx prisma studio
-
-# Check server logs
-# (logs appear in terminal where servers are running)
-```
-
-### Key Files
-
-| File | Purpose |
-|------|---------|
-| `prompts/evaluator-v1.txt` | Evaluator prompt (edit for A/B testing) |
-| `prompts/realtime-caller.txt` | Voice caller prompt |
-| `ws-server/realtime-session.ts` | Voice session handling |
-| `src/app/training/voice/` | Voice training UI |
-| `src/lib/prompts.ts` | Prompt loader utility |
+| File | Change |
+|------|--------|
+| `ws-server/realtime-session.ts` | Lazy env loading, modelType fix |
+| `src/hooks/use-realtime-voice.ts` | Added x-user-id to evaluation |
+| `src/hooks/use-chat.ts` | Fixed API request format |
+| `src/components/supervisor-dashboard.tsx` | Form fields, assignment payload |
+| `src/lib/validators.ts` | Made optional fields nullable |
+| `prisma/seed.ts` | New file - seeds test data |
+| `public/scenario-import-template.csv` | New file - CSV template |

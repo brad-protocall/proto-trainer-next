@@ -74,14 +74,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verify account exists if accountId is provided
-    if (result.data.accountId) {
+    // Determine accountId - use provided, or fall back to first account
+    let accountId = result.data.accountId
+    if (accountId) {
       const account = await prisma.account.findUnique({
-        where: { id: result.data.accountId },
+        where: { id: accountId },
       })
       if (!account) {
         return notFound('Account not found')
       }
+    } else {
+      // Get default account (first one) - accountId is required in schema
+      const defaultAccount = await prisma.account.findFirst()
+      if (!defaultAccount) {
+        return apiError(
+          { type: 'CONFIGURATION_ERROR', message: 'No accounts configured. Please create an account first.' },
+          500
+        )
+      }
+      accountId = defaultAccount.id
     }
 
     const scenario = await prisma.scenario.create({
@@ -90,8 +101,8 @@ export async function POST(request: NextRequest) {
         description: result.data.description,
         prompt: result.data.prompt,
         mode: result.data.mode,
-        category: result.data.category,
-        accountId: result.data.accountId!,
+        category: result.data.category || null,
+        accountId,
         isOneTime: result.data.isOneTime,
         relevantPolicySections: result.data.relevantPolicySections,
         createdBy: user.id,

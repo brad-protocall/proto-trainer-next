@@ -21,12 +21,20 @@ export default function VoiceTrainingPage() {
       try {
         // Fetch current user (counselor)
         const userRes = await fetch("/api/users?role=counselor");
-        const userData: ApiResponse<User[]> = await userRes.json();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const userData: ApiResponse<any[]> = await userRes.json();
+        let user = null;
         if (userData.ok && userData.data.length > 0) {
-          const testCounselor = userData.data.find(
+          // API returns camelCase, handle both naming conventions
+          const users = userData.data.map((u) => ({
+            ...u,
+            display_name: u.displayName || u.display_name,
+          }));
+          const testCounselor = users.find(
             (c) => c.display_name === "Test Counselor"
           );
-          setCurrentUser(testCounselor || userData.data[0]);
+          user = testCounselor || users[0];
+          setCurrentUser(user);
         }
 
         // Handle "free" or "free-practice" mode - no assignment needed
@@ -36,12 +44,18 @@ export default function VoiceTrainingPage() {
           return;
         }
 
-        const res = await fetch(`/api/assignments/${assignmentId}`);
+        // Fetch assignment with auth header
+        const res = await fetch(`/api/assignments/${assignmentId}`, {
+          headers: user ? { "x-user-id": user.id } : {},
+        });
         if (!res.ok) {
           throw new Error("Failed to load assignment");
         }
         const data = await res.json();
-        setAssignment(data);
+        if (!data.ok) {
+          throw new Error(data.error?.message || "Failed to load assignment");
+        }
+        setAssignment(data.data);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load assignment");
       } finally {

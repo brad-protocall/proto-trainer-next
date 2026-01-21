@@ -250,10 +250,10 @@ export default function BulkImportModal({
       const apiScenarios = parsedScenarios.map((s) => ({
         title: s.title.trim(),
         prompt: s.prompt.trim(),
-        description: s.description?.trim() || null,
-        evaluator_context: s.evaluator_context?.trim() || null,
+        description: s.description?.trim() || undefined,
+        evaluatorContext: s.evaluator_context?.trim() || undefined,
         mode: (s.mode?.toLowerCase().trim() || "phone") as ScenarioMode,
-        category: (s.category?.toLowerCase().trim() || null) as ScenarioCategory | null,
+        category: (s.category?.toLowerCase().trim() || undefined) as ScenarioCategory | undefined,
       }));
 
       const response = await fetch("/api/scenarios/import", {

@@ -38,6 +38,8 @@ interface ScenarioFormData {
   mode: ScenarioMode;
   relevant_policy_sections: string;
   category: ScenarioCategory | null;
+  evaluator_context: string;
+  evaluator_context_file: File | null;
 }
 
 interface AssignmentFormData {
@@ -61,8 +63,8 @@ export default function SupervisorDashboard() {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [showBulkImport, setShowBulkImport] = useState(false);
 
-  // Account state (reserved for future use)
-  const [, setAccounts] = useState<Account[]>([]);
+  // Account state
+  const [accounts, setAccounts] = useState<Account[]>([]);
 
   // Scenario form state
   const [formData, setFormData] = useState<ScenarioFormData>({
@@ -73,7 +75,13 @@ export default function SupervisorDashboard() {
     mode: "phone",
     relevant_policy_sections: "",
     category: null,
+    evaluator_context: "",
+    evaluator_context_file: null,
   });
+
+  // Toggle states for form input modes
+  const [promptInputMode, setPromptInputMode] = useState<"text" | "file">("text");
+  const [contextInputMode, setContextInputMode] = useState<"text" | "file">("text");
 
   // Assignments state
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -93,7 +101,15 @@ export default function SupervisorDashboard() {
   const [selectedCounselorIds, setSelectedCounselorIds] = useState<Set<string>>(new Set());
   const [selectedScenarioIds, setSelectedScenarioIds] = useState<Set<string>>(new Set());
   const [counselorSearch, setCounselorSearch] = useState("");
-  const [bulkResult, setBulkResult] = useState<{ created: number; skipped: number } | null>(null);
+  const [bulkResult, setBulkResult] = useState<{
+    created: number;
+    skipped: number;
+    blocked?: Array<{ counselorId: string; scenarioId: string; reason: string }>;
+    warnings?: Array<{ counselorId: string; scenarioId: string; reason: string }>;
+    requiresConfirmation?: boolean;
+    message?: string;
+  } | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState(false);
 
   // Global scenarios cache for assignment dropdown
   const [globalScenariosCache, setGlobalScenariosCache] = useState<Scenario[]>([]);
@@ -107,12 +123,16 @@ export default function SupervisorDashboard() {
     [currentUser]
   );
 
+  // Helper to get counselor display name (API returns camelCase)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const getCounselorName = (c: any) => c.displayName || c.display_name || c.email || "Unknown";
+
   const filteredCounselors = useMemo(() => {
     if (!counselorSearch.trim()) return counselors;
     const term = counselorSearch.toLowerCase();
     return counselors.filter((c) => {
-      const name = (c.display_name || c.email || "").toLowerCase();
-      return name.split(/\s+/).some((word) => word.startsWith(term));
+      const name = getCounselorName(c).toLowerCase();
+      return name.split(/\s+/).some((word: string) => word.startsWith(term));
     });
   }, [counselors, counselorSearch]);
 
@@ -251,7 +271,11 @@ export default function SupervisorDashboard() {
       mode: "phone",
       relevant_policy_sections: "",
       category: null,
+      evaluator_context: "",
+      evaluator_context_file: null,
     });
+    setPromptInputMode("text");
+    setContextInputMode("text");
     setEditingScenario(null);
     setShowForm(false);
   };
@@ -270,7 +294,11 @@ export default function SupervisorDashboard() {
       mode: scenario.mode,
       relevant_policy_sections: scenario.relevant_policy_sections || "",
       category: scenario.category,
+      evaluator_context: "",
+      evaluator_context_file: null,
     });
+    setPromptInputMode("text");
+    setContextInputMode(scenario.evaluator_context_path ? "file" : "text");
     setEditingScenario(scenario);
     setShowForm(true);
   };
@@ -286,11 +314,47 @@ export default function SupervisorDashboard() {
         : "/api/scenarios";
       const method = editingScenario ? "PUT" : "POST";
 
-      const response = await authFetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
+      // Use FormData if there's a file, otherwise JSON
+      let response;
+      if (formData.evaluator_context_file) {
+        const form = new FormData();
+        form.append("title", formData.title);
+        form.append("description", formData.description);
+        form.append("prompt", formData.prompt);
+        form.append("mode", formData.mode);
+        if (formData.account_id) form.append("account_id", formData.account_id);
+        if (formData.category) form.append("category", formData.category);
+        if (formData.relevant_policy_sections) {
+          form.append("relevant_policy_sections", formData.relevant_policy_sections);
+        }
+        if (formData.evaluator_context) {
+          form.append("evaluator_context", formData.evaluator_context);
+        }
+        form.append("evaluator_context_file", formData.evaluator_context_file);
+
+        response = await authFetch(url, {
+          method,
+          body: form,
+        });
+      } else {
+        // Send JSON (without file fields)
+        const jsonData = {
+          title: formData.title,
+          description: formData.description,
+          prompt: formData.prompt,
+          mode: formData.mode,
+          account_id: formData.account_id,
+          category: formData.category,
+          relevant_policy_sections: formData.relevant_policy_sections,
+          evaluator_context: formData.evaluator_context || undefined,
+        };
+
+        response = await authFetch(url, {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(jsonData),
+        });
+      }
 
       const data: ApiResponse<Scenario> = await response.json();
       if (!data.ok) throw new Error(data.error.message);
@@ -360,20 +424,24 @@ export default function SupervisorDashboard() {
     }
   };
 
-  const handleBulkCreate = async () => {
+  const handleBulkCreate = async (forceReassign = false) => {
     setSavingAssignment(true);
     setError(null);
-    setBulkResult(null);
+    if (!forceReassign) {
+      setBulkResult(null);
+      setPendingConfirmation(false);
+    }
 
     try {
       const response = await authFetch("/api/assignments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          counselor_ids: Array.from(selectedCounselorIds),
-          scenario_ids: Array.from(selectedScenarioIds),
-          due_date: assignmentFormData.due_date || null,
-          supervisor_notes: assignmentFormData.supervisor_notes || null,
+          counselorIds: Array.from(selectedCounselorIds),
+          scenarioIds: Array.from(selectedScenarioIds),
+          dueDate: assignmentFormData.due_date || undefined,
+          supervisorNotes: assignmentFormData.supervisor_notes || undefined,
+          forceReassign,
         }),
       });
 
@@ -381,16 +449,34 @@ export default function SupervisorDashboard() {
       if (!data.ok) throw new Error(data.error?.message || "Failed to create assignments");
 
       setBulkResult(data.data);
+
+      // Check if confirmation is required (completed assignments exist)
+      if (data.data.requiresConfirmation) {
+        setPendingConfirmation(true);
+        setSavingAssignment(false);
+        return; // Don't close modal, wait for user decision
+      }
+
       await loadAssignments();
 
-      setTimeout(() => {
-        setShowAssignmentForm(false);
-        setBulkResult(null);
-        setSelectedCounselorIds(new Set());
-        setSelectedScenarioIds(new Set());
-        setCounselorSearch("");
-        setAssignmentFormData({ ...assignmentFormData, due_date: "", supervisor_notes: "" });
-      }, 1500);
+      // If there were blocked assignments, keep the modal open so user sees feedback
+      // Only auto-close on full success (all created, none skipped)
+      const hasBlocked = data.data.blocked && data.data.blocked.length > 0;
+      const hasSkipped = data.data.skipped > 0;
+
+      if (!hasBlocked && !hasSkipped) {
+        // Full success - auto-close after short delay
+        setTimeout(() => {
+          setShowAssignmentForm(false);
+          setBulkResult(null);
+          setPendingConfirmation(false);
+          setSelectedCounselorIds(new Set());
+          setSelectedScenarioIds(new Set());
+          setCounselorSearch("");
+          setAssignmentFormData({ ...assignmentFormData, due_date: "", supervisor_notes: "" });
+        }, 1500);
+      }
+      // If there were blocked/skipped, keep modal open so user can see feedback and dismiss manually
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create assignments");
     } finally {
@@ -624,55 +710,66 @@ export default function SupervisorDashboard() {
             <p className="text-gray-400">No assignments yet.</p>
           ) : (
             <div className="space-y-3">
-              {assignments.map((assignment) => (
-                <div
-                  key={assignment.id}
-                  className="bg-brand-navy border border-gray-700 rounded-lg p-4"
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-grow">
-                      <div className="flex items-center gap-3">
-                        <h3 className="text-white font-marfa font-medium">
-                          {assignment.scenario_title}
-                        </h3>
-                        <span
-                          className={`text-xs px-2 py-1 rounded ${getStatusColor(
-                            assignment.status
-                          )}`}
-                        >
-                          {assignment.status.replace("_", " ")}
-                        </span>
-                        {assignment.is_overdue && (
-                          <span className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-300">
-                            Overdue
+              {assignments.map((assignment) => {
+                // Handle both camelCase (API) and snake_case (types) field names
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const a = assignment as any;
+                const scenarioTitle = a.scenarioTitle || a.scenario_title || "Untitled";
+                const counselorName = a.counselorName || a.counselor_name || "Unknown";
+                const isOverdue = a.isOverdue || a.is_overdue;
+                const dueDate = a.dueDate || a.due_date;
+                const completedAt = a.completedAt || a.completed_at;
+
+                return (
+                  <div
+                    key={assignment.id}
+                    className="bg-brand-navy border border-gray-700 rounded-lg p-4"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex-grow">
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-white font-marfa font-medium">
+                            {scenarioTitle}
+                          </h3>
+                          <span
+                            className={`text-xs px-2 py-1 rounded ${getStatusColor(
+                              assignment.status
+                            )}`}
+                          >
+                            {assignment.status.replace("_", " ")}
                           </span>
+                          {isOverdue && (
+                            <span className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-300">
+                              Overdue
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-gray-400 text-sm mt-1">
+                          Assigned to: {counselorName}
+                        </p>
+                        {dueDate && (
+                          <p className="text-gray-500 text-xs mt-1">
+                            Due: {formatDate(dueDate)}
+                          </p>
+                        )}
+                        {completedAt && (
+                          <p className="text-green-400 text-xs mt-1">
+                            Completed: {formatDate(completedAt)}
+                          </p>
                         )}
                       </div>
-                      <p className="text-gray-400 text-sm mt-1">
-                        Assigned to: {assignment.counselor_name || "Unknown"}
-                      </p>
-                      {assignment.due_date && (
-                        <p className="text-gray-500 text-xs mt-1">
-                          Due: {formatDate(assignment.due_date)}
-                        </p>
-                      )}
-                      {assignment.completed_at && (
-                        <p className="text-green-400 text-xs mt-1">
-                          Completed: {formatDate(assignment.completed_at)}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex gap-3 ml-4">
-                      <button
-                        onClick={() => handleDeleteAssignment(assignment.id)}
-                        className="text-red-400 hover:text-red-300 text-sm"
-                      >
-                        Delete
-                      </button>
+                      <div className="flex gap-3 ml-4">
+                        <button
+                          onClick={() => handleDeleteAssignment(assignment.id)}
+                          className="text-red-400 hover:text-red-300 text-sm"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -765,22 +862,206 @@ export default function SupervisorDashboard() {
               </div>
 
               <div>
-                <label className="block text-gray-300 text-sm font-marfa mb-1">
-                  Prompt (Instructions for AI Caller) *
-                </label>
-                <textarea
-                  value={formData.prompt}
-                  onChange={(e) =>
-                    setFormData({ ...formData, prompt: e.target.value })
-                  }
-                  required
-                  rows={6}
-                  maxLength={10000}
-                  className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2
-                             text-white font-marfa focus:outline-none focus:border-brand-orange"
-                  placeholder="Describe the caller's situation, mood, and how they should respond..."
-                />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-gray-300 text-sm font-marfa">
+                    Prompt (Instructions for AI Caller) *
+                  </label>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setPromptInputMode("text")}
+                      className={`px-3 py-1 text-xs rounded ${
+                        promptInputMode === "text"
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-700 text-gray-300"
+                      }`}
+                    >
+                      Write Text
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPromptInputMode("file")}
+                      className={`px-3 py-1 text-xs rounded ${
+                        promptInputMode === "file"
+                          ? "bg-brand-orange text-white"
+                          : "bg-gray-700 text-gray-300"
+                      }`}
+                    >
+                      Upload File
+                    </button>
+                  </div>
+                </div>
+                {promptInputMode === "text" ? (
+                  <>
+                    <textarea
+                      value={formData.prompt}
+                      onChange={(e) =>
+                        setFormData({ ...formData, prompt: e.target.value })
+                      }
+                      required
+                      rows={6}
+                      maxLength={10000}
+                      className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2
+                                 text-white font-marfa focus:outline-none focus:border-brand-orange"
+                      placeholder="Describe the caller's situation, mood, and how they should respond..."
+                    />
+                    <p className="text-xs text-gray-500 text-right mt-1">
+                      {formData.prompt.length} / 10,000
+                    </p>
+                  </>
+                ) : (
+                  <div className="border-2 border-dashed border-gray-600 rounded-lg p-4">
+                    <input
+                      type="file"
+                      accept=".txt,.md"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = (event) => {
+                            setFormData({
+                              ...formData,
+                              prompt: event.target?.result as string,
+                            });
+                          };
+                          reader.readAsText(file);
+                        }
+                      }}
+                      className="text-gray-300"
+                    />
+                    <p className="text-xs text-gray-500 mt-2">Accepted: TXT, MD</p>
+                  </div>
+                )}
               </div>
+
+              {/* Evaluator Context */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-gray-300 text-sm font-marfa">
+                    Evaluator Context
+                  </label>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setContextInputMode("text")}
+                      className={`px-3 py-1 text-xs rounded ${
+                        contextInputMode === "text"
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-700 text-gray-300"
+                      }`}
+                    >
+                      Write Text
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setContextInputMode("file")}
+                      className={`px-3 py-1 text-xs rounded ${
+                        contextInputMode === "file"
+                          ? "bg-brand-orange text-white"
+                          : "bg-gray-700 text-gray-300"
+                      }`}
+                    >
+                      Upload File
+                    </button>
+                  </div>
+                </div>
+                {contextInputMode === "text" ? (
+                  <textarea
+                    value={formData.evaluator_context}
+                    onChange={(e) =>
+                      setFormData({ ...formData, evaluator_context: e.target.value })
+                    }
+                    rows={4}
+                    className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2
+                               text-white font-marfa focus:outline-none focus:border-brand-orange"
+                    placeholder="Additional context for the evaluator (key learning objectives, specific things to assess...)"
+                  />
+                ) : (
+                  <div className="border-2 border-dashed border-gray-600 rounded-lg p-4">
+                    <input
+                      type="file"
+                      accept=".txt,.md,.pdf,.docx"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setFormData({ ...formData, evaluator_context_file: file });
+                        }
+                      }}
+                      className="text-gray-300"
+                    />
+                    <p className="text-xs text-gray-500 mt-2">Accepted: TXT, MD, PDF, DOCX</p>
+                    {formData.evaluator_context_file && (
+                      <p className="text-xs text-brand-orange mt-1">
+                        Selected: {formData.evaluator_context_file.name}
+                      </p>
+                    )}
+                    {editingScenario?.evaluator_context_path && !formData.evaluator_context_file && (
+                      <p className="text-xs text-green-400 mt-1">
+                        ✓ Existing file uploaded
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Organization Account */}
+              <div>
+                <label className="block text-gray-300 text-sm font-marfa mb-1">
+                  Organization Account (Optional)
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    value={formData.account_id || ""}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        account_id: e.target.value || null,
+                      })
+                    }
+                    className="flex-1 bg-gray-800 border border-gray-600 rounded px-3 py-2
+                               text-white font-marfa focus:outline-none focus:border-brand-orange"
+                  >
+                    <option value="">No account</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm"
+                    onClick={() => {
+                      // TODO: Open account creation modal
+                      alert("Account creation coming soon");
+                    }}
+                  >
+                    + New
+                  </button>
+                </div>
+              </div>
+
+              {/* Relevant Policy Sections - only show when account is selected */}
+              {formData.account_id && (
+                <div>
+                  <label className="block text-gray-300 text-sm font-marfa mb-1">
+                    Relevant Policy Sections
+                  </label>
+                  <textarea
+                    value={formData.relevant_policy_sections}
+                    onChange={(e) =>
+                      setFormData({ ...formData, relevant_policy_sections: e.target.value })
+                    }
+                    rows={2}
+                    className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2
+                               text-white font-marfa focus:outline-none focus:border-brand-orange"
+                    placeholder="e.g., Crisis De-escalation Protocol, Suicide Risk Assessment"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Help the evaluator find the right policies to reference
+                  </p>
+                </div>
+              )}
 
               <div className="flex justify-end gap-3 pt-4">
                 <button
@@ -837,20 +1118,29 @@ export default function SupervisorDashboard() {
                     <p className="text-gray-500 text-sm py-2 px-2">No counselors found</p>
                   ) : (
                     filteredCounselors.map((c) => (
-                      <label
+                      <div
                         key={c.id}
-                        className="flex items-center gap-2 py-1.5 px-2 text-white cursor-pointer hover:bg-gray-700 rounded"
+                        className="flex items-center justify-between py-1.5 px-2 hover:bg-gray-700 rounded"
                       >
-                        <input
-                          type="checkbox"
-                          checked={selectedCounselorIds.has(c.id)}
-                          onChange={() => toggleCounselor(c.id)}
-                          className="w-4 h-4 accent-brand-orange"
-                        />
-                        <span className="font-marfa">
-                          {c.display_name || c.email || "Unknown"}
-                        </span>
-                      </label>
+                        <label className="flex items-center gap-2 text-white cursor-pointer flex-grow">
+                          <input
+                            type="checkbox"
+                            checked={selectedCounselorIds.has(c.id)}
+                            onChange={() => toggleCounselor(c.id)}
+                            className="w-4 h-4 accent-brand-orange"
+                          />
+                          <span className="font-marfa">{getCounselorName(c)}</span>
+                        </label>
+                        <a
+                          href={`/counselor?userId=${c.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-400 hover:text-blue-300 font-marfa ml-2"
+                          title="View counselor dashboard"
+                        >
+                          View →
+                        </a>
+                      </div>
                     ))
                   )}
                 </div>
@@ -943,55 +1233,96 @@ export default function SupervisorDashboard() {
                 </div>
               )}
 
-              {/* Result Summary */}
+              {/* Result Summary / Warnings */}
               {bulkResult && (
-                <div
-                  className={`p-3 rounded-lg font-marfa ${
-                    bulkResult.skipped > 0
-                      ? "bg-yellow-900/30 border border-yellow-700"
-                      : "bg-green-900/30 border border-green-700"
-                  }`}
-                >
-                  <span className="text-white">
-                    ✓ Created {bulkResult.created} assignment
-                    {bulkResult.created !== 1 ? "s" : ""}
-                  </span>
-                  {bulkResult.skipped > 0 && (
-                    <span className="text-yellow-400 ml-2">
-                      ({bulkResult.skipped} skipped - already exist)
-                    </span>
+                <div className="space-y-3">
+                  {/* Confirmation required for completed assignments */}
+                  {bulkResult.requiresConfirmation && bulkResult.warnings && bulkResult.warnings.length > 0 && (
+                    <div className="p-3 rounded-lg font-marfa bg-yellow-900/30 border border-yellow-700">
+                      <p className="text-yellow-300 font-medium mb-2">
+                        ⚠️ {bulkResult.warnings.length} counselor(s) have already completed this scenario
+                      </p>
+                      <p className="text-gray-300 text-sm mb-3">
+                        Do you want to assign it again for additional practice?
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleBulkCreate(true)}
+                          disabled={savingAssignment}
+                          className="px-3 py-1 bg-yellow-600 hover:bg-yellow-500 text-white rounded text-sm font-medium disabled:opacity-50"
+                        >
+                          Yes, Reassign
+                        </button>
+                        <button
+                          onClick={() => {
+                            setBulkResult(null);
+                            setPendingConfirmation(false);
+                          }}
+                          className="px-3 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Blocked assignments (active/in-progress) */}
+                  {bulkResult.blocked && bulkResult.blocked.length > 0 && (
+                    <div className="p-3 rounded-lg font-marfa bg-red-900/30 border border-red-700">
+                      <span className="text-red-300">
+                        ⛔ {bulkResult.blocked.length} skipped - already assigned and not completed
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Success message */}
+                  {bulkResult.created > 0 && !bulkResult.requiresConfirmation && (
+                    <div className="p-3 rounded-lg font-marfa bg-green-900/30 border border-green-700">
+                      <span className="text-white">
+                        ✓ Created {bulkResult.created} assignment
+                        {bulkResult.created !== 1 ? "s" : ""}
+                      </span>
+                      {bulkResult.skipped > 0 && (
+                        <span className="text-yellow-400 ml-2">
+                          ({bulkResult.skipped} skipped - already assigned)
+                        </span>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
 
               {/* Action Buttons */}
-              <div className="flex justify-end gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAssignmentForm(false);
-                    setSelectedCounselorIds(new Set());
-                    setSelectedScenarioIds(new Set());
-                    setBulkResult(null);
-                  }}
-                  className="px-4 py-2 text-gray-400 hover:text-white font-marfa"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleBulkCreate}
-                  disabled={assignmentCount === 0 || savingAssignment}
-                  className="px-4 py-2 bg-brand-orange hover:bg-brand-orange-hover
-                             text-white font-marfa font-bold rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {savingAssignment
-                    ? "Creating..."
-                    : `Create ${assignmentCount} Assignment${
-                        assignmentCount !== 1 ? "s" : ""
-                      }`}
-                </button>
-              </div>
+              {!pendingConfirmation && (
+                <div className="flex justify-end gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAssignmentForm(false);
+                      setSelectedCounselorIds(new Set());
+                      setSelectedScenarioIds(new Set());
+                      setBulkResult(null);
+                      setPendingConfirmation(false);
+                    }}
+                    className="px-4 py-2 text-gray-400 hover:text-white font-marfa"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleBulkCreate(false)}
+                    disabled={assignmentCount === 0 || savingAssignment}
+                    className="px-4 py-2 bg-brand-orange hover:bg-brand-orange-hover
+                               text-white font-marfa font-bold rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {savingAssignment
+                      ? "Creating..."
+                      : `Create ${assignmentCount} Assignment${
+                          assignmentCount !== 1 ? "s" : ""
+                        }`}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

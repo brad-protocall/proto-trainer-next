@@ -226,7 +226,10 @@ export interface AssignmentResponse {
 export interface BulkAssignmentResponse {
   created: number;
   skipped: number;
-  skippedPairs?: Array<{ scenarioId: string; counselorId: string }>;
+  blocked?: Array<{ scenarioId: string; counselorId: string; reason: string }>;
+  warnings?: Array<{ scenarioId: string; counselorId: string; reason: string }>;
+  requiresConfirmation?: boolean;
+  message?: string;
   assignments?: AssignmentResponse[];
 }
 

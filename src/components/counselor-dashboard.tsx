@@ -11,12 +11,20 @@ import { createAuthFetch } from "@/lib/fetch";
 import { formatDate, getDaysUntilDue, getStatusColor, getStatusIcon } from "@/lib/format";
 import EvaluationResults from "./evaluation-results";
 
+// Helper to get assignment fields (handles both camelCase API and snake_case types)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getAssignmentField(assignment: any, camelCase: string, snakeCase: string) {
+  return assignment?.[camelCase] || assignment?.[snakeCase];
+}
+
 interface CounselorDashboardProps {
   onStartTraining: (assignment: Assignment) => void;
+  counselorId?: string | null;
 }
 
 export default function CounselorDashboard({
   onStartTraining,
+  counselorId: propCounselorId,
 }: CounselorDashboardProps) {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,19 +68,34 @@ export default function CounselorDashboard({
     const loadCounselorUser = async () => {
       try {
         const response = await fetch("/api/users?role=counselor");
-        const data: ApiResponse<User[]> = await response.json();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const data: ApiResponse<any[]> = await response.json();
         if (data.ok && data.data.length > 0) {
-          const testCounselor = data.data.find(
-            (c) => c.display_name === "Test Counselor"
-          );
-          setCurrentUser(testCounselor || data.data[0]);
+          // API returns camelCase, transform to match our User type
+          const users = data.data.map((u) => ({
+            ...u,
+            display_name: u.displayName || u.display_name,
+          }));
+
+          let selectedUser;
+          if (propCounselorId) {
+            // Use the provided counselor ID from URL
+            selectedUser = users.find((c) => c.id === propCounselorId);
+          }
+          if (!selectedUser) {
+            // Fall back to Test Counselor or first counselor
+            selectedUser = users.find(
+              (c) => c.display_name === "Test Counselor"
+            ) || users[0];
+          }
+          setCurrentUser(selectedUser);
         }
       } catch (err) {
         console.error("Failed to load counselor user:", err);
       }
     };
     loadCounselorUser();
-  }, []);
+  }, [propCounselorId]);
 
   const loadAssignments = useCallback(async () => {
     if (!currentUser) return;
@@ -116,7 +139,8 @@ export default function CounselorDashboard({
   };
 
   const handleGetFeedback = async (assignment: Assignment) => {
-    if (!assignment.session_id) {
+    const sessionId = getAssignmentField(assignment, "sessionId", "session_id");
+    if (!sessionId) {
       setError("No session found for this assignment");
       return;
     }
@@ -125,7 +149,7 @@ export default function CounselorDashboard({
     setError(null);
     try {
       const response = await authFetch(
-        `/api/sessions/${assignment.session_id}/evaluate`,
+        `/api/sessions/${sessionId}/evaluate`,
         { method: "POST" }
       );
       const data = await response.json();
@@ -143,14 +167,15 @@ export default function CounselorDashboard({
   };
 
   const handleViewFeedback = async (assignment: Assignment) => {
-    if (!assignment.session_id) {
+    const sessionId = getAssignmentField(assignment, "sessionId", "session_id");
+    if (!sessionId) {
       setError("No session found for this assignment");
       return;
     }
     setLoadingFeedback(assignment.id);
     setError(null);
     try {
-      const response = await authFetch(`/api/sessions/${assignment.session_id}`);
+      const response = await authFetch(`/api/sessions/${sessionId}`);
       const data = await response.json();
       if (!data.ok) throw new Error(data.error?.message || "Failed to load feedback");
 
@@ -169,10 +194,11 @@ export default function CounselorDashboard({
   };
 
   const handleViewScenario = async (assignment: Assignment) => {
+    const scenarioId = getAssignmentField(assignment, "scenarioId", "scenario_id");
     setLoadingDetail("scenario");
     setError(null);
     try {
-      const response = await authFetch(`/api/scenarios/${assignment.scenario_id}`);
+      const response = await authFetch(`/api/scenarios/${scenarioId}`);
       const data = await response.json();
       if (!data.ok) throw new Error(data.error?.message || "Failed to load scenario");
       setDetailModal({
@@ -188,14 +214,15 @@ export default function CounselorDashboard({
   };
 
   const handleViewTranscript = async (assignment: Assignment) => {
-    if (!assignment.session_id) {
+    const sessionId = getAssignmentField(assignment, "sessionId", "session_id");
+    if (!sessionId) {
       setError("No session found for this assignment");
       return;
     }
     setLoadingDetail("transcript");
     setError(null);
     try {
-      const response = await authFetch(`/api/sessions/${assignment.session_id}`);
+      const response = await authFetch(`/api/sessions/${sessionId}`);
       const data = await response.json();
       if (!data.ok) throw new Error(data.error?.message || "Failed to load transcript");
 
@@ -336,8 +363,19 @@ export default function CounselorDashboard({
       ) : (
         <div className="space-y-4">
           {assignments.map((assignment) => {
-            const daysUntilDue = getDaysUntilDue(assignment.due_date);
-            const isOverdue = assignment.is_overdue;
+            // Handle both camelCase (API) and snake_case (types) field names
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const a = assignment as any;
+            const scenarioTitle = a.scenarioTitle || a.scenario_title || "Untitled";
+            const scenarioMode = a.scenarioMode || a.scenario_mode || "phone";
+            const dueDate = a.dueDate || a.due_date;
+            const completedAt = a.completedAt || a.completed_at;
+            const supervisorNotes = a.supervisorNotes || a.supervisor_notes;
+            const isOverdue = a.isOverdue || a.is_overdue;
+            const hasTranscript = a.hasTranscript || a.has_transcript;
+            const sessionId = a.sessionId || a.session_id;
+
+            const daysUntilDue = getDaysUntilDue(dueDate);
             const canStart = assignment.status === "pending";
             const canContinue = assignment.status === "in_progress";
             const isCompleted = assignment.status === "completed";
@@ -360,16 +398,16 @@ export default function CounselorDashboard({
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="text-white font-marfa font-medium text-lg">
-                            {assignment.scenario_title}
+                            {scenarioTitle}
                           </h3>
                           <span
                             className={`px-2 py-0.5 rounded text-xs font-marfa flex-shrink-0 ${
-                              assignment.scenario_mode === "chat"
+                              scenarioMode === "chat"
                                 ? "bg-blue-500/20 text-blue-300"
                                 : "bg-green-500/20 text-green-300"
                             }`}
                           >
-                            {assignment.scenario_mode === "chat" ? "Chat" : "Phone"}
+                            {scenarioMode === "chat" ? "Chat" : "Phone"}
                           </span>
                         </div>
                       </div>
@@ -392,13 +430,13 @@ export default function CounselorDashboard({
                     </div>
 
                     {/* Due date */}
-                    {assignment.due_date && !isCompleted && (
+                    {dueDate && !isCompleted && (
                       <p
                         className={`text-sm ${
                           isOverdue ? "text-red-400" : "text-gray-400"
                         }`}
                       >
-                        Due: {formatDate(assignment.due_date)}
+                        Due: {formatDate(dueDate)}
                         {daysUntilDue !== null && !isOverdue && (
                           <span className="ml-2 text-gray-500">
                             (
@@ -414,16 +452,16 @@ export default function CounselorDashboard({
                     )}
 
                     {/* Completed date */}
-                    {assignment.completed_at && (
+                    {completedAt && (
                       <p className="text-green-400 text-sm">
-                        Completed: {formatDate(assignment.completed_at)}
+                        Completed: {formatDate(completedAt)}
                       </p>
                     )}
 
                     {/* Supervisor notes */}
-                    {assignment.supervisor_notes && (
+                    {supervisorNotes && (
                       <p className="text-gray-500 text-sm mt-2 italic">
-                        &quot;{assignment.supervisor_notes}&quot;
+                        &quot;{supervisorNotes}&quot;
                       </p>
                     )}
                   </div>
@@ -467,7 +505,7 @@ export default function CounselorDashboard({
                         </button>
                         {openDropdown === assignment.id && (
                           <div className="absolute right-0 mt-1 w-40 bg-gray-800 border border-gray-600 rounded shadow-lg z-10">
-                            {assignment.has_transcript && (
+                            {hasTranscript && (
                               <button
                                 onClick={() => handleGetFeedback(assignment)}
                                 className="w-full text-left px-4 py-2 text-white hover:bg-gray-700 font-marfa text-sm"
@@ -487,7 +525,7 @@ export default function CounselorDashboard({
                     )}
                     {isCompleted && (
                       <div className="flex flex-nowrap gap-2 flex-shrink-0">
-                        {assignment.session_id && (
+                        {sessionId && (
                           <>
                             <button
                               onClick={() => handleViewFeedback(assignment)}

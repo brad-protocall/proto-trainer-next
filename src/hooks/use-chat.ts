@@ -25,8 +25,8 @@ interface UseChatReturn {
 }
 
 interface SessionResponse {
-  session_id: string;
-  initial_message: string;
+  id: string;
+  transcript: Array<{ role: string; content: string }>;
 }
 
 interface MessageResponse {
@@ -75,10 +75,15 @@ export function useChat({
     abortControllerRef.current = new AbortController();
 
     try {
+      // Build request body based on session type (discriminated union)
+      const requestBody = assignmentId
+        ? { type: "assignment", assignmentId }
+        : { type: "free_practice", userId, modelType: "chat" as const, scenarioId };
+
       const response = await fetch("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-user-id": userId },
-        body: JSON.stringify({ scenario_id: scenarioId, assignment_id: assignmentId }),
+        body: JSON.stringify(requestBody),
         signal: abortControllerRef.current.signal,
       });
 
@@ -88,11 +93,13 @@ export function useChat({
         throw new Error(data.error.message);
       }
 
-      setSessionId(data.data.session_id);
+      setSessionId(data.data.id);
+      // Get initial message from transcript (first assistant message)
+      const initialMessage = data.data.transcript?.find(t => t.role === "assistant")?.content || "";
       setMessages([
         {
           role: "assistant",
-          content: data.data.initial_message,
+          content: initialMessage,
           timestamp: new Date(),
         },
       ]);

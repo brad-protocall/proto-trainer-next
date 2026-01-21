@@ -14,6 +14,7 @@
     "db:push": "npx prisma db push",
     "db:migrate": "npx prisma migrate dev",
     "db:studio": "npx prisma studio",
+    "db:seed": "npx tsx prisma/seed.ts",
     "ws:dev": "cd ws-server && npx tsx watch index.ts",
     "ws:start": "cd ws-server && npx tsx index.ts"
   },

@@ -419,6 +419,9 @@ export function useRealtimeVoice(
         `${baseUrl}/api/sessions/${sessionId}/evaluate`,
         {
           method: "POST",
+          headers: {
+            "x-user-id": userId,
+          },
         }
       );
 
@@ -438,7 +441,7 @@ export function useRealtimeVoice(
       console.error("Evaluation failed:", evalError);
       setError(errorMessage);
     }
-  }, [sessionId]);
+  }, [sessionId, userId]);
 
   // ============================================================================
   // Cleanup on Unmount

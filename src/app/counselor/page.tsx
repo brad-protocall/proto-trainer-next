@@ -1,15 +1,22 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import Header from "@/components/header";
 import CounselorDashboard from "@/components/counselor-dashboard";
 import { Assignment, UserRole } from "@/types";
 
-export default function CounselorPage() {
+function CounselorPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const counselorId = searchParams.get("userId");
 
   const handleStartTraining = (assignment: Assignment) => {
-    if (assignment.scenario_mode === "chat") {
+    // Handle both camelCase (API) and snake_case (types) field names
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const a = assignment as any;
+    const scenarioMode = a.scenarioMode || a.scenario_mode;
+    if (scenarioMode === "chat") {
       router.push(`/training/chat/${assignment.id}`);
     } else {
       // Voice training would go to a different route
@@ -29,8 +36,19 @@ export default function CounselorPage() {
           role="counselor"
           onRoleChange={handleRoleChange}
         />
-        <CounselorDashboard onStartTraining={handleStartTraining} />
+        <CounselorDashboard
+          onStartTraining={handleStartTraining}
+          counselorId={counselorId}
+        />
       </div>
     </main>
+  );
+}
+
+export default function CounselorPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-700" />}>
+      <CounselorPageContent />
+    </Suspense>
   );
 }

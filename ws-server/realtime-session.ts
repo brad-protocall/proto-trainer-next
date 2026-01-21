@@ -4,11 +4,12 @@ import path from "path";
 import { encodeWav, calculateDuration } from "./wav-encoder.js";
 import { loadPrompt, getRealtimeCallerPromptFile } from "./prompts.js";
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const REALTIME_MODEL = process.env.REALTIME_MODEL || "gpt-4o-realtime-preview";
-const REALTIME_VOICE = process.env.REALTIME_VOICE || "shimmer";
+// Read env vars lazily (after dotenv has loaded)
+const getApiKey = () => process.env.OPENAI_API_KEY;
+const getRealtimeModel = () => process.env.REALTIME_MODEL || "gpt-4o-realtime-preview";
+const getRealtimeVoice = () => process.env.REALTIME_VOICE || "shimmer";
+const getApiUrl = () => process.env.NEXT_PUBLIC_API_URL || "http://localhost:3003";
 const OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime";
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3003";
 
 // UUID v4 regex for validation
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -98,11 +99,11 @@ export class RealtimeSession {
         : {
             type: "free_practice",
             userId: this.params.userId,
-            modelType: "voice",
+            modelType: "phone",
             scenarioId: this.params.scenarioId,
           };
 
-      const response = await fetch(`${API_URL}/api/sessions`, {
+      const response = await fetch(`${getApiUrl()}/api/sessions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -150,7 +151,7 @@ export class RealtimeSession {
     }
 
     try {
-      const response = await fetch(`${API_URL}/api/scenarios/${scenarioId}`);
+      const response = await fetch(`${getApiUrl()}/api/scenarios/${scenarioId}`);
       if (!response.ok) {
         console.warn(`[Session] Failed to fetch scenario ${scenarioId}: ${response.status}`);
         return null;
@@ -171,7 +172,8 @@ export class RealtimeSession {
   }
 
   async connect(): Promise<void> {
-    if (!OPENAI_API_KEY) {
+    const apiKey = getApiKey();
+    if (!apiKey) {
       throw new Error("OPENAI_API_KEY environment variable is not set");
     }
 
@@ -179,11 +181,11 @@ export class RealtimeSession {
     this.scenarioPrompt = await this.fetchScenarioPrompt();
 
     return new Promise((resolve, reject) => {
-      const url = `${OPENAI_REALTIME_URL}?model=${REALTIME_MODEL}`;
+      const url = `${OPENAI_REALTIME_URL}?model=${getRealtimeModel()}`;
 
       this.openaiWs = new WebSocket(url, {
         headers: {
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          Authorization: `Bearer ${apiKey}`,
           "OpenAI-Beta": "realtime=v1",
         },
       });
@@ -247,7 +249,7 @@ export class RealtimeSession {
       type: "session.update",
       session: {
         modalities: ["text", "audio"],
-        voice: REALTIME_VOICE,
+        voice: getRealtimeVoice(),
         instructions,
         input_audio_format: "pcm16",
         output_audio_format: "pcm16",
@@ -485,7 +487,7 @@ export class RealtimeSession {
       console.log(`[Session] Recording saved: ${filePath} (${wavBuffer.length} bytes, ${duration}s)`);
 
       // Create recording entry in database via API
-      const response = await fetch(`${API_URL}/api/recordings`, {
+      const response = await fetch(`${getApiUrl()}/api/recordings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -564,7 +566,7 @@ export class RealtimeSession {
       // Save each transcript turn to the existing session
       for (let i = 0; i < this.transcripts.length; i++) {
         const turn = this.transcripts[i];
-        const turnResponse = await fetch(`${API_URL}/api/sessions/${this.dbSessionId}/message`, {
+        const turnResponse = await fetch(`${getApiUrl()}/api/sessions/${this.dbSessionId}/message`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

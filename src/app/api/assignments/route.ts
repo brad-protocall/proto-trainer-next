@@ -201,6 +201,7 @@ export async function POST(request: NextRequest) {
 async function handleBulkCreate(body: unknown, userId: string): Promise<Response> {
   const result = bulkAssignmentSchema.safeParse(body)
   if (!result.success) {
+    console.error('[API] Bulk assignment validation failed:', JSON.stringify(result.error.flatten(), null, 2))
     return apiError(
       { type: 'VALIDATION_ERROR', message: 'Validation failed', details: result.error.flatten().fieldErrors as Record<string, unknown> },
       400
@@ -241,19 +242,29 @@ async function handleBulkCreate(body: unknown, userId: string): Promise<Response
   }
   const scenarioMap = new Map(scenarios.map(s => [s.id, s]))
 
-  const existingAssignments = await prisma.assignment.findMany({
+  // Check for ALL existing assignments (both active and completed)
+  const allExistingAssignments = await prisma.assignment.findMany({
     where: {
       counselorId: { in: counselorIds },
       scenarioId: { in: scenarioIds },
-      status: { not: 'completed' },
     },
-    select: { counselorId: true, scenarioId: true },
+    select: { counselorId: true, scenarioId: true, status: true },
   })
-  const existingPairs = new Set(
-    existingAssignments.map(a => `${a.counselorId}:${a.scenarioId}`)
-  )
 
-  const skippedPairs: Array<{ counselorId: string; scenarioId: string }> = []
+  // Separate active (pending/in_progress) from completed
+  const activePairs = new Set<string>()
+  const completedPairs = new Set<string>()
+  for (const a of allExistingAssignments) {
+    const key = `${a.counselorId}:${a.scenarioId}`
+    if (a.status === 'completed') {
+      completedPairs.add(key)
+    } else {
+      activePairs.add(key)
+    }
+  }
+
+  const blockedPairs: Array<{ counselorId: string; scenarioId: string; reason: 'active' }> = []
+  const warningPairs: Array<{ counselorId: string; scenarioId: string; reason: 'completed' }> = []
   const assignmentsToCreate: Array<{
     accountId: string | null
     scenarioId: string
@@ -264,11 +275,21 @@ async function handleBulkCreate(body: unknown, userId: string): Promise<Response
     status: string
   }> = []
 
+  // Check if forceReassign flag is set (allows reassigning completed scenarios)
+  const forceReassign = (result.data as { forceReassign?: boolean }).forceReassign || false
+
   for (const counselorId of counselorIds) {
     for (const scenarioId of scenarioIds) {
-      if (existingPairs.has(`${counselorId}:${scenarioId}`)) {
-        skippedPairs.push({ counselorId, scenarioId })
+      const key = `${counselorId}:${scenarioId}`
+
+      if (activePairs.has(key)) {
+        // Active assignment exists - always block
+        blockedPairs.push({ counselorId, scenarioId, reason: 'active' })
+      } else if (completedPairs.has(key) && !forceReassign) {
+        // Completed assignment exists - warn (but don't create unless forced)
+        warningPairs.push({ counselorId, scenarioId, reason: 'completed' })
       } else {
+        // No conflict or force reassign enabled
         const scenario = scenarioMap.get(scenarioId)!
         assignmentsToCreate.push({
           accountId: scenario.accountId,
@@ -283,6 +304,18 @@ async function handleBulkCreate(body: unknown, userId: string): Promise<Response
     }
   }
 
+  // If there are warnings and no force flag, return early with warning info
+  if (warningPairs.length > 0 && !forceReassign) {
+    return apiSuccess({
+      created: 0,
+      skipped: blockedPairs.length,
+      blocked: blockedPairs,
+      warnings: warningPairs,
+      requiresConfirmation: true,
+      message: 'Some counselors have already completed this scenario. Confirm to reassign.',
+    }, 200)
+  }
+
   if (assignmentsToCreate.length > 0) {
     await prisma.assignment.createMany({
       data: assignmentsToCreate,
@@ -291,11 +324,11 @@ async function handleBulkCreate(body: unknown, userId: string): Promise<Response
 
   const responseData: BulkAssignmentResponse = {
     created: assignmentsToCreate.length,
-    skipped: skippedPairs.length,
-    skippedPairs,
+    skipped: blockedPairs.length,
+    blocked: blockedPairs,
   }
 
-  const status = skippedPairs.length > 0 ? 207 : 201
+  const status = blockedPairs.length > 0 ? 207 : 201
 
   return apiSuccess(responseData, status)
 }

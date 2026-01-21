@@ -6,14 +6,15 @@ import { requireSupervisor } from '@/lib/auth'
 
 /**
  * GET /api/users
- * List all users - supervisor only
+ * List all users - public for prototype (no real auth)
+ * Supports ?role=supervisor or ?role=counselor filter
  */
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await requireSupervisor(request)
-    if (authResult.error) return authResult.error
+    const role = request.nextUrl.searchParams.get('role')
 
     const users = await prisma.user.findMany({
+      where: role ? { role } : undefined,
       orderBy: { displayName: 'asc' },
     })
 

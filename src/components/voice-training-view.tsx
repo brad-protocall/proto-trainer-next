@@ -38,8 +38,14 @@ export default function VoiceTrainingView({
 }: VoiceTrainingViewProps) {
   const [transcript, setTranscript] = useState<TranscriptTurn[]>([]);
 
+  // Handle both camelCase (API) and snake_case (types) field names
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const a = assignment as any;
+  const scenarioId = a?.scenarioId || a?.scenario_id;
+  const scenarioTitle = a?.scenarioTitle || a?.scenario_title || "Untitled";
+
   // Detect free practice mode (no scenario assigned)
-  const isFreePractice = !assignment?.scenario_id;
+  const isFreePractice = !scenarioId;
 
   const handleTranscript = useCallback((turn: TranscriptTurn) => {
     setTranscript((prev) => [...prev, turn]);
@@ -58,7 +64,7 @@ export default function VoiceTrainingView({
     requestEvaluation,
   } = useRealtimeVoice({
     userId,
-    scenarioId: assignment?.scenario_id,
+    scenarioId,
     assignmentId: assignment?.id,
     onTranscript: handleTranscript,
   });
@@ -108,7 +114,7 @@ export default function VoiceTrainingView({
         />
         <div className="text-center flex-1 mx-4">
           <h2 className="text-white font-marfa font-medium">
-            {isFreePractice ? "Free Practice" : assignment?.scenario_title}
+            {isFreePractice ? "Free Practice" : scenarioTitle}
           </h2>
           <span className="text-xs text-gray-400">Voice Training</span>
         </div>

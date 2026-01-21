@@ -32,10 +32,11 @@ export const createScenarioSchema = z.object({
   description: z.string().optional(),
   prompt: z.string().min(1),
   mode: ScenarioModeSchema,
-  category: ScenarioCategorySchema.optional(),
-  accountId: z.string().uuid().optional(),
+  category: ScenarioCategorySchema.optional().nullable(),
+  accountId: z.string().uuid().optional().nullable(),
   isOneTime: z.boolean().default(false),
   relevantPolicySections: z.string().max(500).optional(),
+  evaluatorContext: z.string().optional(),
 })
 
 export const updateScenarioSchema = createScenarioSchema.partial()
@@ -57,8 +58,9 @@ export const createAssignmentSchema = z.object({
 export const bulkAssignmentSchema = z.object({
   scenarioIds: z.array(z.string().uuid()).min(1),
   counselorIds: z.array(z.string().uuid()).min(1),
-  dueDate: z.string().datetime().optional(),
-  supervisorNotes: z.string().optional(),
+  dueDate: z.string().datetime().optional().nullable(),
+  supervisorNotes: z.string().optional().nullable(),
+  forceReassign: z.boolean().optional(),
 })
 
 export const updateAssignmentSchema = z.object({
