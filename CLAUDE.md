@@ -220,69 +220,43 @@ grep -r "oldName" src/    # Zero results for renamed things
 
 ---
 
-## Resume Context (2026-01-20 Evening)
+## Resume Context (2026-01-20 Night)
 
-### Current State: User Testing In Progress
+### Current State: User Testing - Bug Fixes Complete
 
-Most features working. One pending issue to verify.
+All major bugs from overnight Ralph session have been fixed and documented.
 
-### Session Fixes Applied
+### Session Summary
 
-1. **Voice Training - OpenAI Connection** ✅
-   - Fixed: WebSocket server wasn't reading OPENAI_API_KEY due to ES module timing
-   - Solution: Changed `ws-server/realtime-session.ts` to use lazy getter functions instead of top-level constants
-   - Files: `ws-server/realtime-session.ts`
+Fixed bugs discovered during user testing of overnight Ralph autonomous session:
 
-2. **Voice Training - DB Session Creation** ✅
-   - Fixed: Was sending `modelType: "voice"` but API expected `"phone"`
-   - Solution: Changed to `modelType: "phone"` in realtime-session.ts
-   - Files: `ws-server/realtime-session.ts`
+1. **Bulk Assignment API Contract Mismatch** ✅
+   - Bug: API returned `skippedPairs` but frontend expected `blocked`
+   - Fix: Changed API to return `blocked` to match frontend
+   - File: `src/app/api/assignments/route.ts`
 
-3. **Voice Training - Evaluation Auth** ✅
-   - Fixed: `requestEvaluation` was missing `x-user-id` header
-   - Solution: Added header to fetch call
-   - Files: `src/hooks/use-realtime-voice.ts`
+2. **Modal Auto-Close Hiding Feedback** ✅
+   - Bug: Modal closed after 1500ms even when showing blocked assignments
+   - Fix: Only auto-close on full success; keep open when skipped/blocked
+   - File: `src/components/supervisor-dashboard.tsx`
 
-4. **Chat Free Practice** ✅
-   - Fixed: Page only checked for `assignmentId === "free"` not `"free-practice"`
-   - Fixed: `useChat` hook sent old API format instead of discriminated union
-   - Files: `src/app/training/chat/[assignmentId]/page.tsx`, `src/hooks/use-chat.ts`
+3. **TypeScript Types Incomplete** ✅
+   - Bug: `BulkAssignmentResponse` missing `blocked`, `warnings`, `requiresConfirmation`
+   - Fix: Added all fields to type definition
+   - File: `src/types/index.ts`
 
-5. **Scenario Form Fields** ✅
-   - Added: Evaluator Context field with Write Text / Upload File toggle
-   - Added: Organization Account dropdown
-   - Added: Relevant Policy Sections field
-   - Files: `src/components/supervisor-dashboard.tsx`
+### Documentation Created
 
-6. **Auth Deadlock** ✅
-   - Fixed: GET `/api/users` required auth but dashboard needed user first
-   - Solution: Made GET endpoint public for prototype
-   - Files: `src/app/api/users/route.ts`
+- **Solution doc**: `docs/solutions/integration-issues/api-frontend-contract-mismatch-bulk-assignments.md`
+  - Documents root causes of overnight bugs
+  - Prevention strategies for future Ralph sessions
+  - Pre-completion checklists
 
-7. **Bulk Import Mapping** ✅
-   - Fixed: Frontend sent `evaluator_context` (snake_case) but API expected `evaluatorContext`
-   - Files: `src/components/bulk-import-modal.tsx`
-
-8. **Logo Files** ✅
-   - Added: `public/protocall-logo.svg` and `public/logo-main.svg`
-
-9. **Seed Data** ✅
-   - Created: `prisma/seed.ts` with 5 counselors for testing
-   - Added: `npm run db:seed` command
-   - Counselors: Test Counselor, Sarah Johnson, Michael Chen, Emily Rodriguez, David Kim
-
-10. **CSV Template** ✅
-    - Created: `public/scenario-import-template.csv` for bulk scenario import
-
-### Pending Issue to Verify
-
-**Assignment Creation** - Still showing "Validation failed"
-- Changes made but not yet tested:
-  - Changed frontend to send `undefined` instead of `null` for optional fields
-  - Updated validator to accept `.nullable()` for dueDate and supervisorNotes
-  - Added console.error logging to see actual validation error
-- Files modified: `src/components/supervisor-dashboard.tsx`, `src/lib/validators.ts`, `src/app/api/assignments/route.ts`
-- **Next step**: Hard refresh and try creating assignment - check server logs for specific error
+- **Ralph Guidelines**: Added to CLAUDE.md (see section above)
+  - API field change protocol
+  - UX feedback timing rules
+  - Naming conventions table
+  - Pre-completion verification commands
 
 ### Test Status
 
@@ -292,81 +266,27 @@ Most features working. One pending issue to verify.
 | Role toggle buttons | ✅ Working |
 | Scenario creation | ✅ Working |
 | Chat free practice | ✅ Working |
-| Voice free practice | ✅ Working (OpenAI connects, sessions saved) |
-| Voice evaluation | ✅ Fixed (needs re-test when can speak) |
-| Assignment creation | ⚠️ Pending verification |
+| Voice free practice | ✅ Working |
+| Assignment creation | ✅ Working (bulk with duplicate detection) |
+| Assignment feedback | ✅ Fixed (blocked/skipped visible) |
 | Bulk scenario import | ✅ Template ready |
 
 ### Quick Start for Next Session
 
 ```bash
-# Start servers
 npm run dev      # Terminal 1 - Next.js on :3003
 npm run ws:dev   # Terminal 2 - WebSocket on :3004
-
-# If counselors missing, run seed
-npm run db:seed
+npm run db:seed  # If counselors missing
 ```
 
-Then test assignment creation - it should work now after hard refresh.
+### Remaining Work
 
----
-
-## User Testing Checklist
-
-### Prerequisites
-
-```bash
-# Start both servers
-npm run dev      # Terminal 1
-npm run ws:dev   # Terminal 2
-```
-
-Open http://localhost:3003
-
-### Test Data Available
-
-| Type | Count | Examples |
-|------|-------|----------|
-| Supervisor | 1 | Test Supervisor |
-| Counselors | 5 | Test Counselor, Sarah Johnson, Michael Chen, Emily Rodriguez, David Kim |
-| Scenarios | 5+ | Various test scenarios |
-
-### Test Flows
-
-#### Counselor Flow
-- [x] Select "Counselor" on home page
-- [x] View Free Practice section
-- [x] Click "Practice by Voice" → connects to OpenAI, roleplay works
-- [x] Click "Practice by Text" → chat with AI works
-- [ ] Voice evaluation - needs re-test
+- [ ] Voice evaluation - needs re-test with microphone
 - [ ] Chat evaluation - needs test
+- [ ] Fix pre-existing TypeScript errors in `src/app/api/scenarios/[id]/route.ts` (accountId type)
 
-#### Supervisor Flow
-- [x] Select "Supervisor" on home page
-- [x] View Scenarios tab
-- [x] Toggle Global / One-Time filter
-- [x] Create a new scenario
-- [ ] Create assignment for counselor - **VERIFY THIS**
-- [x] Import Scenarios → template available
+### Git Status
 
-### Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| Voice stuck on "Connecting..." | Restart WebSocket server: `npm run ws:dev` |
-| Assignment validation failed | Hard refresh (Cmd+Shift+R), check server logs |
-| No counselors in dropdown | Run `npm run db:seed` |
-| No scenarios | Run seed or create via UI |
-
-### Key Files Modified This Session
-
-| File | Change |
-|------|--------|
-| `ws-server/realtime-session.ts` | Lazy env loading, modelType fix |
-| `src/hooks/use-realtime-voice.ts` | Added x-user-id to evaluation |
-| `src/hooks/use-chat.ts` | Fixed API request format |
-| `src/components/supervisor-dashboard.tsx` | Form fields, assignment payload |
-| `src/lib/validators.ts` | Made optional fields nullable |
-| `prisma/seed.ts` | New file - seeds test data |
-| `public/scenario-import-template.csv` | New file - CSV template |
+Latest commit: `e9349bb` - pushed to origin/main
+- 23 files changed, 1309 insertions, 352 deletions
+- Includes all bug fixes + documentation
