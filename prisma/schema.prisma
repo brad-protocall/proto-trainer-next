@@ -52,6 +52,10 @@ model Scenario {
   mode                   String    @default("phone") // ScenarioMode: phone, chat
   relevantPolicySections String?   @map("relevant_policy_sections")
   category               String?   // ScenarioCategory: onboarding, refresher, advanced, assessment
+  // External API metadata
+  skill                  String?   // What skill this scenario trains (e.g., "de-escalation", "risk-assessment")
+  difficulty             String?   @default("intermediate") // beginner, intermediate, advanced
+  estimatedTime          Int?      @default(15) @map("estimated_time") // Estimated completion time in minutes
 
   account     Account      @relation(fields: [accountId], references: [id])
   creator     User         @relation(fields: [createdBy], references: [id])

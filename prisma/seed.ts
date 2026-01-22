@@ -16,6 +16,31 @@ async function main() {
   })
   console.log(`Account: ${account.name}`)
 
+  // Create external API account for service-to-service integrations
+  const externalAccount = await prisma.account.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000020' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000020',
+      name: 'External API',
+    },
+  })
+  console.log(`External Account: ${externalAccount.name}`)
+
+  // Create system user for external API (acts as supervisor for external assignments)
+  const externalSystemUser = await prisma.user.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000099' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000099',
+      externalId: 'external-api-system',
+      displayName: 'External API System',
+      email: 'system@external-api.local',
+      role: 'supervisor',
+    },
+  })
+  console.log(`External System User: ${externalSystemUser.displayName}`)
+
   // Create test supervisor
   const supervisor = await prisma.user.upsert({
     where: { id: '00000000-0000-0000-0000-000000000001' },

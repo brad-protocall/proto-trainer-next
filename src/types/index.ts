@@ -98,6 +98,8 @@ export interface Account {
   updated_at: string;
 }
 
+export type ScenarioDifficulty = "beginner" | "intermediate" | "advanced";
+
 export interface Scenario {
   id: string;
   title: string;
@@ -112,6 +114,10 @@ export interface Scenario {
   relevant_policy_sections: string | null;
   created_at: string;
   updated_at: string;
+  // External API metadata
+  skill: string | null;
+  difficulty: ScenarioDifficulty | null;
+  estimated_time: number | null;
   account?: Account;
   creator?: User;
 }

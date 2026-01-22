@@ -63,6 +63,9 @@ CHAT_MODEL=gpt-4o
 EVALUATOR_MODEL=gpt-4o
 REALTIME_MODEL=gpt-4o-realtime-preview
 REALTIME_VOICE=shimmer
+
+# External API (for Personalized Training Guide integration)
+EXTERNAL_API_KEY=your-secret-api-key
 ```
 
 ## Project Structure
@@ -80,7 +83,8 @@ proto-trainer-next/
 │   │   │   ├── accounts/
 │   │   │   ├── scenarios/
 │   │   │   ├── assignments/
-│   │   │   └── sessions/
+│   │   │   ├── sessions/
+│   │   │   └── external/  # External API (X-API-Key auth)
 │   │   ├── supervisor/  # Supervisor dashboard
 │   │   ├── counselor/   # Counselor dashboard
 │   │   └── page.tsx     # Home (role selector)
@@ -112,6 +116,15 @@ proto-trainer-next/
 | `/api/sessions/[id]` | GET | Get session with transcript |
 | `/api/sessions/[id]/message` | POST | Send message, get AI response |
 | `/api/sessions/[id]/evaluate` | POST | Generate evaluation |
+
+### External API (X-API-Key auth)
+
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/external/scenarios` | GET | List scenarios for external integrations |
+| `/api/external/assignments` | GET | List assignments by `?user_id` (external ID) |
+| `/api/external/assignments` | POST | Create assignment for counselor |
+| `/api/external/assignments/[id]/result` | GET | Get evaluation result |
 
 ## Database Models
 
@@ -275,68 +288,76 @@ if (userId) headers['x-user-id'] = userId;
 
 ---
 
-## Resume Context (2026-01-21 Evening)
+## Resume Context (2026-01-22)
 
-### Current State: Bulk Import Working - 41 Mentor Role Plays Imported
+### Current State: External API Integration Complete
 
-All features tested and working. Bulk scenario import successfully imported 41 mentor role play scenarios.
+External API for Personalized Training Guide integration is fully implemented and tested.
 
-### Session Summary (2026-01-21)
+### Session Summary (2026-01-22)
 
-1. **Fixed TypeScript errors** ✅
-   - `accountId` type mismatch in scenario routes (Zod allowed null, Prisma required string)
-   - Changed `CONFIGURATION_ERROR` to `INTERNAL_ERROR` (valid ApiErrorType)
+1. **Added External API for PTG Integration** ✅
+   - New endpoints under `/api/external/*` with `X-API-Key` authentication
+   - Timing-safe API key comparison to prevent timing attacks
+   - 4 endpoints: scenarios list, assignments list/create, result retrieval
 
-2. **Created mentor role plays CSV** ✅
-   - Converted Word doc (`docs/PTG_Scenario_Creator_Upload_Pack_Mentor_Role_Plays_7-18-25.docx`) to CSV
-   - 41 scenarios in `public/mentor-role-plays-import.csv`
+2. **Schema Migration** ✅
+   - Added `skill`, `difficulty`, `estimatedTime` columns to Scenario model
+   - Migration: `20260122050833_add_scenario_external_metadata`
 
-3. **Updated scenario categories** ✅
-   - Old: `onboarding`, `refresher`, `advanced`, `assessment`
-   - New: `cohort_training`, `onboarding`, `expert_skill_path`, `account_specific`
-   - Updated in: `validators.ts`, `types/index.ts`, `api/scenarios/import/route.ts`
+3. **Seed Data Updates** ✅
+   - Created "External API" account (ID: `00000000-0000-0000-0000-000000000020`)
+   - Created "External API System" user for `assignedBy` (ID: `00000000-0000-0000-0000-000000000099`)
 
-4. **Fixed bulk import validation** ✅ (commit `31f0b22`)
-   - Bug: Frontend `VALID_CATEGORIES` had old values, rejected all `cohort_training` rows
-   - Fix: Updated `bulk-import-modal.tsx` with new category values
+4. **Environment Configuration** ✅
+   - Added `EXTERNAL_API_KEY` to `.env.example` and `.env`
+   - Dev key: `ptg-dev-key-2026`
 
-5. **Fixed DELETE 204 handling** ✅ (commit `26cc4d6`)
-   - Bug: `response.json()` crashed on 204 No Content responses
-   - Fix: Check `response.ok` first, only parse JSON on error
+### External API Endpoints
 
-6. **Cleaned orphaned assignments** ✅
-   - Bug: Deleted scenarios left 8 orphaned assignments causing "Failed to load assignments"
-   - Fix: Deleted orphaned records from database
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/external/scenarios` | GET | List all reusable scenarios |
+| `/api/external/assignments?user_id=X` | GET | List assignments for user (by externalId) |
+| `/api/external/assignments` | POST | Create assignment `{user_id, scenario_id, due_date?}` |
+| `/api/external/assignments/[id]/result` | GET | Get evaluation result (null if not completed) |
 
-7. **Fixed bulk import auth** ✅ (commit `bd8b45a`)
-   - Bug: Import button did nothing (missing `x-user-id` header)
-   - Fix: Added `userId` prop to `BulkImportModal`, included in fetch headers
+### Testing Commands
 
-### Documentation Created
+```bash
+# List scenarios
+curl -H "X-API-Key: ptg-dev-key-2026" http://localhost:3003/api/external/scenarios
 
-- `docs/solutions/integration-issues/bulk-import-and-delete-fixes-2026-01-21.md`
-- `docs/solutions/prevention-strategies/bug-prevention-patterns.md`
-- Bug Prevention Patterns section added to CLAUDE.md (see above)
+# List assignments for user
+curl -H "X-API-Key: ptg-dev-key-2026" "http://localhost:3003/api/external/assignments?user_id=test-counselor-001"
+
+# Create assignment
+curl -X POST -H "X-API-Key: ptg-dev-key-2026" -H "Content-Type: application/json" \
+  -d '{"user_id": "test-counselor-001", "scenario_id": "SCENARIO_UUID"}' \
+  http://localhost:3003/api/external/assignments
+
+# Get result
+curl -H "X-API-Key: ptg-dev-key-2026" http://localhost:3003/api/external/assignments/ASSIGNMENT_UUID/result
+```
 
 ### Test Status
 
 | Feature | Status |
 |---------|--------|
-| Logo display | ✅ Working |
-| Role toggle buttons | ✅ Working |
-| Scenario creation | ✅ Working |
-| Scenario deletion | ✅ Working |
-| Chat free practice | ✅ Working |
-| Voice free practice | ✅ Working |
-| Assignment creation | ✅ Working (bulk with duplicate detection) |
-| Assignment deletion | ✅ Working |
-| Bulk scenario import | ✅ Working (41 scenarios imported) |
+| External API auth (X-API-Key) | ✅ Working |
+| GET /api/external/scenarios | ✅ Working (42 scenarios) |
+| GET /api/external/assignments | ✅ Working |
+| POST /api/external/assignments | ✅ Working |
+| GET /api/external/assignments/[id]/result | ✅ Working |
+| Unknown user returns 404 | ✅ Working |
+| Invalid API key returns 401 | ✅ Working |
 
 ### Database State
 
-- **Scenarios**: 42 (1 test + 41 mentor role plays)
-- **Assignments**: 0 (cleared orphaned records)
-- **Users**: 6 (1 supervisor, 5 counselors)
+- **Scenarios**: 42 (with skill/difficulty/estimatedTime columns)
+- **Assignments**: 3 (including 1 created via external API)
+- **Users**: 7 (6 original + 1 external API system user)
+- **Accounts**: 2 (Test Organization + External API)
 
 ### Quick Start for Next Session
 
@@ -349,10 +370,20 @@ npm run ws:dev   # Terminal 2 - WebSocket on :3004
 
 - [ ] Voice evaluation - needs test with microphone
 - [ ] Chat evaluation - needs test
-- [ ] Create assignments for counselors using new scenarios
-- [ ] Consider implementing prevention strategies (single source of truth for enums, auth context)
+- [ ] Populate `skill` field for existing scenarios (currently defaults to "general")
+- [ ] Connect Personalized Training Guide to external API
 
-### Git Status
+### Files Created/Modified
 
-Latest commit: `19af647` - pushed to origin/main
-- Includes all bug fixes + solution documentation
+**New Files:**
+- `src/app/api/external/scenarios/route.ts`
+- `src/app/api/external/assignments/route.ts`
+- `src/app/api/external/assignments/[id]/result/route.ts`
+- `prisma/migrations/20260122050833_add_scenario_external_metadata/`
+
+**Modified Files:**
+- `prisma/schema.prisma` - added skill, difficulty, estimatedTime to Scenario
+- `prisma/seed.ts` - added external account and system user
+- `src/types/index.ts` - added ScenarioDifficulty type
+- `.env.example` - added EXTERNAL_API_KEY
+- `.env` - added EXTERNAL_API_KEY
