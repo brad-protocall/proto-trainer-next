@@ -13,17 +13,17 @@ const MAX_EVALUATOR_CONTEXT_LENGTH = 50000;
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 const VALID_CATEGORIES: string[] = [
+  "cohort_training",
   "onboarding",
-  "refresher",
-  "advanced",
-  "assessment",
+  "expert_skill_path",
+  "account_specific",
   "",
 ];
 
 // CSV template content
 const CSV_TEMPLATE = `title,prompt,description,evaluator_context,mode,category
-"Suicidal Caller - First Time","You are a 24-year-old named Alex calling for the first time. You have been thinking about ending your life but haven't made a specific plan. You feel hopeless about your job situation.","First-time caller expressing passive suicidal ideation","Evaluate for: active listening, safety assessment, collaborative safety planning, appropriate resource referrals",phone,onboarding
-"Panic Attack - Workplace","You are having a panic attack at work. Your heart is racing, you can't breathe, and you feel like you're dying. This has happened before but never this bad.","Caller experiencing acute panic attack","Evaluate for: grounding techniques, calm reassuring tone, breathing exercises, validation of experience",phone,refresher`;
+"Suicidal Caller - First Time","You are a 24-year-old named Alex calling for the first time. You have been thinking about ending your life but haven't made a specific plan. You feel hopeless about your job situation.","First-time caller expressing passive suicidal ideation","Evaluate for: active listening, safety assessment, collaborative safety planning, appropriate resource referrals",phone,cohort_training
+"Panic Attack - Workplace","You are having a panic attack at work. Your heart is racing, you can't breathe, and you feel like you're dying. This has happened before but never this bad.","Caller experiencing acute panic attack","Evaluate for: grounding techniques, calm reassuring tone, breathing exercises, validation of experience",phone,cohort_training`;
 
 interface ValidationError {
   row: number;
@@ -164,7 +164,7 @@ export default function BulkImportModal({
       errors.push({
         row,
         field: "category",
-        message: `Category must be one of: onboarding, refresher, advanced, assessment (got: ${scenario.category})`,
+        message: `Category must be one of: cohort_training, onboarding, expert_skill_path, account_specific (got: ${scenario.category})`,
       });
     }
 
