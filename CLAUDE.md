@@ -288,11 +288,11 @@ if (userId) headers['x-user-id'] = userId;
 
 ---
 
-## Resume Context (2026-01-22)
+## Resume Context (2026-01-22 Evening)
 
-### Current State: External API Integration Complete
+### Current State: External API Ready for Integration Testing
 
-External API for Personalized Training Guide integration is fully implemented and tested.
+External API for Personalized Training Guide integration is committed and pushed. Ready for cross-app integration testing.
 
 ### Session Summary (2026-01-22)
 
@@ -366,12 +366,14 @@ npm run dev      # Terminal 1 - Next.js on :3003
 npm run ws:dev   # Terminal 2 - WebSocket on :3004
 ```
 
-### Remaining Work
+### Next Session: Integration Testing
 
-- [ ] Voice evaluation - needs test with microphone
-- [ ] Chat evaluation - needs test
+- [ ] **Integration test**: Connect Personalized Training Guide (port 3002) to external API
+- [ ] Verify scenarios list flows through to PTG
+- [ ] Test assignment creation from PTG
+- [ ] Test result retrieval after completing a simulation
 - [ ] Populate `skill` field for existing scenarios (currently defaults to "general")
-- [ ] Connect Personalized Training Guide to external API
+- [ ] Voice/chat evaluation testing (requires microphone)
 
 ### Files Created/Modified
 
@@ -387,3 +389,8 @@ npm run ws:dev   # Terminal 2 - WebSocket on :3004
 - `src/types/index.ts` - added ScenarioDifficulty type
 - `.env.example` - added EXTERNAL_API_KEY
 - `.env` - added EXTERNAL_API_KEY
+
+### Git Status
+
+Latest commit: `8ad9b48` - pushed to origin/main
+- feat: add external API for Personalized Training Guide integration
