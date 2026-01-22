@@ -218,6 +218,61 @@ grep -r "oldName" src/    # Zero results for renamed things
 3. **Modal timing**: Never auto-close modals showing actionable feedback
 4. **Bulk operations**: Always handle partial success case
 
+### Bug Prevention Patterns (2026-01-21)
+
+See `docs/solutions/prevention-strategies/bug-prevention-patterns.md` for full details.
+
+#### 1. Category/Enum Validation Mismatch
+
+**Problem**: Frontend `VALID_CATEGORIES` didn't match backend `ScenarioCategorySchema`.
+
+**Prevention**: Export enum values from `validators.ts` as single source of truth:
+```typescript
+// validators.ts - SINGLE SOURCE
+export const ScenarioCategoryValues = ['cohort_training', 'onboarding', ...] as const;
+
+// Components - DERIVE from source
+import { ScenarioCategoryValues } from '@/lib/validators';
+const VALID_CATEGORIES = [...ScenarioCategoryValues, ''];
+```
+
+#### 2. 204 No Content Parsing Error
+
+**Problem**: `response.json()` crashes on DELETE returning 204 No Content.
+
+**Prevention**: Check status before parsing:
+```typescript
+// CORRECT pattern for DELETE
+const response = await fetch(url, { method: 'DELETE' });
+if (!response.ok) {
+  const data = await response.json(); // Only parse on error
+  throw new Error(data.error?.message);
+}
+// 204 = success, no body to parse
+```
+
+#### 3. Orphaned Records (Cascading Deletes)
+
+**Problem**: Deleting scenarios left assignments pointing to nothing.
+
+**Prevention**: Check dependencies before delete:
+```typescript
+const count = await prisma.assignment.count({ where: { scenarioId: id } });
+if (count > 0) {
+  return apiError({ type: 'CONFLICT', message: `${count} assignments depend on this` }, 409);
+}
+```
+
+#### 4. Missing Auth Headers
+
+**Problem**: Components using raw `fetch()` instead of `authFetch`.
+
+**Prevention**: Always use `authFetch` from `useAuth()` hook or pass `userId` prop:
+```typescript
+const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+if (userId) headers['x-user-id'] = userId;
+```
+
 ---
 
 ## Resume Context (2026-01-20 Night)
