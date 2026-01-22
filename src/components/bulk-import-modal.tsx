@@ -51,6 +51,7 @@ interface BulkImportModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (result: ImportResult) => void;
+  userId?: string;
 }
 
 type ModalState = "upload" | "preview" | "done";
@@ -59,6 +60,7 @@ export default function BulkImportModal({
   isOpen,
   onClose,
   onSuccess,
+  userId,
 }: BulkImportModalProps) {
   const [state, setState] = useState<ModalState>("upload");
   const [parsedScenarios, setParsedScenarios] = useState<ParsedScenario[]>([]);
@@ -256,9 +258,13 @@ export default function BulkImportModal({
         category: (s.category?.toLowerCase().trim() || undefined) as ScenarioCategory | undefined,
       }));
 
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (userId) {
+        headers["x-user-id"] = userId;
+      }
       const response = await fetch("/api/scenarios/import", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ scenarios: apiScenarios }),
       });
 

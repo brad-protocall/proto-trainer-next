@@ -1342,6 +1342,7 @@ export default function SupervisorDashboard() {
           setShowBulkImport(false);
           loadScenarios();
         }}
+        userId={currentUser?.id}
       />
     </div>
   );
