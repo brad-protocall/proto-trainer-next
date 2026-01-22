@@ -275,43 +275,48 @@ if (userId) headers['x-user-id'] = userId;
 
 ---
 
-## Resume Context (2026-01-20 Night)
+## Resume Context (2026-01-21 Evening)
 
-### Current State: User Testing - Bug Fixes Complete
+### Current State: Bulk Import Working - 41 Mentor Role Plays Imported
 
-All major bugs from overnight Ralph session have been fixed and documented.
+All features tested and working. Bulk scenario import successfully imported 41 mentor role play scenarios.
 
-### Session Summary
+### Session Summary (2026-01-21)
 
-Fixed bugs discovered during user testing of overnight Ralph autonomous session:
+1. **Fixed TypeScript errors** ✅
+   - `accountId` type mismatch in scenario routes (Zod allowed null, Prisma required string)
+   - Changed `CONFIGURATION_ERROR` to `INTERNAL_ERROR` (valid ApiErrorType)
 
-1. **Bulk Assignment API Contract Mismatch** ✅
-   - Bug: API returned `skippedPairs` but frontend expected `blocked`
-   - Fix: Changed API to return `blocked` to match frontend
-   - File: `src/app/api/assignments/route.ts`
+2. **Created mentor role plays CSV** ✅
+   - Converted Word doc (`docs/PTG_Scenario_Creator_Upload_Pack_Mentor_Role_Plays_7-18-25.docx`) to CSV
+   - 41 scenarios in `public/mentor-role-plays-import.csv`
 
-2. **Modal Auto-Close Hiding Feedback** ✅
-   - Bug: Modal closed after 1500ms even when showing blocked assignments
-   - Fix: Only auto-close on full success; keep open when skipped/blocked
-   - File: `src/components/supervisor-dashboard.tsx`
+3. **Updated scenario categories** ✅
+   - Old: `onboarding`, `refresher`, `advanced`, `assessment`
+   - New: `cohort_training`, `onboarding`, `expert_skill_path`, `account_specific`
+   - Updated in: `validators.ts`, `types/index.ts`, `api/scenarios/import/route.ts`
 
-3. **TypeScript Types Incomplete** ✅
-   - Bug: `BulkAssignmentResponse` missing `blocked`, `warnings`, `requiresConfirmation`
-   - Fix: Added all fields to type definition
-   - File: `src/types/index.ts`
+4. **Fixed bulk import validation** ✅ (commit `31f0b22`)
+   - Bug: Frontend `VALID_CATEGORIES` had old values, rejected all `cohort_training` rows
+   - Fix: Updated `bulk-import-modal.tsx` with new category values
+
+5. **Fixed DELETE 204 handling** ✅ (commit `26cc4d6`)
+   - Bug: `response.json()` crashed on 204 No Content responses
+   - Fix: Check `response.ok` first, only parse JSON on error
+
+6. **Cleaned orphaned assignments** ✅
+   - Bug: Deleted scenarios left 8 orphaned assignments causing "Failed to load assignments"
+   - Fix: Deleted orphaned records from database
+
+7. **Fixed bulk import auth** ✅ (commit `bd8b45a`)
+   - Bug: Import button did nothing (missing `x-user-id` header)
+   - Fix: Added `userId` prop to `BulkImportModal`, included in fetch headers
 
 ### Documentation Created
 
-- **Solution doc**: `docs/solutions/integration-issues/api-frontend-contract-mismatch-bulk-assignments.md`
-  - Documents root causes of overnight bugs
-  - Prevention strategies for future Ralph sessions
-  - Pre-completion checklists
-
-- **Ralph Guidelines**: Added to CLAUDE.md (see section above)
-  - API field change protocol
-  - UX feedback timing rules
-  - Naming conventions table
-  - Pre-completion verification commands
+- `docs/solutions/integration-issues/bulk-import-and-delete-fixes-2026-01-21.md`
+- `docs/solutions/prevention-strategies/bug-prevention-patterns.md`
+- Bug Prevention Patterns section added to CLAUDE.md (see above)
 
 ### Test Status
 
@@ -320,28 +325,34 @@ Fixed bugs discovered during user testing of overnight Ralph autonomous session:
 | Logo display | ✅ Working |
 | Role toggle buttons | ✅ Working |
 | Scenario creation | ✅ Working |
+| Scenario deletion | ✅ Working |
 | Chat free practice | ✅ Working |
 | Voice free practice | ✅ Working |
 | Assignment creation | ✅ Working (bulk with duplicate detection) |
-| Assignment feedback | ✅ Fixed (blocked/skipped visible) |
-| Bulk scenario import | ✅ Template ready |
+| Assignment deletion | ✅ Working |
+| Bulk scenario import | ✅ Working (41 scenarios imported) |
+
+### Database State
+
+- **Scenarios**: 42 (1 test + 41 mentor role plays)
+- **Assignments**: 0 (cleared orphaned records)
+- **Users**: 6 (1 supervisor, 5 counselors)
 
 ### Quick Start for Next Session
 
 ```bash
 npm run dev      # Terminal 1 - Next.js on :3003
 npm run ws:dev   # Terminal 2 - WebSocket on :3004
-npm run db:seed  # If counselors missing
 ```
 
 ### Remaining Work
 
-- [ ] Voice evaluation - needs re-test with microphone
+- [ ] Voice evaluation - needs test with microphone
 - [ ] Chat evaluation - needs test
-- [ ] Fix pre-existing TypeScript errors in `src/app/api/scenarios/[id]/route.ts` (accountId type)
+- [ ] Create assignments for counselors using new scenarios
+- [ ] Consider implementing prevention strategies (single source of truth for enums, auth context)
 
 ### Git Status
 
-Latest commit: `e9349bb` - pushed to origin/main
-- 23 files changed, 1309 insertions, 352 deletions
-- Includes all bug fixes + documentation
+Latest commit: `19af647` - pushed to origin/main
+- Includes all bug fixes + solution documentation
