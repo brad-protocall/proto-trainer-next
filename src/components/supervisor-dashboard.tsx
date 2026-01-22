@@ -373,8 +373,11 @@ export default function SupervisorDashboard() {
 
     try {
       const response = await authFetch(`/api/scenarios/${id}`, { method: "DELETE" });
-      const data: ApiResponse<null> = await response.json();
-      if (!data.ok) throw new Error(data.error.message);
+      // DELETE returns 204 No Content on success
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error?.message || "Delete failed");
+      }
       await loadScenarios();
     } catch {
       setError("Failed to delete scenario");
@@ -489,8 +492,11 @@ export default function SupervisorDashboard() {
 
     try {
       const response = await authFetch(`/api/assignments/${id}`, { method: "DELETE" });
-      const data: ApiResponse<null> = await response.json();
-      if (!data.ok) throw new Error(data.error.message);
+      // DELETE returns 204 No Content on success
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error?.message || "Delete failed");
+      }
       await loadAssignments();
     } catch {
       setError("Failed to delete assignment");
