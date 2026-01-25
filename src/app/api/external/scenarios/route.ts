@@ -57,6 +57,8 @@ export async function GET(request: NextRequest) {
       id: s.id,
       name: s.title,
       description: s.description ?? '',
+      mode: s.mode as 'phone' | 'chat',
+      category: s.category ?? 'general',
       skill: s.skill ?? 'general',
       difficulty: (s.difficulty ?? 'intermediate') as 'beginner' | 'intermediate' | 'advanced',
       estimatedTime: s.estimatedTime ?? 15,
