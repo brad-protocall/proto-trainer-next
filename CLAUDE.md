@@ -288,27 +288,39 @@ if (userId) headers['x-user-id'] = userId;
 
 ---
 
-## Resume Context (2026-01-26)
+## Resume Context (2026-01-26 Evening)
 
-### Current State: PostgreSQL + Skills Array Migration Complete
+### Current State: Code Review Complete - P1 Issues Pending
 
-Migrated from SQLite to PostgreSQL with native `skills` array support. External API returns both `skill` (deprecated) and `skills` (array) for backwards compatibility.
+PostgreSQL migration complete and pushed to main. Code review identified 6 issues requiring attention before production deployment.
 
 ### Session Summary (2026-01-26)
 
-1. **PostgreSQL Migration** ✅
-   - Switched from SQLite to PostgreSQL (Docker)
-   - Start with: `docker-compose up -d`
-   - Connection: `postgresql://proto:proto_dev_2026@localhost:5432/proto_trainer`
+1. **Completed RALF Overnight Work** ✅
+   - RALF partially completed Issue #36 overnight
+   - Manually finished: reset migrations, seeded database, ran backfill scripts
+   - Commit `31b743e` pushed to main, Issue #36 closed
 
-2. **Skills Array Support** ✅
-   - Schema: `skills String[]` (Postgres native array)
-   - Deterministic skill detection via `src/lib/skills.ts`
-   - Backfill script populates metadata from scenario content
+2. **Code Review Completed** ✅
+   - Ran 7 parallel review agents (security, performance, architecture, data integrity, simplicity, patterns, agent-native)
+   - Created 6 todo files for findings
+   - 2 P1 (critical), 4 P2 (important)
 
-3. **External API v1.1** ✅
-   - Returns both `skill` (deprecated) and `skills` (array)
-   - Backwards compatible with existing PTG integration
+### 🔴 P1 - Must Fix Before Production
+
+| Todo | Issue | Fix Time |
+|------|-------|----------|
+| `023-pending-p1-docker-credentials-exposed.md` | Hardcoded DB password, port exposed to 0.0.0.0 | 15 min |
+| `024-pending-p1-missing-skills-type.md` | `skills: string[]` missing from Scenario interface | 2 min |
+
+### 🟡 P2 - Should Fix
+
+| Todo | Issue |
+|------|-------|
+| `025-pending-p2-missing-database-indexes.md` | No indexes on foreign keys (performance at scale) |
+| `026-pending-p2-migration-scripts-no-transactions.md` | Scripts lack transaction boundaries |
+| `027-pending-p2-skills-validation-missing.md` | No CHECK constraint on valid skills |
+| `028-pending-p2-agent-native-skills-endpoints.md` | Missing /api/skills/list and /api/skills/detect |
 
 ### Quick Start
 
@@ -318,64 +330,42 @@ npm run dev              # Next.js on :3003
 npm run ws:dev           # WebSocket on :3004
 ```
 
+### Next Session Tasks
+
+1. **Fix P1 issues** (17 min total):
+   ```bash
+   # View P1 todos
+   cat todos/023-pending-p1-*.md
+   cat todos/024-pending-p1-*.md
+   ```
+
+2. **Triage P2 issues** - decide which to fix now vs defer
+
+3. **Test with PTG** - verify external API integration works
+
+### Git Status
+
+- Latest commit: `31b743e` (pushed to main)
+- Issue #36: Closed
+- Branch: main
+- Pending todos: 6 (in `todos/` directory)
+
 ### External API Response Shape (v1.1)
 
 ```json
 {
   "id": "uuid",
   "name": "Scenario Title",
-  "description": "...",
-  "mode": "phone",
-  "category": "cohort_training",
-  "skill": "risk-assessment",     // DEPRECATED - use skills
-  "skills": ["risk-assessment"],  // NEW - use this
+  "skill": "risk-assessment",     // DEPRECATED
+  "skills": ["risk-assessment"],  // USE THIS
   "difficulty": "intermediate",
   "estimatedTime": 20
 }
 ```
 
-### Skill Detection
+### Key Files
 
-Skills are detected from scenario title/description using keyword patterns in `src/lib/skills.ts`:
-
-| Skill | Example Keywords |
-|-------|-----------------|
-| risk-assessment | suicid, SI, ideation, lethality |
-| safety-planning | safety plan, means safety, restrict |
-| de-escalation | de-escalat, calm, crisis intervention |
-| self-harm-assessment | cut, self-harm, NSSI |
-| substance-assessment | substance, drug, alcohol |
-| dv-assessment | domestic, partner violen, abuse |
-| grief-support | grief, loss, death, bereave |
-| anxiety-support | anxi, panic, overwhelm |
-
-### Database Scripts
-
-```bash
-# Backfill scenario metadata (skill, difficulty, estimatedTime)
-npx tsx scripts/backfill-scenario-metadata.ts
-
-# Migrate skill to skills array
-npx tsx scripts/migrate-skill-to-array.ts
-
-# Backup SQLite (if reverting)
-./scripts/backup-sqlite.sh
-```
-
-### Files Created
-
-- `docker-compose.yml` - PostgreSQL container
+- `docker-compose.yml` - PostgreSQL container (needs credential fix)
 - `src/lib/skills.ts` - Skill constants and detection
-- `scripts/backfill-scenario-metadata.ts` - Populate metadata
-- `scripts/migrate-skill-to-array.ts` - Populate skills array
-- `scripts/backup-sqlite.sh` - SQLite backup utility
-- `prisma/migrations/20260126055146_init_postgres_with_skills_array/`
-
-### External API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/external/scenarios` | GET | List all reusable scenarios |
-| `/api/external/assignments?user_id=X` | GET | List assignments for user |
-| `/api/external/assignments` | POST | Create assignment |
-| `/api/external/assignments/[id]/result` | GET | Get evaluation result |
+- `src/types/index.ts` - Needs `skills: string[]` added to Scenario
+- `todos/` - 6 pending review findings
