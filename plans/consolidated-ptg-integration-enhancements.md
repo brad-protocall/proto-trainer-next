@@ -1,47 +1,35 @@
-# Consolidated Plan: PTG Integration Enhancements
+# PTG Integration Enhancements - Autonomous Plan
 
-## Overview
+**Status:** Ready for Ralph Loop (`auto:ready`)
+**Priority:** High
+**Created:** 2026-01-25
+**Estimated Tasks:** 8 atomic tasks
 
-Enable intelligent scenario assignment for Personalized Training Guide (PTG) integration by:
-1. Populating scenario metadata (skill, difficulty, estimatedTime)
+---
+
+## Summary
+
+Enable intelligent scenario assignment for Personalized Training Guide (PTG) by:
+1. Populating scenario metadata (skill, difficulty, estimatedTime) using deterministic rules
 2. Migrating to Postgres with skills array support
 3. Maintaining API backwards compatibility
 
-**Autonomous Execution:** This plan is designed for RALF overnight processing with verification gates.
+**Fully autonomous** - No human checkpoints. All verification via automated tests.
 
 ---
 
-## Pre-Flight Checks
+## Task 1: Create Skill Constants and Validation
 
-Before starting, verify environment is ready:
+**Files to create:** `src/lib/skills.ts`
+**Files to modify:** `src/lib/validators.ts`
 
-```bash
-# GATE 0: Environment verification
-npm run build              # Must pass
-npx tsc --noEmit           # Zero type errors
-npm test                   # All tests pass (if any exist)
-curl -s http://localhost:3003/api/external/scenarios -H "X-API-Key: ptg-dev-key-2026" | jq '.ok' # Returns true
-```
-
-**STOP if any pre-flight check fails.**
-
----
-
-## Phase 1: Backfill Scenario Metadata
-
-### 1.1 Create Skill Constants
-
-Create minimal skill validation (no aliases, no API endpoint - deferred per review).
-
-**File:** `src/lib/skills.ts`
+**Implementation:**
 
 ```typescript
+// src/lib/skills.ts
 /**
  * Valid crisis counselor training skills.
- * Keep in sync with PTG assessment categories.
- *
- * NOTE: Alias matching and /api/external/skills endpoint deferred
- * until PTG integration reveals need. See plans/consolidated-*.md
+ * Single source of truth for skill validation.
  */
 export const VALID_SKILLS = [
   'risk-assessment',
@@ -66,66 +54,68 @@ export type CrisisSkill = typeof VALID_SKILLS[number];
 export function isValidSkill(skill: string): skill is CrisisSkill {
   return VALID_SKILLS.includes(skill as CrisisSkill);
 }
-```
 
-**Verification:**
-```bash
-# File exists and exports correctly
-npx ts-node -e "import { VALID_SKILLS, isValidSkill } from './src/lib/skills'; console.log(VALID_SKILLS.length, isValidSkill('risk-assessment'))"
-# Expected: 15 true
-```
-
-### 1.2 Analyze Scenarios and Generate Metadata
-
-Create analysis script that proposes metadata based on scenario content.
-
-**File:** `scripts/analyze-scenarios.ts`
-
-```typescript
-import { PrismaClient } from '@prisma/client';
-import { VALID_SKILLS, CrisisSkill } from '../src/lib/skills';
-
-const prisma = new PrismaClient();
-
-// Keyword patterns for skill detection
-const SKILL_PATTERNS: Record<CrisisSkill, RegExp[]> = {
+// Keyword patterns for skill detection from scenario text
+export const SKILL_PATTERNS: Record<CrisisSkill, RegExp[]> = {
   'risk-assessment': [/suicid/i, /\bSI\b/, /ideation/i, /lethality/i, /kill/i, /end.*(life|it)/i],
-  'safety-planning': [/safety plan/i, /means safety/i, /restrict/i, /secure.*firearm/i],
+  'safety-planning': [/safety plan/i, /means safety/i, /restrict/i, /secure.*firearm/i, /locked/i],
   'de-escalation': [/de-?escalat/i, /calm/i, /emotional regulation/i, /crisis intervention/i],
   'active-listening': [/listen/i, /rapport/i, /engagement/i, /routine.*support/i],
-  'self-harm-assessment': [/cut/i, /self[- ]?harm/i, /self[- ]?injur/i, /NSSI/i],
+  'self-harm-assessment': [/cut/i, /self[- ]?harm/i, /self[- ]?injur/i, /NSSI/i, /bleeding/i],
   'substance-assessment': [/substance/i, /drug/i, /alcohol/i, /heroin/i, /detox/i, /drinking/i],
   'dv-assessment': [/domestic/i, /partner.*violen/i, /abuse/i, /IPV/i, /physical.*fight/i],
-  'grief-support': [/grief/i, /loss/i, /death/i, /died/i, /bereave/i, /mourning/i],
+  'grief-support': [/grief/i, /loss/i, /death/i, /died/i, /bereave/i, /mourning/i, /spouse/i],
   'anxiety-support': [/anxi/i, /panic/i, /breath/i, /overwhelm/i],
   'rapport-building': [/rapport/i, /trust/i, /engage/i],
-  'call-routing': [/transfer/i, /rout/i, /referr/i, /triage/i],
-  'medication-support': [/medica/i, /prescription/i, /Celexa/i, /Sertraline/i, /SSRI/i],
+  'call-routing': [/transfer/i, /rout/i, /referr/i, /triage/i, /front desk/i],
+  'medication-support': [/medica/i, /prescription/i, /Celexa/i, /Sertraline/i, /SSRI/i, /refill/i],
   'resource-linkage': [/resource/i, /community/i, /refer/i],
-  'boundary-setting': [/boundar/i, /limit/i, /terminat/i],
+  'boundary-setting': [/boundar/i, /limit/i],
   'termination': [/terminat/i, /end.*call/i, /closure/i],
 };
 
-// Difficulty inference from title/category
-function inferDifficulty(title: string, category: string | null): 'beginner' | 'intermediate' | 'advanced' {
+/**
+ * Detect primary skill from scenario title and description.
+ * Returns first matching skill or 'active-listening' as default.
+ */
+export function detectSkill(title: string, description: string | null): CrisisSkill {
+  const text = `${title} ${description || ''}`;
+
+  for (const [skill, patterns] of Object.entries(SKILL_PATTERNS)) {
+    if (patterns.some(p => p.test(text))) {
+      return skill as CrisisSkill;
+    }
+  }
+
+  return 'active-listening'; // default
+}
+
+/**
+ * Infer difficulty from scenario title and category.
+ */
+export function inferDifficulty(
+  title: string,
+  category: string | null
+): 'beginner' | 'intermediate' | 'advanced' {
   const lowerTitle = title.toLowerCase();
 
-  // Title-based inference
+  // Title-based inference (takes precedence)
   if (lowerTitle.includes('routine') || lowerTitle.includes('non-clinical')) return 'beginner';
-  if (lowerTitle.includes('emergent') || lowerTitle.includes('urgent')) return 'intermediate';
-  if (lowerTitle.includes('complex') || lowerTitle.includes('multi')) return 'advanced';
+  if (lowerTitle.includes('emergent')) return 'intermediate';
+  if (lowerTitle.includes('urgent')) return 'intermediate';
 
   // Category-based inference
   if (category === 'onboarding') return 'beginner';
-  if (category === 'advanced') return 'advanced';
-  if (category === 'assessment') return 'advanced';
+  if (category === 'advanced' || category === 'assessment') return 'advanced';
 
-  return 'intermediate';
+  return 'intermediate'; // default
 }
 
-// Time inference based on complexity indicators
-function inferTime(title: string, description: string): number {
-  const text = `${title} ${description}`.toLowerCase();
+/**
+ * Estimate completion time based on scenario complexity.
+ */
+export function estimateTime(title: string, description: string | null): number {
+  const text = `${title} ${description || ''}`.toLowerCase();
 
   if (text.includes('routine') || text.includes('non-clinical')) return 10;
   if (text.includes('safety plan') || text.includes('means safety')) return 25;
@@ -134,27 +124,108 @@ function inferTime(title: string, description: string): number {
 
   return 15; // default
 }
+```
 
-// Detect skills from text
-function detectSkills(title: string, description: string): CrisisSkill[] {
-  const text = `${title} ${description}`;
-  const detected: CrisisSkill[] = [];
+**Verification:**
+```bash
+# Type check
+npx tsc --noEmit
 
-  for (const [skill, patterns] of Object.entries(SKILL_PATTERNS)) {
-    if (patterns.some(p => p.test(text))) {
-      detected.push(skill as CrisisSkill);
-    }
-  }
+# Verify exports work
+npx ts-node -e "
+const { VALID_SKILLS, isValidSkill, detectSkill, inferDifficulty, estimateTime } = require('./src/lib/skills');
+console.log('Skills count:', VALID_SKILLS.length);
+console.log('isValidSkill test:', isValidSkill('risk-assessment'));
+console.log('detectSkill test:', detectSkill('Suicidal Ideation Call', 'Caller expressing thoughts of suicide'));
+console.log('inferDifficulty test:', inferDifficulty('Routine Support', 'onboarding'));
+console.log('estimateTime test:', estimateTime('Safety Planning', 'Create safety plan'));
+"
+# Expected: 15, true, 'risk-assessment', 'beginner', 25
+```
 
-  // Default to active-listening if nothing detected
-  if (detected.length === 0) {
-    detected.push('active-listening');
-  }
+**Test file:** `src/__tests__/skills.test.ts`
+```typescript
+import { VALID_SKILLS, isValidSkill, detectSkill, inferDifficulty, estimateTime } from '@/lib/skills';
 
-  return detected;
-}
+describe('skills', () => {
+  describe('isValidSkill', () => {
+    it('returns true for valid skills', () => {
+      expect(isValidSkill('risk-assessment')).toBe(true);
+      expect(isValidSkill('de-escalation')).toBe(true);
+    });
+
+    it('returns false for invalid skills', () => {
+      expect(isValidSkill('invalid')).toBe(false);
+      expect(isValidSkill('')).toBe(false);
+    });
+  });
+
+  describe('detectSkill', () => {
+    it('detects risk-assessment from suicide keywords', () => {
+      expect(detectSkill('Suicidal Ideation Call', 'expressing SI')).toBe('risk-assessment');
+    });
+
+    it('detects substance-assessment from drug keywords', () => {
+      expect(detectSkill('Heroin Use', 'needs detox')).toBe('substance-assessment');
+    });
+
+    it('defaults to active-listening', () => {
+      expect(detectSkill('General Support', 'caller needs help')).toBe('active-listening');
+    });
+  });
+
+  describe('inferDifficulty', () => {
+    it('returns beginner for routine', () => {
+      expect(inferDifficulty('Routine Support', null)).toBe('beginner');
+    });
+
+    it('returns intermediate for urgent', () => {
+      expect(inferDifficulty('Urgent - Cutting', null)).toBe('intermediate');
+    });
+
+    it('returns beginner for onboarding category', () => {
+      expect(inferDifficulty('Some Call', 'onboarding')).toBe('beginner');
+    });
+
+    it('returns advanced for advanced category', () => {
+      expect(inferDifficulty('Some Call', 'advanced')).toBe('advanced');
+    });
+  });
+
+  describe('estimateTime', () => {
+    it('returns 10 for routine calls', () => {
+      expect(estimateTime('Routine Support', null)).toBe(10);
+    });
+
+    it('returns 25 for safety planning', () => {
+      expect(estimateTime('Safety Planning Call', null)).toBe(25);
+    });
+
+    it('returns 15 as default', () => {
+      expect(estimateTime('General Call', null)).toBe(15);
+    });
+  });
+});
+```
+
+---
+
+## Task 2: Create Migration Script for Scenario Metadata
+
+**Files to create:** `scripts/backfill-scenario-metadata.ts`
+
+**Implementation:**
+
+```typescript
+// scripts/backfill-scenario-metadata.ts
+import { PrismaClient } from '@prisma/client';
+import { detectSkill, inferDifficulty, estimateTime, isValidSkill } from '../src/lib/skills';
+
+const prisma = new PrismaClient();
 
 async function main() {
+  console.log('=== Backfilling Scenario Metadata ===\n');
+
   const scenarios = await prisma.scenario.findMany({
     select: {
       id: true,
@@ -165,114 +236,55 @@ async function main() {
       difficulty: true,
       estimatedTime: true,
     },
-    orderBy: { title: 'asc' },
   });
 
-  console.log('// Generated scenario metadata - Review before applying');
-  console.log('// Run: npx ts-node scripts/apply-scenario-metadata.ts');
-  console.log('');
-  console.log('export const scenarioMetadata = [');
-
-  for (const s of scenarios) {
-    const skills = detectSkills(s.title, s.description || '');
-    const difficulty = inferDifficulty(s.title, s.category);
-    const estimatedTime = inferTime(s.title, s.description || '');
-
-    console.log(`  {`);
-    console.log(`    id: '${s.id}',`);
-    console.log(`    title: '${s.title.replace(/'/g, "\\'")}',`);
-    console.log(`    // Current: skill=${s.skill}, difficulty=${s.difficulty}, time=${s.estimatedTime}`);
-    console.log(`    skill: '${skills[0]}',  // Primary skill`);
-    console.log(`    allSkills: ${JSON.stringify(skills)},  // For Phase 2 array migration`);
-    console.log(`    difficulty: '${difficulty}',`);
-    console.log(`    estimatedTime: ${estimatedTime},`);
-    console.log(`  },`);
-  }
-
-  console.log('];');
-
-  await prisma.$disconnect();
-}
-
-main().catch(console.error);
-```
-
-**Run and capture output:**
-```bash
-npx ts-node scripts/analyze-scenarios.ts > scripts/scenario-metadata-proposed.ts
-```
-
-### 1.3 Apply Metadata (After SME Review)
-
-**File:** `scripts/apply-scenario-metadata.ts`
-
-```typescript
-import { PrismaClient } from '@prisma/client';
-import { isValidSkill } from '../src/lib/skills';
-
-const prisma = new PrismaClient();
-
-// SME-reviewed metadata - copy from scenario-metadata-proposed.ts after review
-// IMPORTANT: SME must review and approve before running this script
-const scenarioMetadata: Array<{
-  id: string;
-  skill: string;
-  difficulty: 'beginner' | 'intermediate' | 'advanced';
-  estimatedTime: number;
-}> = [
-  // Paste reviewed metadata here
-];
-
-async function main() {
-  if (scenarioMetadata.length === 0) {
-    console.error('ERROR: scenarioMetadata is empty. Did you paste the SME-reviewed data?');
-    process.exit(1);
-  }
-
-  console.log(`Applying metadata to ${scenarioMetadata.length} scenarios...`);
+  console.log(`Found ${scenarios.length} scenarios to process\n`);
 
   let updated = 0;
+  let skipped = 0;
   let errors = 0;
 
-  for (const meta of scenarioMetadata) {
-    // Validate skill
-    if (!isValidSkill(meta.skill)) {
-      console.error(`Invalid skill '${meta.skill}' for scenario ${meta.id}`);
-      errors++;
-      continue;
-    }
+  for (const s of scenarios) {
+    // Detect values using deterministic rules
+    const detectedSkill = detectSkill(s.title, s.description);
+    const detectedDifficulty = inferDifficulty(s.title, s.category);
+    const detectedTime = estimateTime(s.title, s.description);
 
-    // Validate difficulty
-    if (!['beginner', 'intermediate', 'advanced'].includes(meta.difficulty)) {
-      console.error(`Invalid difficulty '${meta.difficulty}' for scenario ${meta.id}`);
-      errors++;
-      continue;
-    }
+    // Only update if values are missing or invalid
+    const needsUpdate =
+      !s.skill ||
+      !isValidSkill(s.skill) ||
+      !s.difficulty ||
+      !['beginner', 'intermediate', 'advanced'].includes(s.difficulty) ||
+      !s.estimatedTime;
 
-    // Validate time
-    if (meta.estimatedTime < 5 || meta.estimatedTime > 60) {
-      console.error(`Invalid estimatedTime ${meta.estimatedTime} for scenario ${meta.id}`);
-      errors++;
+    if (!needsUpdate) {
+      skipped++;
       continue;
     }
 
     try {
       await prisma.scenario.update({
-        where: { id: meta.id },
+        where: { id: s.id },
         data: {
-          skill: meta.skill,
-          difficulty: meta.difficulty,
-          estimatedTime: meta.estimatedTime,
+          skill: s.skill && isValidSkill(s.skill) ? s.skill : detectedSkill,
+          difficulty: s.difficulty || detectedDifficulty,
+          estimatedTime: s.estimatedTime || detectedTime,
         },
       });
+
+      console.log(`✓ ${s.title.substring(0, 50)}... → skill=${detectedSkill}, difficulty=${detectedDifficulty}, time=${detectedTime}`);
       updated++;
     } catch (e) {
-      console.error(`Failed to update ${meta.id}:`, e);
+      console.error(`✗ Failed: ${s.title} - ${e}`);
       errors++;
     }
   }
 
-  console.log(`\nResults: ${updated} updated, ${errors} errors`);
+  console.log('\n=== Results ===');
+  console.log(`Updated: ${updated}`);
+  console.log(`Skipped (already valid): ${skipped}`);
+  console.log(`Errors: ${errors}`);
 
   if (errors > 0) {
     process.exit(1);
@@ -281,74 +293,20 @@ async function main() {
   await prisma.$disconnect();
 }
 
-main().catch(console.error);
-```
-
-### 1.4 Verification Test
-
-**File:** `src/__tests__/scenario-metadata.test.ts`
-
-```typescript
-import { prisma } from '@/lib/prisma';
-import { isValidSkill, VALID_SKILLS } from '@/lib/skills';
-
-describe('Scenario Metadata', () => {
-  it('all scenarios have valid skill values', async () => {
-    const scenarios = await prisma.scenario.findMany({
-      select: { id: true, title: true, skill: true },
-    });
-
-    const invalid = scenarios.filter(s => s.skill && !isValidSkill(s.skill));
-
-    expect(invalid).toEqual([]);
-  });
-
-  it('all scenarios have valid difficulty values', async () => {
-    const scenarios = await prisma.scenario.findMany({
-      select: { id: true, title: true, difficulty: true },
-    });
-
-    const validDifficulties = ['beginner', 'intermediate', 'advanced'];
-    const invalid = scenarios.filter(s => s.difficulty && !validDifficulties.includes(s.difficulty));
-
-    expect(invalid).toEqual([]);
-  });
-
-  it('all scenarios have reasonable estimatedTime', async () => {
-    const scenarios = await prisma.scenario.findMany({
-      select: { id: true, title: true, estimatedTime: true },
-    });
-
-    const invalid = scenarios.filter(s =>
-      s.estimatedTime !== null && (s.estimatedTime < 5 || s.estimatedTime > 60)
-    );
-
-    expect(invalid).toEqual([]);
-  });
-
-  it('external API returns populated metadata', async () => {
-    const scenarios = await prisma.scenario.findMany({
-      where: { isOneTime: false },
-      select: { skill: true, difficulty: true, estimatedTime: true },
-    });
-
-    // After backfill, all should have values
-    const unpopulated = scenarios.filter(s =>
-      s.skill === null || s.difficulty === null || s.estimatedTime === null
-    );
-
-    // This will fail until backfill is complete - that's intentional
-    expect(unpopulated.length).toBe(0);
-  });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
 });
 ```
 
-### Phase 1 Gate
-
+**Verification:**
 ```bash
-# GATE 1: Metadata backfill verification
+# Run the backfill
+npx ts-node scripts/backfill-scenario-metadata.ts
+
+# Verify all scenarios have metadata
 npx ts-node -e "
-import { PrismaClient } from '@prisma/client';
+const { PrismaClient } = require('@prisma/client');
 const p = new PrismaClient();
 (async () => {
   const total = await p.scenario.count();
@@ -372,13 +330,14 @@ const p = new PrismaClient();
 
 ---
 
-## Phase 2: Postgres Migration + Skills Array
+## Task 3: Create Docker Compose for Postgres
 
-### 2.1 Setup Docker Postgres
+**Files to create:** `docker-compose.yml`
 
-**File:** `docker-compose.yml`
+**Implementation:**
 
 ```yaml
+# docker-compose.yml
 version: '3.8'
 
 services:
@@ -403,20 +362,46 @@ volumes:
   postgres_data:
 ```
 
-**Start and verify:**
+**Verification:**
 ```bash
+# Start Postgres
 docker-compose up -d
-sleep 5
-docker-compose ps  # Should show healthy
+
+# Wait for healthy status
+sleep 10
+
+# Verify running
+docker-compose ps | grep -q "healthy" || docker-compose ps | grep -q "Up"
+
+# Test connection
+docker exec proto-trainer-postgres pg_isready -U proto -d proto_trainer
 ```
 
-### 2.2 Backup SQLite Data
+---
+
+## Task 4: Backup SQLite Data
+
+**Files to create:** `scripts/backup-sqlite.sh`
+
+**Implementation:**
 
 ```bash
-# CRITICAL: Backup before any migration
-cp prisma/dev.db prisma/dev.db.backup-$(date +%Y%m%d-%H%M%S)
+#!/bin/bash
+# scripts/backup-sqlite.sh
+set -euo pipefail
 
-# Export row counts for verification
+BACKUP_DIR="prisma/backups"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+BACKUP_FILE="$BACKUP_DIR/dev.db.backup-$TIMESTAMP"
+COUNTS_FILE="$BACKUP_DIR/counts-$TIMESTAMP.txt"
+
+mkdir -p "$BACKUP_DIR"
+
+# Backup database file
+cp prisma/dev.db "$BACKUP_FILE"
+echo "Database backed up to: $BACKUP_FILE"
+
+# Record row counts for verification
 sqlite3 prisma/dev.db "
 SELECT 'scenarios' as tbl, COUNT(*) as cnt FROM scenarios
 UNION ALL SELECT 'users', COUNT(*) FROM users
@@ -424,118 +409,161 @@ UNION ALL SELECT 'accounts', COUNT(*) FROM accounts
 UNION ALL SELECT 'assignments', COUNT(*) FROM assignments
 UNION ALL SELECT 'sessions', COUNT(*) FROM sessions
 UNION ALL SELECT 'evaluations', COUNT(*) FROM evaluations;
-" > /tmp/sqlite-counts.txt
+" > "$COUNTS_FILE"
 
-cat /tmp/sqlite-counts.txt
+echo "Row counts saved to: $COUNTS_FILE"
+cat "$COUNTS_FILE"
+
+# Output for verification
+echo ""
+echo "BACKUP_FILE=$BACKUP_FILE"
+echo "COUNTS_FILE=$COUNTS_FILE"
 ```
 
-### 2.3 Update Schema for Postgres + Skills Array
+**Verification:**
+```bash
+chmod +x scripts/backup-sqlite.sh
+./scripts/backup-sqlite.sh
 
-**File:** `prisma/schema.prisma` (changes)
+# Verify backup exists
+ls -la prisma/backups/*.backup-*
+```
 
+---
+
+## Task 5: Update Schema for Postgres with Skills Array
+
+**Files to modify:** `prisma/schema.prisma`, `.env`
+
+**Implementation:**
+
+Update `prisma/schema.prisma`:
 ```prisma
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-model Scenario {
-  // ... existing fields ...
-
-  // CHANGED: skill -> skills array
-  // Keep 'skill' temporarily for backwards compatibility (deprecated)
-  skill              String?   // DEPRECATED: Use skills array. Remove after PTG migration.
-  skills             String[]  @default([])  // Primary storage for skills
-  difficulty         String?   @default("intermediate")
-  estimatedTime      Int?      @default(15) @map("estimated_time")
-
-  // ... rest of model ...
-}
+// In Scenario model, change:
+// skill String?
+// To:
+skill              String?   // DEPRECATED: Use skills array
+skills             String[]  @default([])
 ```
 
-### 2.4 Environment Update
-
-**File:** `.env` (update)
-
-```env
-# Database - switch to Postgres
-# DATABASE_URL="file:./dev.db"  # SQLite (commented out)
+Update `.env`:
+```
+# DATABASE_URL="file:./dev.db"
 DATABASE_URL="postgresql://proto:proto_dev_2026@localhost:5432/proto_trainer"
 ```
 
-### 2.5 Migration Script
+**Verification:**
+```bash
+# Generate Prisma client
+npx prisma generate
 
-**File:** `scripts/migrate-to-postgres.ts`
+# Create migration
+npx prisma migrate dev --name postgres_skills_array
+
+# Verify migration applied
+npx prisma migrate status
+```
+
+---
+
+## Task 6: Migrate Data and Convert Skill to Skills Array
+
+**Files to create:** `scripts/migrate-skill-to-array.ts`
+
+**Implementation:**
 
 ```typescript
-import { execSync } from 'child_process';
+// scripts/migrate-skill-to-array.ts
 import { PrismaClient } from '@prisma/client';
 
+const prisma = new PrismaClient();
+
 async function main() {
-  console.log('=== Proto Trainer: SQLite to Postgres Migration ===\n');
+  console.log('=== Migrating skill to skills array ===\n');
 
-  // Step 1: Generate migration
-  console.log('Step 1: Generating Prisma migration...');
-  try {
-    execSync('npx prisma migrate dev --name postgres_skills_array --create-only', {
-      stdio: 'inherit',
-    });
-  } catch (e) {
-    console.error('Migration generation failed');
-    process.exit(1);
-  }
-
-  // Step 2: Apply migration
-  console.log('\nStep 2: Applying migration...');
-  try {
-    execSync('npx prisma migrate deploy', { stdio: 'inherit' });
-  } catch (e) {
-    console.error('Migration deploy failed');
-    process.exit(1);
-  }
-
-  // Step 3: Seed data (will re-create from SQLite export)
-  console.log('\nStep 3: Seeding database...');
-  try {
-    execSync('npx prisma db seed', { stdio: 'inherit' });
-  } catch (e) {
-    console.error('Seeding failed');
-    process.exit(1);
-  }
-
-  // Step 4: Migrate skill -> skills array
-  console.log('\nStep 4: Migrating skill to skills array...');
-  const prisma = new PrismaClient();
-
+  // Get all scenarios with skill field populated
   const scenarios = await prisma.scenario.findMany({
-    select: { id: true, skill: true },
+    select: { id: true, skill: true, skills: true },
   });
 
+  let migrated = 0;
+  let skipped = 0;
+
   for (const s of scenarios) {
+    // Skip if skills array already populated
+    if (s.skills && s.skills.length > 0) {
+      skipped++;
+      continue;
+    }
+
+    // Migrate skill string to skills array
     if (s.skill) {
       await prisma.scenario.update({
         where: { id: s.id },
         data: { skills: [s.skill] },
       });
+      migrated++;
     }
   }
 
-  console.log(`Migrated ${scenarios.length} scenarios to skills array`);
+  console.log(`Migrated: ${migrated}`);
+  console.log(`Skipped (already has skills): ${skipped}`);
+
+  // Verify
+  const withSkills = await prisma.scenario.count({
+    where: { skills: { isEmpty: false } },
+  });
+  const total = await prisma.scenario.count();
+
+  console.log(`\nVerification: ${withSkills}/${total} scenarios have skills array populated`);
+
+  if (withSkills < total) {
+    console.error('WARNING: Some scenarios have empty skills array');
+  }
 
   await prisma.$disconnect();
-
-  console.log('\n=== Migration Complete ===');
 }
 
 main().catch(console.error);
 ```
 
-### 2.6 Update External API (Backwards Compatible)
+**Verification:**
+```bash
+npx ts-node scripts/migrate-skill-to-array.ts
 
-**File:** `src/app/api/external/scenarios/route.ts` (update mapping)
+# Verify all scenarios have skills array
+npx ts-node -e "
+const { PrismaClient } = require('@prisma/client');
+const p = new PrismaClient();
+(async () => {
+  const scenarios = await p.scenario.findMany({ select: { skills: true } });
+  const empty = scenarios.filter(s => !s.skills || s.skills.length === 0);
+  console.log('Total:', scenarios.length, 'With skills:', scenarios.length - empty.length);
+  if (empty.length > 0) {
+    console.error('FAIL: Some scenarios have empty skills array');
+    process.exit(1);
+  }
+  console.log('PASS: All scenarios have skills array');
+  await p.\$disconnect();
+})();
+"
+```
+
+---
+
+## Task 7: Update External API for Backwards Compatibility
+
+**Files to modify:** `src/app/api/external/scenarios/route.ts`
+
+**Implementation:**
 
 ```typescript
-// Map to external format - backwards compatible
+// Update the mapping in GET handler
 const externalScenarios = scenarios.map((s) => ({
   id: s.id,
   name: s.title,
@@ -543,90 +571,39 @@ const externalScenarios = scenarios.map((s) => ({
   mode: s.mode as 'phone' | 'chat',
   category: s.category ?? 'general',
 
-  // DEPRECATED: Use 'skills' array instead. Will be removed in v2.
+  // DEPRECATED: Use 'skills' array instead
   skill: s.skills[0] ?? s.skill ?? 'general',
 
   // NEW: Skills array (preferred)
-  skills: s.skills.length > 0 ? s.skills : [s.skill ?? 'general'],
+  skills: s.skills.length > 0 ? s.skills : (s.skill ? [s.skill] : ['general']),
 
   difficulty: (s.difficulty ?? 'intermediate') as 'beginner' | 'intermediate' | 'advanced',
   estimatedTime: s.estimatedTime ?? 15,
 }))
 ```
 
-### 2.7 Update Types
+**Verification:**
+```bash
+# Start dev server in background
+npm run dev &
+DEV_PID=$!
+sleep 5
 
-**File:** `src/types/index.ts` (add)
+# Test API response
+curl -s http://localhost:3003/api/external/scenarios -H "X-API-Key: ptg-dev-key-2026" | jq '.data.scenarios[0]'
 
-```typescript
-export interface ExternalScenario {
-  id: string;
-  name: string;
-  description: string;
-  mode: 'phone' | 'chat';
-  category: string;
-  /** @deprecated Use skills array instead */
-  skill: string;
-  skills: string[];
-  difficulty: 'beginner' | 'intermediate' | 'advanced';
-  estimatedTime: number;
-}
+# Verify response has both skill and skills
+curl -s http://localhost:3003/api/external/scenarios -H "X-API-Key: ptg-dev-key-2026" | \
+  jq -e '.data.scenarios[0] | has("skill") and has("skills") and (.skills | type == "array")'
+
+# Stop dev server
+kill $DEV_PID 2>/dev/null || true
 ```
 
-### 2.8 Verification Tests
-
-**File:** `src/__tests__/postgres-migration.test.ts`
-
+**Test file:** `src/__tests__/external-api.test.ts`
 ```typescript
-import { prisma } from '@/lib/prisma';
-
-describe('Postgres Migration', () => {
-  it('database is Postgres', async () => {
-    const result = await prisma.$queryRaw<[{version: string}]>`SELECT version()`;
-    expect(result[0].version).toContain('PostgreSQL');
-  });
-
-  it('scenarios have skills array', async () => {
-    const scenarios = await prisma.scenario.findMany({
-      select: { id: true, skills: true },
-    });
-
-    // All scenarios should have skills array (may be empty)
-    for (const s of scenarios) {
-      expect(Array.isArray(s.skills)).toBe(true);
-    }
-  });
-
-  it('skills array contains valid skills', async () => {
-    const { VALID_SKILLS } = await import('@/lib/skills');
-
-    const scenarios = await prisma.scenario.findMany({
-      select: { id: true, skills: true },
-    });
-
-    for (const s of scenarios) {
-      for (const skill of s.skills) {
-        expect(VALID_SKILLS).toContain(skill);
-      }
-    }
-  });
-
-  it('row counts match pre-migration', async () => {
-    // These counts should match /tmp/sqlite-counts.txt
-    const counts = {
-      scenarios: await prisma.scenario.count(),
-      users: await prisma.user.count(),
-      accounts: await prisma.account.count(),
-      assignments: await prisma.assignment.count(),
-    };
-
-    // Verify against expected counts (update after SQLite export)
-    expect(counts.scenarios).toBeGreaterThanOrEqual(42);
-    expect(counts.users).toBeGreaterThanOrEqual(6);
-    expect(counts.accounts).toBeGreaterThanOrEqual(2);
-  });
-
-  it('external API returns both skill and skills', async () => {
+describe('External Scenarios API', () => {
+  it('returns both skill and skills fields', async () => {
     const response = await fetch('http://localhost:3003/api/external/scenarios', {
       headers: { 'X-API-Key': process.env.EXTERNAL_API_KEY || 'ptg-dev-key-2026' },
     });
@@ -635,119 +612,43 @@ describe('Postgres Migration', () => {
     expect(data.ok).toBe(true);
 
     const scenario = data.data.scenarios[0];
-    expect(scenario).toHaveProperty('skill');      // Deprecated but present
-    expect(scenario).toHaveProperty('skills');     // New array
+    expect(scenario).toHaveProperty('skill');
+    expect(scenario).toHaveProperty('skills');
     expect(Array.isArray(scenario.skills)).toBe(true);
+    expect(scenario.skills.length).toBeGreaterThan(0);
+  });
+
+  it('skill matches first element of skills array', async () => {
+    const response = await fetch('http://localhost:3003/api/external/scenarios', {
+      headers: { 'X-API-Key': process.env.EXTERNAL_API_KEY || 'ptg-dev-key-2026' },
+    });
+
+    const data = await response.json();
+    const scenario = data.data.scenarios[0];
+    expect(scenario.skill).toBe(scenario.skills[0]);
   });
 });
-```
-
-### Phase 2 Gate
-
-```bash
-# GATE 2: Postgres migration verification
-echo "Checking Postgres connection..."
-npx prisma db execute --stdin <<< "SELECT 1" || exit 1
-
-echo "Checking row counts..."
-npx ts-node -e "
-import { PrismaClient } from '@prisma/client';
-const p = new PrismaClient();
-(async () => {
-  const counts = {
-    scenarios: await p.scenario.count(),
-    users: await p.user.count(),
-    accounts: await p.account.count(),
-  };
-  console.log('Counts:', counts);
-  if (counts.scenarios < 42) {
-    console.error('FAIL: Expected at least 42 scenarios');
-    process.exit(1);
-  }
-  console.log('PASS: Row counts verified');
-  await p.\$disconnect();
-})();
-"
-
-echo "Checking external API..."
-curl -s http://localhost:3003/api/external/scenarios -H "X-API-Key: ptg-dev-key-2026" | \
-  jq -e '.data.scenarios[0] | has("skill") and has("skills")' || exit 1
-
-echo "GATE 2 PASSED"
 ```
 
 ---
 
-## Phase 3: Final Verification & Cleanup
+## Task 8: Update CLAUDE.md and Commit
 
-### 3.1 Full Test Suite
+**Files to modify:** `CLAUDE.md`
 
-```bash
-npm test
-npx tsc --noEmit
-npm run lint
-```
+**Implementation:**
 
-### 3.2 API Contract Verification
-
-**File:** `scripts/verify-api-contract.ts`
-
-```typescript
-import { z } from 'zod';
-
-const ExternalScenarioSchema = z.object({
-  id: z.string().uuid(),
-  name: z.string(),
-  description: z.string(),
-  mode: z.enum(['phone', 'chat']),
-  category: z.string(),
-  skill: z.string(),  // Deprecated
-  skills: z.array(z.string()),
-  difficulty: z.enum(['beginner', 'intermediate', 'advanced']),
-  estimatedTime: z.number().int().min(5).max(60),
-});
-
-const ExternalScenariosResponseSchema = z.object({
-  ok: z.literal(true),
-  data: z.object({
-    scenarios: z.array(ExternalScenarioSchema),
-  }),
-});
-
-async function main() {
-  const response = await fetch('http://localhost:3003/api/external/scenarios', {
-    headers: { 'X-API-Key': 'ptg-dev-key-2026' },
-  });
-
-  const json = await response.json();
-
-  const result = ExternalScenariosResponseSchema.safeParse(json);
-
-  if (!result.success) {
-    console.error('API contract violation:');
-    console.error(result.error.format());
-    process.exit(1);
-  }
-
-  console.log(`API contract verified: ${result.data.data.scenarios.length} scenarios`);
-  console.log('Sample scenario:', JSON.stringify(result.data.data.scenarios[0], null, 2));
-}
-
-main().catch(console.error);
-```
-
-### 3.3 Update Documentation
-
-**File:** `CLAUDE.md` (append to Resume Context section)
+Add to Resume Context section:
 
 ```markdown
 ## Resume Context (Post PTG Integration Enhancement)
 
-### Completed Work
+### Completed Work (2026-01-XX)
 
 1. **Scenario Metadata Backfill** ✅
-   - All 42 scenarios have skill, difficulty, estimatedTime populated
-   - Skills validated against VALID_SKILLS in src/lib/skills.ts
+   - All scenarios have skill, difficulty, estimatedTime populated
+   - Skills detected using deterministic keyword matching
+   - Validation against VALID_SKILLS in src/lib/skills.ts
 
 2. **Postgres Migration** ✅
    - Migrated from SQLite to Postgres (Docker)
@@ -756,11 +657,12 @@ main().catch(console.error);
 
 3. **Skills Array** ✅
    - Schema: `skills String[]` (Postgres native array)
-   - API returns both `skill` (deprecated) and `skills` (array) for backwards compatibility
+   - API returns both `skill` (deprecated) and `skills` (array)
+   - Backwards compatible with existing PTG integration
 
 ### External API Response Shape (v1.1)
 
-```json
+\`\`\`json
 {
   "id": "uuid",
   "name": "Scenario Title",
@@ -768,96 +670,128 @@ main().catch(console.error);
   "mode": "phone",
   "category": "cohort_training",
   "skill": "risk-assessment",     // DEPRECATED
-  "skills": ["risk-assessment", "safety-planning"],  // USE THIS
+  "skills": ["risk-assessment"],  // USE THIS
   "difficulty": "intermediate",
   "estimatedTime": 20
 }
-```
+\`\`\`
 
-### Deferred Work
+### Quick Start (Updated)
 
-- **Skill Taxonomy API**: `/api/external/skills` endpoint - build when PTG requests
-- **Evaluation Criteria API**: `/api/external/scenarios/[id]/evaluation-context` - build when PTG needs pre-brief content
-
-### Quick Start
-
-```bash
+\`\`\`bash
 docker-compose up -d     # Start Postgres
 npm run dev              # Next.js on :3003
 npm run ws:dev           # WebSocket on :3004
+\`\`\`
+
+### Deferred Work
+
+- **Skill Taxonomy API**: `/api/external/skills` - build when PTG requests
+- **Evaluation Criteria API**: Build when PTG needs pre-brief content
 ```
-```
 
----
-
-## Execution Checklist (RALF)
-
-### Autonomous Steps
-
-- [ ] Create `src/lib/skills.ts` with VALID_SKILLS
-- [ ] Create `scripts/analyze-scenarios.ts`
-- [ ] Run analysis: `npx ts-node scripts/analyze-scenarios.ts > scripts/scenario-metadata-proposed.ts`
-- [ ] **STOP FOR SME REVIEW** - Cannot proceed without human approval of metadata
-- [ ] Create `scripts/apply-scenario-metadata.ts` with SME-approved data
-- [ ] Run: `npx ts-node scripts/apply-scenario-metadata.ts`
-- [ ] **GATE 1**: Verify all scenarios have metadata
-- [ ] Create `docker-compose.yml`
-- [ ] Start Postgres: `docker-compose up -d`
-- [ ] Backup SQLite: `cp prisma/dev.db prisma/dev.db.backup-*`
-- [ ] Update `.env` with Postgres URL
-- [ ] Update `prisma/schema.prisma` for Postgres + skills array
-- [ ] Run migration: `npx prisma migrate dev --name postgres_skills_array`
-- [ ] Run seed: `npx prisma db seed`
-- [ ] Migrate skill -> skills: `npx ts-node scripts/migrate-to-postgres.ts`
-- [ ] Update external API route for backwards compatibility
-- [ ] **GATE 2**: Verify Postgres migration
-- [ ] Create/run verification tests
-- [ ] Update CLAUDE.md
-- [ ] **GATE 3**: Full test suite passes
-- [ ] Commit all changes
-
-### Human Checkpoints
-
-1. **SME Review** (after analyze-scenarios.ts output): Review proposed skill/difficulty/time values
-2. **Final Review**: Verify API contract works with PTG
-
----
-
-## Rollback Procedures
-
-### Rollback Phase 1 (Metadata)
-
+**Verification:**
 ```bash
-# Revert to NULL values
+# Full verification suite
+npm run build
+npx tsc --noEmit
+npm run lint
+
+# Verify Postgres is the active database
 npx ts-node -e "
-import { PrismaClient } from '@prisma/client';
+const { PrismaClient } = require('@prisma/client');
 const p = new PrismaClient();
 (async () => {
-  await p.scenario.updateMany({
-    data: { skill: null, difficulty: null, estimatedTime: null }
-  });
-  console.log('Reverted metadata to NULL');
+  const result = await p.\$queryRaw\`SELECT version()\`;
+  console.log('Database:', result[0].version.includes('PostgreSQL') ? 'PostgreSQL' : 'Unknown');
   await p.\$disconnect();
 })();
 "
 ```
 
-### Rollback Phase 2 (Postgres)
+---
+
+## Execution Order
+
+```
+Task 1 (Skills lib) → Task 2 (Backfill metadata)
+                                ↓
+Task 3 (Docker) → Task 4 (Backup) → Task 5 (Schema) → Task 6 (Migrate array)
+                                                                ↓
+                                                      Task 7 (API update) → Task 8 (Docs)
+```
+
+**Dependencies:**
+- Tasks 1-2 can run on SQLite (current setup)
+- Tasks 3-6 are the Postgres migration sequence
+- Task 7 depends on Task 6 (needs skills array)
+- Task 8 is final documentation
+
+---
+
+## Verification Commands (Run After All Tasks)
+
+```bash
+# 1. Type check
+npx tsc --noEmit
+
+# 2. Lint
+npm run lint
+
+# 3. Build
+npm run build
+
+# 4. Verify Postgres
+docker-compose ps | grep -q "Up"
+
+# 5. Verify all scenarios have metadata
+npx ts-node -e "
+const { PrismaClient } = require('@prisma/client');
+const { isValidSkill } = require('./src/lib/skills');
+const p = new PrismaClient();
+(async () => {
+  const scenarios = await p.scenario.findMany();
+  let valid = 0;
+  for (const s of scenarios) {
+    if (s.skills?.length > 0 && s.difficulty && s.estimatedTime) {
+      if (s.skills.every(sk => isValidSkill(sk))) {
+        valid++;
+      }
+    }
+  }
+  console.log('Valid:', valid, '/', scenarios.length);
+  if (valid < scenarios.length) process.exit(1);
+  await p.\$disconnect();
+})();
+"
+
+# 6. Verify API contract
+curl -s http://localhost:3003/api/external/scenarios -H "X-API-Key: ptg-dev-key-2026" | \
+  jq -e '.ok == true and (.data.scenarios | length > 0) and (.data.scenarios[0] | has("skill") and has("skills"))'
+
+echo "ALL VERIFICATIONS PASSED"
+```
+
+---
+
+## Rollback Procedure
+
+If migration fails:
 
 ```bash
 # Stop Postgres
 docker-compose down
 
-# Restore SQLite
-cp prisma/dev.db.backup-* prisma/dev.db
+# Restore SQLite backup
+cp prisma/backups/dev.db.backup-* prisma/dev.db
 
-# Revert schema
+# Revert schema to SQLite
 git checkout prisma/schema.prisma
 
 # Update .env back to SQLite
-# DATABASE_URL="file:./dev.db"
+sed -i '' 's|^DATABASE_URL=.*|DATABASE_URL="file:./dev.db"|' .env
 
-# Regenerate Prisma client
+# Regenerate client
 npx prisma generate
 ```
 
@@ -865,9 +799,15 @@ npx prisma generate
 
 ## Success Criteria
 
-1. ✅ All scenarios have skill, difficulty, estimatedTime populated
-2. ✅ Skills are validated against VALID_SKILLS
-3. ✅ Database is Postgres with native array support
-4. ✅ External API returns both `skill` and `skills` (backwards compatible)
-5. ✅ All tests pass
-6. ✅ PTG can consume the enhanced API
+- [ ] All scenarios have valid `skill` values (from VALID_SKILLS)
+- [ ] All scenarios have valid `difficulty` values (beginner/intermediate/advanced)
+- [ ] All scenarios have `estimatedTime` values (5-60 minutes)
+- [ ] Database is Postgres (verified via version query)
+- [ ] All scenarios have `skills` array (non-empty)
+- [ ] External API returns both `skill` and `skills`
+- [ ] Build passes with zero type errors
+- [ ] Lint passes
+
+---
+
+*Plan ready for Ralph loop processing. Apply `auto:ready` label when approved.*
