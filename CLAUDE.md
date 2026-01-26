@@ -288,109 +288,94 @@ if (userId) headers['x-user-id'] = userId;
 
 ---
 
-## Resume Context (2026-01-22 Evening)
+## Resume Context (2026-01-26)
 
-### Current State: External API Ready for Integration Testing
+### Current State: PostgreSQL + Skills Array Migration Complete
 
-External API for Personalized Training Guide integration is committed and pushed. Ready for cross-app integration testing.
+Migrated from SQLite to PostgreSQL with native `skills` array support. External API returns both `skill` (deprecated) and `skills` (array) for backwards compatibility.
 
-### Session Summary (2026-01-22)
+### Session Summary (2026-01-26)
 
-1. **Added External API for PTG Integration** ✅
-   - New endpoints under `/api/external/*` with `X-API-Key` authentication
-   - Timing-safe API key comparison to prevent timing attacks
-   - 4 endpoints: scenarios list, assignments list/create, result retrieval
+1. **PostgreSQL Migration** ✅
+   - Switched from SQLite to PostgreSQL (Docker)
+   - Start with: `docker-compose up -d`
+   - Connection: `postgresql://proto:proto_dev_2026@localhost:5432/proto_trainer`
 
-2. **Schema Migration** ✅
-   - Added `skill`, `difficulty`, `estimatedTime` columns to Scenario model
-   - Migration: `20260122050833_add_scenario_external_metadata`
+2. **Skills Array Support** ✅
+   - Schema: `skills String[]` (Postgres native array)
+   - Deterministic skill detection via `src/lib/skills.ts`
+   - Backfill script populates metadata from scenario content
 
-3. **Seed Data Updates** ✅
-   - Created "External API" account (ID: `00000000-0000-0000-0000-000000000020`)
-   - Created "External API System" user for `assignedBy` (ID: `00000000-0000-0000-0000-000000000099`)
+3. **External API v1.1** ✅
+   - Returns both `skill` (deprecated) and `skills` (array)
+   - Backwards compatible with existing PTG integration
 
-4. **Environment Configuration** ✅
-   - Added `EXTERNAL_API_KEY` to `.env.example` and `.env`
-   - Dev key: `ptg-dev-key-2026`
+### Quick Start
+
+```bash
+docker-compose up -d     # Start PostgreSQL
+npm run dev              # Next.js on :3003
+npm run ws:dev           # WebSocket on :3004
+```
+
+### External API Response Shape (v1.1)
+
+```json
+{
+  "id": "uuid",
+  "name": "Scenario Title",
+  "description": "...",
+  "mode": "phone",
+  "category": "cohort_training",
+  "skill": "risk-assessment",     // DEPRECATED - use skills
+  "skills": ["risk-assessment"],  // NEW - use this
+  "difficulty": "intermediate",
+  "estimatedTime": 20
+}
+```
+
+### Skill Detection
+
+Skills are detected from scenario title/description using keyword patterns in `src/lib/skills.ts`:
+
+| Skill | Example Keywords |
+|-------|-----------------|
+| risk-assessment | suicid, SI, ideation, lethality |
+| safety-planning | safety plan, means safety, restrict |
+| de-escalation | de-escalat, calm, crisis intervention |
+| self-harm-assessment | cut, self-harm, NSSI |
+| substance-assessment | substance, drug, alcohol |
+| dv-assessment | domestic, partner violen, abuse |
+| grief-support | grief, loss, death, bereave |
+| anxiety-support | anxi, panic, overwhelm |
+
+### Database Scripts
+
+```bash
+# Backfill scenario metadata (skill, difficulty, estimatedTime)
+npx tsx scripts/backfill-scenario-metadata.ts
+
+# Migrate skill to skills array
+npx tsx scripts/migrate-skill-to-array.ts
+
+# Backup SQLite (if reverting)
+./scripts/backup-sqlite.sh
+```
+
+### Files Created
+
+- `docker-compose.yml` - PostgreSQL container
+- `src/lib/skills.ts` - Skill constants and detection
+- `scripts/backfill-scenario-metadata.ts` - Populate metadata
+- `scripts/migrate-skill-to-array.ts` - Populate skills array
+- `scripts/backup-sqlite.sh` - SQLite backup utility
+- `prisma/migrations/20260126055146_init_postgres_with_skills_array/`
 
 ### External API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/external/scenarios` | GET | List all reusable scenarios |
-| `/api/external/assignments?user_id=X` | GET | List assignments for user (by externalId) |
-| `/api/external/assignments` | POST | Create assignment `{user_id, scenario_id, due_date?}` |
-| `/api/external/assignments/[id]/result` | GET | Get evaluation result (null if not completed) |
-
-### Testing Commands
-
-```bash
-# List scenarios
-curl -H "X-API-Key: ptg-dev-key-2026" http://localhost:3003/api/external/scenarios
-
-# List assignments for user
-curl -H "X-API-Key: ptg-dev-key-2026" "http://localhost:3003/api/external/assignments?user_id=test-counselor-001"
-
-# Create assignment
-curl -X POST -H "X-API-Key: ptg-dev-key-2026" -H "Content-Type: application/json" \
-  -d '{"user_id": "test-counselor-001", "scenario_id": "SCENARIO_UUID"}' \
-  http://localhost:3003/api/external/assignments
-
-# Get result
-curl -H "X-API-Key: ptg-dev-key-2026" http://localhost:3003/api/external/assignments/ASSIGNMENT_UUID/result
-```
-
-### Test Status
-
-| Feature | Status |
-|---------|--------|
-| External API auth (X-API-Key) | ✅ Working |
-| GET /api/external/scenarios | ✅ Working (42 scenarios) |
-| GET /api/external/assignments | ✅ Working |
-| POST /api/external/assignments | ✅ Working |
-| GET /api/external/assignments/[id]/result | ✅ Working |
-| Unknown user returns 404 | ✅ Working |
-| Invalid API key returns 401 | ✅ Working |
-
-### Database State
-
-- **Scenarios**: 42 (with skill/difficulty/estimatedTime columns)
-- **Assignments**: 3 (including 1 created via external API)
-- **Users**: 7 (6 original + 1 external API system user)
-- **Accounts**: 2 (Test Organization + External API)
-
-### Quick Start for Next Session
-
-```bash
-npm run dev      # Terminal 1 - Next.js on :3003
-npm run ws:dev   # Terminal 2 - WebSocket on :3004
-```
-
-### Next Session: Integration Testing
-
-- [ ] **Integration test**: Connect Personalized Training Guide (port 3002) to external API
-- [ ] Verify scenarios list flows through to PTG
-- [ ] Test assignment creation from PTG
-- [ ] Test result retrieval after completing a simulation
-- [ ] Populate `skill` field for existing scenarios (currently defaults to "general")
-- [ ] Voice/chat evaluation testing (requires microphone)
-
-### Files Created/Modified
-
-**New Files:**
-- `src/app/api/external/scenarios/route.ts`
-- `src/app/api/external/assignments/route.ts`
-- `src/app/api/external/assignments/[id]/result/route.ts`
-- `prisma/migrations/20260122050833_add_scenario_external_metadata/`
-
-**Modified Files:**
-- `prisma/schema.prisma` - added skill, difficulty, estimatedTime to Scenario
-- `prisma/seed.ts` - added external account and system user
-- `src/types/index.ts` - added ScenarioDifficulty type
-- `.env.example` - added EXTERNAL_API_KEY
-- `.env` - added EXTERNAL_API_KEY
-
-### Git Status
-
-Latest commit: `8ad9b48` - pushed to origin/main
-- feat: add external API for Personalized Training Guide integration
+| `/api/external/assignments?user_id=X` | GET | List assignments for user |
+| `/api/external/assignments` | POST | Create assignment |
+| `/api/external/assignments/[id]/result` | GET | Get evaluation result |

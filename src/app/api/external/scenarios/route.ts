@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
         mode: true,
         category: true,
         skill: true,
+        skills: true,
         difficulty: true,
         estimatedTime: true,
       },
@@ -59,7 +60,13 @@ export async function GET(request: NextRequest) {
       description: s.description ?? '',
       mode: s.mode as 'phone' | 'chat',
       category: s.category ?? 'general',
-      skill: s.skill ?? 'general',
+
+      // DEPRECATED: Use 'skills' array instead
+      skill: s.skills[0] ?? s.skill ?? 'general',
+
+      // NEW: Skills array (preferred)
+      skills: s.skills.length > 0 ? s.skills : (s.skill ? [s.skill] : ['general']),
+
       difficulty: (s.difficulty ?? 'intermediate') as 'beginner' | 'intermediate' | 'advanced',
       estimatedTime: s.estimatedTime ?? 15,
     }))

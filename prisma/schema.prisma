@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -53,7 +53,8 @@ model Scenario {
   relevantPolicySections String?   @map("relevant_policy_sections")
   category               String?   // ScenarioCategory: onboarding, refresher, advanced, assessment
   // External API metadata
-  skill                  String?   // What skill this scenario trains (e.g., "de-escalation", "risk-assessment")
+  skill                  String?   // DEPRECATED: Use skills array
+  skills                 String[]  @default([])
   difficulty             String?   @default("intermediate") // beginner, intermediate, advanced
   estimatedTime          Int?      @default(15) @map("estimated_time") // Estimated completion time in minutes
 
