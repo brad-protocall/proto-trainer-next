@@ -309,96 +309,79 @@ if (userId) headers['x-user-id'] = userId;
 
 ---
 
-## Resume Context (2026-01-26 Late Evening)
+## Resume Context (2026-01-26 Night)
 
-### Current State: Uncommitted Changes Reviewed - Fixes Needed
+### Current State: All P1s Fixed, Compounded, Pushed
 
-PostgreSQL migration complete. Previous P1 fixes (023, 024) committed and pushed. Reviewed 13 uncommitted files containing feature work (recording playback, counselor selector, etc.). Found new issues that need fixing before committing.
+All feature work committed and pushed. P1 issues resolved. Solution documentation created for Jan 22-26 work. Prototype ready for demos with DEMO_MODE.
 
-### Session Summary (2026-01-26)
+### Session Summary (2026-01-26 Night)
 
-1. **Fixed Previous P1 Issues** ✅
-   - 023: Docker credentials → env vars, localhost binding
-   - 024: Added `skills: string[]` to Scenario type
-   - Commit `6b7f75b` pushed to main
+1. **Fixed All P1 Issues** ✅
+   - 029: Counselor impersonation → Gated behind `NEXT_PUBLIC_DEMO_MODE`
+   - 030: Race condition → Added partial unique index on assignments
+   - 031: Duplicate function → Extracted to `src/lib/assignment-utils.ts`
 
-2. **Reviewed Uncommitted Changes** ✅
-   - 13 files modified (~386 lines added, 123 removed)
-   - Ran 7 parallel review agents
-   - Created 9 new todo files (029-037)
+2. **Fixed P2-032** ✅
+   - Removed debug console.log statements from voice training
 
-### Uncommitted Changes Summary
+3. **Committed & Pushed** ✅
+   - `5c1f4ed` feat: add recording playback, fix P1 issues, add DEMO_MODE
+   - `6883b00` docs: add solution documentation for Jan 22-26 work
 
-These files have uncommitted work that needs P1 fixes before commit:
-- `src/app/api/assignments/[id]/route.ts` - Added recordingId
-- `src/app/api/assignments/route.ts` - Added recordingId (DUPLICATE function!)
-- `src/app/api/external/assignments/route.ts` - Duplicate check (has race condition)
-- `src/components/counselor-dashboard.tsx` - Counselor selector, recording playback
-- `src/hooks/use-realtime-voice.ts` - Retry logic, debug logs
-- `ws-server/realtime-session.ts` - Session reuse logic
+4. **Compounded Knowledge** ✅
+   - Created 4 new solution docs (~39 KB):
+     - `docs/solutions/integration-issues/external-api-ptg-integration-2026-01-22.md`
+     - `docs/solutions/database-issues/postgresql-migration-skills-array-2026-01-25.md`
+     - `docs/solutions/security-issues/demo-mode-prototype-gating-2026-01-26.md`
+     - `docs/solutions/database-issues/partial-unique-index-race-condition-2026-01-26.md`
 
-### 🔴 P1 - Must Fix Before Commit
+### Key Patterns Documented
+
+| Pattern | Use Case | Doc Location |
+|---------|----------|--------------|
+| **DEMO_MODE** | Gate prototype features | `security-issues/demo-mode-prototype-gating` |
+| **Partial Unique Index** | Prevent race condition duplicates | `database-issues/partial-unique-index-race-condition` |
+| **X-API-Key Auth** | Service-to-service API | `integration-issues/external-api-ptg-integration` |
+| **PostgreSQL Arrays** | Skills as native array | `database-issues/postgresql-migration-skills-array` |
+
+### 🟡 Remaining P2s (Deferred)
 
 | Todo | Issue | Effort |
 |------|-------|--------|
-| `029-pending-p1-counselor-impersonation-url.md` | URL param allows viewing other counselors' data | 30 min |
-| `030-pending-p1-race-condition-duplicate-assignments.md` | Concurrent requests create duplicate assignments | 30 min |
-| `031-pending-p1-duplicate-build-assignment-response.md` | 47-line function copy-pasted in 2 files | 15 min |
-
-### 🟡 P2 - Should Fix
-
-| Todo | Issue | Effort |
-|------|-------|--------|
-| `032-pending-p2-debug-console-logs.md` | Debug logs left in production code | 10 min |
 | `033-pending-p2-websocket-auth-missing.md` | WebSocket trusts client-provided userId | 1 hour |
 | `034-pending-p2-blob-url-memory-leak.md` | Recording playback leaks memory | 15 min |
 | `035-pending-p2-session-reuse-mixed-transcripts.md` | Reconnecting mixes old/new transcripts | 30 min |
 | `036-pending-p2-camelcase-snakecase-inconsistency.md` | Uses `any` to handle naming inconsistency | 1 hour |
-
-### 🟢 Previously Completed P2s (Still Pending)
-
-| Todo | Issue |
-|------|-------|
-| `025-pending-p2-missing-database-indexes.md` | No indexes on foreign keys |
-| `026-pending-p2-migration-scripts-no-transactions.md` | Scripts lack transaction boundaries |
-| `027-pending-p2-skills-validation-missing.md` | No CHECK constraint on valid skills |
-| `028-pending-p2-agent-native-skills-endpoints.md` | Missing /api/skills endpoints |
+| `025-pending-p2-missing-database-indexes.md` | No indexes on foreign keys | 30 min |
+| `027-pending-p2-skills-validation-missing.md` | No CHECK constraint on valid skills | 15 min |
+| `028-pending-p2-agent-native-skills-endpoints.md` | Missing /api/skills endpoints | 1 hour |
 
 ### Quick Start
 
 ```bash
 docker-compose up -d     # Start PostgreSQL (needs POSTGRES_PASSWORD in .env!)
+npx prisma migrate deploy # Apply migrations (including new partial unique index)
 npm run dev              # Next.js on :3003
 npm run ws:dev           # WebSocket on :3004
 ```
 
-### Next Session Tasks
-
-1. **Fix P1s before committing** (~1.25 hours):
-   ```bash
-   # View new P1 todos
-   cat todos/029-pending-p1-*.md
-   cat todos/030-pending-p1-*.md
-   cat todos/031-pending-p1-*.md
-   ```
-
-2. **Fix easy P2** (10 min):
-   - Remove debug console.logs (todo 032)
-
-3. **Commit the feature work** after fixes
-
-4. **Triage remaining P2s** - decide which to fix now vs defer
+**Enable Demo Mode** (for user switching in demos):
+```bash
+# Add to .env
+NEXT_PUBLIC_DEMO_MODE=true
+```
 
 ### Git Status
 
-- Latest commit: `6b7f75b` (pushed to main)
+- Latest commit: `6883b00` (pushed to main)
 - Branch: main
-- **13 files with uncommitted changes** (feature work, needs P1 fixes)
-- Pending todos: 13 total (3 P1, 9 P2, 1 P3)
+- Working tree clean (except build artifacts)
+- Pending todos: 8 P2s, 1 P3 (all deferred, non-blocking)
 
-### Key Files for P1 Fixes
+### Next Session Options
 
-- `src/app/api/assignments/route.ts` - Extract `buildAssignmentResponse`
-- `src/app/api/assignments/[id]/route.ts` - Remove duplicate function
-- `src/app/api/external/assignments/route.ts` - Add transaction to duplicate check
-- `src/components/counselor-dashboard.tsx` - Restrict counselor selector OR validate server-side
+1. **Demo the prototype** - DEMO_MODE enables user switching
+2. **Fix P2s** - Start with easy ones (034, 027)
+3. **Add new features** - Recording playback is working
+4. **SWE handoff prep** - Review "Prototype-Only Features" section above
