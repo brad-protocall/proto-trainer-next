@@ -115,7 +115,8 @@ export interface Scenario {
   created_at: string;
   updated_at: string;
   // External API metadata
-  skill: string | null;
+  skill: string | null;  // DEPRECATED - use skills array
+  skills: string[];
   difficulty: ScenarioDifficulty | null;
   estimated_time: number | null;
   account?: Account;
@@ -223,6 +224,7 @@ export interface AssignmentResponse {
   completedAt: string | null;
   sessionId: string | null;
   evaluationId: string | null;
+  recordingId: string | null;
   supervisorNotes: string | null;
   requireRecording?: boolean;
   isOverdue: boolean;

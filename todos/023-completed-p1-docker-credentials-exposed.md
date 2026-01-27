@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 priority: p1
 issue_id: "023"
 tags: [code-review, security, docker, credentials]
@@ -58,7 +58,7 @@ ports:
 
 ## Recommended Action
 
-[To be filled during triage]
+✅ **COMPLETED** - Option A implemented (environment variables)
 
 ## Technical Details
 
@@ -68,16 +68,17 @@ ports:
 
 ## Acceptance Criteria
 
-- [ ] No hardcoded credentials in docker-compose.yml
-- [ ] Port bound to 127.0.0.1 only
-- [ ] .env.example documents required variables
-- [ ] Existing developers can still run `docker-compose up -d`
+- [x] No hardcoded credentials in docker-compose.yml
+- [x] Port bound to 127.0.0.1 only
+- [x] .env.example documents required variables
+- [x] Existing developers can still run `docker-compose up -d`
 
 ## Work Log
 
 | Date | Action | Learnings |
 |------|--------|-----------|
 | 2026-01-26 | Created from code review | Security sentinel flagged as CRITICAL |
+| 2026-01-26 | Fixed | Used env vars with defaults, localhost-only binding |
 
 ## Resources
 

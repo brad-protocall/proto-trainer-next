@@ -3,11 +3,11 @@ services:
     image: postgres:16-alpine
     container_name: proto-trainer-postgres
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     environment:
-      POSTGRES_USER: proto
-      POSTGRES_PASSWORD: proto_dev_2026
-      POSTGRES_DB: proto_trainer
+      POSTGRES_USER: ${POSTGRES_USER:-proto}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-proto_trainer}
     command: >
       postgres
       -c listen_addresses='*'

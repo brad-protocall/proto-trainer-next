@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 priority: p1
 issue_id: "024"
 tags: [code-review, typescript, types]
@@ -53,7 +53,7 @@ export interface Scenario {
 
 ## Recommended Action
 
-[To be filled during triage]
+✅ **COMPLETED** - Added `skills: string[]` to Scenario interface
 
 ## Technical Details
 
@@ -62,15 +62,16 @@ export interface Scenario {
 
 ## Acceptance Criteria
 
-- [ ] `skills: string[]` added to Scenario interface
-- [ ] `npx tsc --noEmit` passes with zero errors
-- [ ] External API route has full type coverage
+- [x] `skills: string[]` added to Scenario interface
+- [x] `npx tsc --noEmit` passes with zero errors
+- [x] External API route has full type coverage
 
 ## Work Log
 
 | Date | Action | Learnings |
 |------|--------|-----------|
 | 2026-01-26 | Created from code review | Pattern recognition specialist found gap |
+| 2026-01-26 | Fixed | Added skills array, kept skill for backwards compat |
 
 ## Resources
 
