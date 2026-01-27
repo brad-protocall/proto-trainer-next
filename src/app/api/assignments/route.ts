@@ -3,57 +3,10 @@ import prisma from '@/lib/prisma'
 import { apiSuccess, apiError, handleApiError } from '@/lib/api'
 import { createAssignmentSchema, bulkAssignmentSchema, assignmentQuerySchema } from '@/lib/validators'
 import { requireAuth, requireSupervisor } from '@/lib/auth'
-import type { AssignmentResponse, BulkAssignmentResponse, ScenarioMode, AssignmentStatus } from '@/types'
+import { buildAssignmentResponse } from '@/lib/assignment-utils'
+import type { BulkAssignmentResponse } from '@/types'
 
 const MAX_BULK_ASSIGNMENTS = 500
-
-function buildAssignmentResponse(assignment: {
-  id: string
-  accountId: string | null
-  scenarioId: string
-  counselorId: string
-  assignedBy: string
-  status: string
-  createdAt: Date
-  dueDate: Date | null
-  startedAt: Date | null
-  completedAt: Date | null
-  supervisorNotes: string | null
-  requireRecording: boolean
-  scenario: { title: string; mode: string }
-  counselor: { displayName: string | null }
-  supervisor: { displayName: string | null }
-  session?: { id: string } | null
-  evaluation?: { id: string } | null
-}, hasTranscript = false): AssignmentResponse {
-  const now = new Date()
-  const isOverdue = assignment.status !== 'completed' &&
-                   assignment.dueDate !== null &&
-                   new Date(assignment.dueDate) < now
-
-  return {
-    id: assignment.id,
-    accountId: assignment.accountId,
-    scenarioId: assignment.scenarioId,
-    scenarioTitle: assignment.scenario.title,
-    scenarioMode: assignment.scenario.mode as ScenarioMode,
-    counselorId: assignment.counselorId,
-    counselorName: assignment.counselor.displayName,
-    assignedBy: assignment.assignedBy,
-    assignedByName: assignment.supervisor.displayName,
-    status: assignment.status as AssignmentStatus,
-    createdAt: assignment.createdAt.toISOString(),
-    dueDate: assignment.dueDate?.toISOString() ?? null,
-    startedAt: assignment.startedAt?.toISOString() ?? null,
-    completedAt: assignment.completedAt?.toISOString() ?? null,
-    sessionId: assignment.session?.id ?? null,
-    evaluationId: assignment.evaluation?.id ?? null,
-    supervisorNotes: assignment.supervisorNotes,
-    requireRecording: assignment.requireRecording,
-    isOverdue,
-    hasTranscript,
-  }
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -98,7 +51,7 @@ export async function GET(request: NextRequest) {
         scenario: { select: { title: true, mode: true } },
         counselor: { select: { displayName: true } },
         supervisor: { select: { displayName: true } },
-        session: { select: { id: true } },
+        session: { select: { id: true, recording: { select: { id: true } } } },
         evaluation: { select: { id: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -176,23 +129,35 @@ export async function POST(request: NextRequest) {
       return apiError({ type: 'CONFLICT', message: 'Active assignment already exists for this counselor and scenario' }, 409)
     }
 
-    const assignment = await prisma.assignment.create({
-      data: {
-        accountId: scenario.accountId,
-        scenarioId,
-        counselorId,
-        assignedBy: user.id,
-        dueDate: dueDate ? new Date(dueDate) : null,
-        supervisorNotes,
-      },
-      include: {
-        scenario: { select: { title: true, mode: true } },
-        counselor: { select: { displayName: true } },
-        supervisor: { select: { displayName: true } },
-      },
-    })
+    // Note: A partial unique index prevents race conditions at the DB level
+    try {
+      const assignment = await prisma.assignment.create({
+        data: {
+          accountId: scenario.accountId,
+          scenarioId,
+          counselorId,
+          assignedBy: user.id,
+          dueDate: dueDate ? new Date(dueDate) : null,
+          supervisorNotes,
+        },
+        include: {
+          scenario: { select: { title: true, mode: true } },
+          counselor: { select: { displayName: true } },
+          supervisor: { select: { displayName: true } },
+        },
+      })
 
-    return apiSuccess(buildAssignmentResponse(assignment), 201)
+      return apiSuccess(buildAssignmentResponse(assignment), 201)
+    } catch (createError) {
+      // Handle unique constraint violation (race condition caught by DB index)
+      if (
+        createError instanceof Error &&
+        createError.message.includes('Unique constraint failed')
+      ) {
+        return apiError({ type: 'CONFLICT', message: 'Active assignment already exists for this counselor and scenario' }, 409)
+      }
+      throw createError
+    }
   } catch (error) {
     return handleApiError(error)
   }

@@ -1047,11 +1047,11 @@ export default function SupervisorDashboard() {
                 </div>
               </div>
 
-              {/* Relevant Policy Sections - only show when account is selected */}
+              {/* Relevant Procedures Sections - only show when account is selected */}
               {formData.account_id && (
                 <div>
                   <label className="block text-gray-300 text-sm font-marfa mb-1">
-                    Relevant Policy Sections
+                    Relevant Procedures Sections
                   </label>
                   <textarea
                     value={formData.relevant_policy_sections}
@@ -1061,10 +1061,10 @@ export default function SupervisorDashboard() {
                     rows={2}
                     className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2
                                text-white font-marfa focus:outline-none focus:border-brand-orange"
-                    placeholder="e.g., Crisis De-escalation Protocol, Suicide Risk Assessment"
+                    placeholder="e.g., Crisis De-escalation Protocol, Section 4.2"
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Help the evaluator find the right policies to reference
+                    Help the evaluator focus on specific procedures sections relevant to this scenario
                   </p>
                 </div>
               )}

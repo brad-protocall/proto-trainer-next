@@ -203,10 +203,10 @@ export function useRealtimeVoice(
     params.set("model", "phone");
     params.set("record", "true");
     if (scenarioId) {
-      params.set("scenario_id", scenarioId);
+      params.set("scenarioId", scenarioId);
     }
     if (assignmentId) {
-      params.set("assignment_id", assignmentId);
+      params.set("assignmentId", assignmentId);
     }
 
     const url = `${wsUrl}/ws?${params.toString()}`;
@@ -412,34 +412,56 @@ export function useRealtimeVoice(
       return;
     }
 
-    try {
-      const baseUrl =
-        process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3003";
-      const response = await fetch(
-        `${baseUrl}/api/sessions/${sessionId}/evaluate`,
-        {
-          method: "POST",
-          headers: {
-            "x-user-id": userId,
-          },
+    const baseUrl =
+      process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3003";
+
+    // Retry logic: transcripts may still be persisting after disconnect
+    const maxRetries = 5;
+    const retryDelayMs = 2000;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const response = await fetch(
+          `${baseUrl}/api/sessions/${sessionId}/evaluate`,
+          {
+            method: "POST",
+            headers: {
+              "x-user-id": userId,
+            },
+          }
+        );
+
+        // If we get 409 (conflict - likely "not enough conversation"),
+        // wait and retry as transcripts may still be persisting
+        if (response.status === 409 && attempt < maxRetries - 1) {
+          console.log(`[Evaluation] Attempt ${attempt + 1} returned 409, waiting for transcripts...`);
+          await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+          continue;
         }
-      );
 
-      if (!response.ok) {
-        throw new Error("Evaluation request failed");
-      }
+        if (!response.ok) {
+          throw new Error("Evaluation request failed");
+        }
 
-      const data = (await response.json()) as { ok: boolean; data?: EvaluationResult };
-      if (data.ok && data.data) {
-        setEvaluation(data.data);
+        const data = await response.json();
+        if (data.ok && data.data) {
+          // API returns { evaluation: { evaluation: "string", ... }, session: {...} }
+          // Extract the evaluation string from the nested structure
+          const evalString = data.data.evaluation?.evaluation ?? data.data.evaluation;
+          setEvaluation({ evaluation: evalString });
+          return; // Success!
+        }
+      } catch (evalError) {
+        // Only throw on last attempt
+        if (attempt === maxRetries - 1) {
+          const errorMessage =
+            evalError instanceof Error
+              ? evalError.message
+              : "Evaluation request failed";
+          console.error("Evaluation failed after retries:", evalError);
+          setError(errorMessage);
+        }
       }
-    } catch (evalError) {
-      const errorMessage =
-        evalError instanceof Error
-          ? evalError.message
-          : "Evaluation request failed";
-      console.error("Evaluation failed:", evalError);
-      setError(errorMessage);
     }
   }, [sessionId, userId]);
 

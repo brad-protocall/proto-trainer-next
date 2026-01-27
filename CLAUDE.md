@@ -66,6 +66,9 @@ REALTIME_VOICE=shimmer
 
 # External API (for Personalized Training Guide integration)
 EXTERNAL_API_KEY=your-secret-api-key
+
+# Demo Mode - PROTOTYPE ONLY (enables user switching for demos)
+NEXT_PUBLIC_DEMO_MODE=true
 ```
 
 ## Project Structure
@@ -144,6 +147,24 @@ proto-trainer-next/
 3. **ApiResponse<T>** - Discriminated union for type-safe API responses
 4. **Query params for auth** - Feature parity with original (no JWT)
 5. **Prisma ORM** - Type-safe database queries
+
+## Prototype-Only Features (SWE Handoff Checklist)
+
+These features exist for demo/prototype purposes and **MUST be addressed before production**:
+
+| Feature | Location | Action Required |
+|---------|----------|-----------------|
+| **User Switching** | `counselor-dashboard.tsx` | Gated by `NEXT_PUBLIC_DEMO_MODE`. Set to `false` or remove entirely. Replace with proper session-based auth. |
+| **No Real Auth** | Throughout | Uses `x-user-id` header. Replace with JWT/session auth. |
+| **Seeded Test Users** | `prisma/seed.ts` | Remove test data seeding for production. |
+
+When `NEXT_PUBLIC_DEMO_MODE=true`:
+- Counselor dashboard shows a user selector (yellow border, "[DEMO]" label)
+- Any user can view any other user's assignments (for demos)
+
+When `NEXT_PUBLIC_DEMO_MODE=false` (production):
+- Counselor dashboard shows current user name only (read-only)
+- User switching is disabled
 
 ## Commands
 
@@ -288,84 +309,96 @@ if (userId) headers['x-user-id'] = userId;
 
 ---
 
-## Resume Context (2026-01-26 Evening)
+## Resume Context (2026-01-26 Late Evening)
 
-### Current State: Code Review Complete - P1 Issues Pending
+### Current State: Uncommitted Changes Reviewed - Fixes Needed
 
-PostgreSQL migration complete and pushed to main. Code review identified 6 issues requiring attention before production deployment.
+PostgreSQL migration complete. Previous P1 fixes (023, 024) committed and pushed. Reviewed 13 uncommitted files containing feature work (recording playback, counselor selector, etc.). Found new issues that need fixing before committing.
 
 ### Session Summary (2026-01-26)
 
-1. **Completed RALF Overnight Work** ✅
-   - RALF partially completed Issue #36 overnight
-   - Manually finished: reset migrations, seeded database, ran backfill scripts
-   - Commit `31b743e` pushed to main, Issue #36 closed
+1. **Fixed Previous P1 Issues** ✅
+   - 023: Docker credentials → env vars, localhost binding
+   - 024: Added `skills: string[]` to Scenario type
+   - Commit `6b7f75b` pushed to main
 
-2. **Code Review Completed** ✅
-   - Ran 7 parallel review agents (security, performance, architecture, data integrity, simplicity, patterns, agent-native)
-   - Created 6 todo files for findings
-   - 2 P1 (critical), 4 P2 (important)
+2. **Reviewed Uncommitted Changes** ✅
+   - 13 files modified (~386 lines added, 123 removed)
+   - Ran 7 parallel review agents
+   - Created 9 new todo files (029-037)
 
-### 🔴 P1 - Must Fix Before Production
+### Uncommitted Changes Summary
 
-| Todo | Issue | Fix Time |
-|------|-------|----------|
-| `023-pending-p1-docker-credentials-exposed.md` | Hardcoded DB password, port exposed to 0.0.0.0 | 15 min |
-| `024-pending-p1-missing-skills-type.md` | `skills: string[]` missing from Scenario interface | 2 min |
+These files have uncommitted work that needs P1 fixes before commit:
+- `src/app/api/assignments/[id]/route.ts` - Added recordingId
+- `src/app/api/assignments/route.ts` - Added recordingId (DUPLICATE function!)
+- `src/app/api/external/assignments/route.ts` - Duplicate check (has race condition)
+- `src/components/counselor-dashboard.tsx` - Counselor selector, recording playback
+- `src/hooks/use-realtime-voice.ts` - Retry logic, debug logs
+- `ws-server/realtime-session.ts` - Session reuse logic
+
+### 🔴 P1 - Must Fix Before Commit
+
+| Todo | Issue | Effort |
+|------|-------|--------|
+| `029-pending-p1-counselor-impersonation-url.md` | URL param allows viewing other counselors' data | 30 min |
+| `030-pending-p1-race-condition-duplicate-assignments.md` | Concurrent requests create duplicate assignments | 30 min |
+| `031-pending-p1-duplicate-build-assignment-response.md` | 47-line function copy-pasted in 2 files | 15 min |
 
 ### 🟡 P2 - Should Fix
 
+| Todo | Issue | Effort |
+|------|-------|--------|
+| `032-pending-p2-debug-console-logs.md` | Debug logs left in production code | 10 min |
+| `033-pending-p2-websocket-auth-missing.md` | WebSocket trusts client-provided userId | 1 hour |
+| `034-pending-p2-blob-url-memory-leak.md` | Recording playback leaks memory | 15 min |
+| `035-pending-p2-session-reuse-mixed-transcripts.md` | Reconnecting mixes old/new transcripts | 30 min |
+| `036-pending-p2-camelcase-snakecase-inconsistency.md` | Uses `any` to handle naming inconsistency | 1 hour |
+
+### 🟢 Previously Completed P2s (Still Pending)
+
 | Todo | Issue |
 |------|-------|
-| `025-pending-p2-missing-database-indexes.md` | No indexes on foreign keys (performance at scale) |
+| `025-pending-p2-missing-database-indexes.md` | No indexes on foreign keys |
 | `026-pending-p2-migration-scripts-no-transactions.md` | Scripts lack transaction boundaries |
 | `027-pending-p2-skills-validation-missing.md` | No CHECK constraint on valid skills |
-| `028-pending-p2-agent-native-skills-endpoints.md` | Missing /api/skills/list and /api/skills/detect |
+| `028-pending-p2-agent-native-skills-endpoints.md` | Missing /api/skills endpoints |
 
 ### Quick Start
 
 ```bash
-docker-compose up -d     # Start PostgreSQL
+docker-compose up -d     # Start PostgreSQL (needs POSTGRES_PASSWORD in .env!)
 npm run dev              # Next.js on :3003
 npm run ws:dev           # WebSocket on :3004
 ```
 
 ### Next Session Tasks
 
-1. **Fix P1 issues** (17 min total):
+1. **Fix P1s before committing** (~1.25 hours):
    ```bash
-   # View P1 todos
-   cat todos/023-pending-p1-*.md
-   cat todos/024-pending-p1-*.md
+   # View new P1 todos
+   cat todos/029-pending-p1-*.md
+   cat todos/030-pending-p1-*.md
+   cat todos/031-pending-p1-*.md
    ```
 
-2. **Triage P2 issues** - decide which to fix now vs defer
+2. **Fix easy P2** (10 min):
+   - Remove debug console.logs (todo 032)
 
-3. **Test with PTG** - verify external API integration works
+3. **Commit the feature work** after fixes
+
+4. **Triage remaining P2s** - decide which to fix now vs defer
 
 ### Git Status
 
-- Latest commit: `31b743e` (pushed to main)
-- Issue #36: Closed
+- Latest commit: `6b7f75b` (pushed to main)
 - Branch: main
-- Pending todos: 6 (in `todos/` directory)
+- **13 files with uncommitted changes** (feature work, needs P1 fixes)
+- Pending todos: 13 total (3 P1, 9 P2, 1 P3)
 
-### External API Response Shape (v1.1)
+### Key Files for P1 Fixes
 
-```json
-{
-  "id": "uuid",
-  "name": "Scenario Title",
-  "skill": "risk-assessment",     // DEPRECATED
-  "skills": ["risk-assessment"],  // USE THIS
-  "difficulty": "intermediate",
-  "estimatedTime": 20
-}
-```
-
-### Key Files
-
-- `docker-compose.yml` - PostgreSQL container (needs credential fix)
-- `src/lib/skills.ts` - Skill constants and detection
-- `src/types/index.ts` - Needs `skills: string[]` added to Scenario
-- `todos/` - 6 pending review findings
+- `src/app/api/assignments/route.ts` - Extract `buildAssignmentResponse`
+- `src/app/api/assignments/[id]/route.ts` - Remove duplicate function
+- `src/app/api/external/assignments/route.ts` - Add transaction to duplicate check
+- `src/components/counselor-dashboard.tsx` - Restrict counselor selector OR validate server-side

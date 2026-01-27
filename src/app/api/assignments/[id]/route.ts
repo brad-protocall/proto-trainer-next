@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma'
 import { apiSuccess, apiError, handleApiError, notFound, forbidden } from '@/lib/api'
 import { updateAssignmentSchema } from '@/lib/validators'
 import { requireAuth, requireSupervisor, canAccessResource } from '@/lib/auth'
-import type { AssignmentResponse, ScenarioMode, AssignmentStatus } from '@/types'
+import { buildAssignmentResponse } from '@/lib/assignment-utils'
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
   'pending': ['in_progress'],
@@ -13,54 +13,6 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 
 function canTransitionTo(currentStatus: string, newStatus: string): boolean {
   return VALID_TRANSITIONS[currentStatus]?.includes(newStatus) ?? false
-}
-
-function buildAssignmentResponse(assignment: {
-  id: string
-  accountId: string | null
-  scenarioId: string
-  counselorId: string
-  assignedBy: string
-  status: string
-  createdAt: Date
-  dueDate: Date | null
-  startedAt: Date | null
-  completedAt: Date | null
-  supervisorNotes: string | null
-  requireRecording: boolean
-  scenario: { title: string; mode: string }
-  counselor: { displayName: string | null }
-  supervisor: { displayName: string | null }
-  session?: { id: string } | null
-  evaluation?: { id: string } | null
-}, hasTranscript = false): AssignmentResponse {
-  const now = new Date()
-  const isOverdue = assignment.status !== 'completed' &&
-                   assignment.dueDate !== null &&
-                   new Date(assignment.dueDate) < now
-
-  return {
-    id: assignment.id,
-    accountId: assignment.accountId,
-    scenarioId: assignment.scenarioId,
-    scenarioTitle: assignment.scenario.title,
-    scenarioMode: assignment.scenario.mode as ScenarioMode,
-    counselorId: assignment.counselorId,
-    counselorName: assignment.counselor.displayName,
-    assignedBy: assignment.assignedBy,
-    assignedByName: assignment.supervisor.displayName,
-    status: assignment.status as AssignmentStatus,
-    createdAt: assignment.createdAt.toISOString(),
-    dueDate: assignment.dueDate?.toISOString() ?? null,
-    startedAt: assignment.startedAt?.toISOString() ?? null,
-    completedAt: assignment.completedAt?.toISOString() ?? null,
-    sessionId: assignment.session?.id ?? null,
-    evaluationId: assignment.evaluation?.id ?? null,
-    supervisorNotes: assignment.supervisorNotes,
-    requireRecording: assignment.requireRecording,
-    isOverdue,
-    hasTranscript,
-  }
 }
 
 export async function GET(
@@ -79,7 +31,7 @@ export async function GET(
         scenario: { select: { title: true, mode: true } },
         counselor: { select: { displayName: true } },
         supervisor: { select: { displayName: true } },
-        session: { select: { id: true } },
+        session: { select: { id: true, recording: { select: { id: true } } } },
         evaluation: { select: { id: true } },
       },
     })
@@ -137,7 +89,7 @@ export async function PATCH(
         scenario: { select: { title: true, mode: true } },
         counselor: { select: { displayName: true } },
         supervisor: { select: { displayName: true } },
-        session: { select: { id: true } },
+        session: { select: { id: true, recording: { select: { id: true } } } },
         evaluation: { select: { id: true } },
       },
     })
@@ -209,7 +161,7 @@ export async function PATCH(
           scenario: { select: { title: true, mode: true } },
           counselor: { select: { displayName: true } },
           supervisor: { select: { displayName: true } },
-          session: { select: { id: true } },
+          session: { select: { id: true, recording: { select: { id: true } } } },
           evaluation: { select: { id: true } },
         },
       })

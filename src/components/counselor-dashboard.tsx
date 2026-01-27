@@ -18,7 +18,7 @@ function getAssignmentField(assignment: any, camelCase: string, snakeCase: strin
 }
 
 interface CounselorDashboardProps {
-  onStartTraining: (assignment: Assignment) => void;
+  onStartTraining: (assignment: Assignment, userId?: string) => void;
   counselorId?: string | null;
 }
 
@@ -35,11 +35,14 @@ export default function CounselorDashboard({
   const [loadingFeedback, setLoadingFeedback] = useState<string | null>(null);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [allCounselors, setAllCounselors] = useState<User[]>([]);
   const [detailModal, setDetailModal] = useState<{
-    type: "scenario" | "evaluator" | "transcript";
+    type: "scenario" | "evaluator" | "transcript" | "evalContext";
     content: string;
     title: string;
+    isImage?: boolean;
   } | null>(null);
+  const [playingRecording, setPlayingRecording] = useState<string | null>(null);
   const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -77,15 +80,18 @@ export default function CounselorDashboard({
             display_name: u.displayName || u.display_name,
           }));
 
+          // Store all counselors for the selector
+          setAllCounselors(users);
+
           let selectedUser;
           if (propCounselorId) {
             // Use the provided counselor ID from URL
-            selectedUser = users.find((c) => c.id === propCounselorId);
+            selectedUser = users.find((c: User) => c.id === propCounselorId);
           }
           if (!selectedUser) {
             // Fall back to Test Counselor or first counselor
             selectedUser = users.find(
-              (c) => c.display_name === "Test Counselor"
+              (c: User) => c.display_name === "Test Counselor"
             ) || users[0];
           }
           setCurrentUser(selectedUser);
@@ -131,7 +137,7 @@ export default function CounselorDashboard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "in_progress" }),
       });
-      onStartTraining(assignment);
+      onStartTraining(assignment, currentUser?.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start training");
       setStartingId(null);
@@ -167,25 +173,23 @@ export default function CounselorDashboard({
   };
 
   const handleViewFeedback = async (assignment: Assignment) => {
-    const sessionId = getAssignmentField(assignment, "sessionId", "session_id");
-    if (!sessionId) {
-      setError("No session found for this assignment");
+    const evaluationId = getAssignmentField(assignment, "evaluationId", "evaluation_id");
+    if (!evaluationId) {
+      setError("No evaluation found for this assignment");
       return;
     }
     setLoadingFeedback(assignment.id);
     setError(null);
     try {
-      const response = await authFetch(`/api/sessions/${sessionId}`);
+      // Fetch the full evaluation
+      const response = await authFetch(`/api/evaluations/${evaluationId}`);
       const data = await response.json();
       if (!data.ok) throw new Error(data.error?.message || "Failed to load feedback");
 
-      // Check if there's an evaluation
-      if (data.data.evaluation) {
-        setEvaluation({
-          evaluation: data.data.evaluation.evaluation,
-          transcript_turns: data.data.transcript_turns,
-        });
-      }
+      // feedbackJson contains the full markdown evaluation
+      setEvaluation({
+        evaluation: data.data.feedbackJson || data.data.rawResponse || "No evaluation content available",
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load feedback");
     } finally {
@@ -226,8 +230,9 @@ export default function CounselorDashboard({
       const data = await response.json();
       if (!data.ok) throw new Error(data.error?.message || "Failed to load transcript");
 
-      const turns = Array.isArray(data.data.transcript_turns)
-        ? data.data.transcript_turns
+      // API returns 'transcript' not 'transcript_turns'
+      const turns = Array.isArray(data.data.transcript)
+        ? data.data.transcript
         : [];
       const transcriptText =
         turns.length > 0
@@ -250,11 +255,116 @@ export default function CounselorDashboard({
     }
   };
 
+  const handlePlayRecording = async (assignment: Assignment) => {
+    const recordingId = getAssignmentField(assignment, "recordingId", "recording_id");
+    if (!recordingId) {
+      setError("No recording found for this assignment");
+      return;
+    }
+    setPlayingRecording(assignment.id);
+    setError(null);
+    try {
+      // Fetch recording with auth header and create blob URL for playback
+      const response = await authFetch(`/api/recordings/${recordingId}/download`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || "Failed to download recording");
+      }
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+
+      // Open audio in new tab with blob URL
+      const audioWindow = window.open("", "_blank");
+      if (audioWindow) {
+        audioWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+          <head><title>Recording Playback</title></head>
+          <body style="display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#1a1a2e;">
+            <audio controls autoplay style="width:80%;max-width:600px;">
+              <source src="${blobUrl}" type="audio/wav">
+              Your browser does not support audio playback.
+            </audio>
+          </body>
+          </html>
+        `);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to play recording");
+    } finally {
+      setPlayingRecording(null);
+    }
+  };
+
+  const handleViewEvalContext = async (assignment: Assignment) => {
+    const scenarioId = getAssignmentField(assignment, "scenarioId", "scenario_id");
+    setLoadingDetail("evalContext");
+    setError(null);
+    try {
+      // Fetch evaluator context content from dedicated endpoint
+      const response = await authFetch(`/api/scenarios/${scenarioId}/evaluator-context`);
+      const data = await response.json();
+      if (!data.ok) throw new Error(data.error?.message || "Failed to load evaluator context");
+
+      if (!data.data.content) {
+        setError(data.data.message || "No evaluator context available for this scenario");
+        setLoadingDetail(null);
+        return;
+      }
+
+      const isImage = data.data.type === "image";
+      setDetailModal({
+        type: "evalContext",
+        title: `Evaluator Context${data.data.filename ? ` - ${data.data.filename}` : ""}`,
+        content: data.data.content,
+        isImage,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load evaluator context");
+    } finally {
+      setLoadingDetail(null);
+    }
+  };
+
+  // Handle counselor selection change
+  const handleCounselorChange = (counselorId: string) => {
+    // Update URL with new counselor ID to trigger reload
+    window.location.href = `/counselor?userId=${counselorId}`;
+  };
+
   return (
     <div className="pb-8">
-      <h1 className="text-2xl font-marfa font-bold text-white mb-6 text-center">
-        {currentUser?.display_name || "My Training"}
-      </h1>
+      {/* Counselor Selector - DEMO_MODE only (remove for production) */}
+      {process.env.NEXT_PUBLIC_DEMO_MODE === 'true' && allCounselors.length > 1 ? (
+        <div className="flex flex-col items-center mb-6">
+          <label className="text-gray-400 text-sm mb-2 font-marfa">
+            <span className="text-yellow-500">[DEMO]</span> Viewing as:
+          </label>
+          <select
+            value={currentUser?.id || ""}
+            onChange={(e) => handleCounselorChange(e.target.value)}
+            className="bg-gray-800 border border-yellow-600 rounded-lg px-4 py-2
+                       text-white font-marfa font-bold text-lg
+                       focus:outline-none focus:border-brand-orange
+                       cursor-pointer min-w-[200px] text-center"
+          >
+            {allCounselors.map((counselor) => (
+              <option key={counselor.id} value={counselor.id}>
+                {counselor.display_name}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : currentUser ? (
+        <div className="flex flex-col items-center mb-6">
+          <label className="text-gray-400 text-sm mb-2 font-marfa">
+            Logged in as:
+          </label>
+          <span className="text-white font-marfa font-bold text-lg">
+            {currentUser.display_name}
+          </span>
+        </div>
+      ) : null}
 
       {/* Error display */}
       {error && (
@@ -308,7 +418,7 @@ export default function CounselorDashboard({
                 session_id: null,
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
-              })
+              }, currentUser?.id)
             }
             className="flex-1 bg-brand-orange hover:bg-brand-orange-hover text-white
                        font-marfa font-bold py-4 px-6 rounded-lg flex items-center justify-center gap-3"
@@ -331,7 +441,7 @@ export default function CounselorDashboard({
                 session_id: null,
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
-              })
+              }, currentUser?.id)
             }
             className="flex-1 bg-blue-500 hover:bg-blue-600 text-white
                        font-marfa font-bold py-4 px-6 rounded-lg flex items-center justify-center gap-3"
@@ -525,6 +635,18 @@ export default function CounselorDashboard({
                     )}
                     {isCompleted && (
                       <div className="flex flex-nowrap gap-2 flex-shrink-0">
+                        {/* Play button - only show if recording exists */}
+                        {(a.recordingId || a.recording_id) && (
+                          <button
+                            onClick={() => handlePlayRecording(assignment)}
+                            disabled={playingRecording === assignment.id}
+                            className="bg-purple-600 hover:bg-purple-700 text-white
+                                       font-marfa font-bold py-2 px-3 rounded text-sm
+                                       disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {playingRecording === assignment.id ? "..." : "Play"}
+                          </button>
+                        )}
                         {sessionId && (
                           <>
                             <button
@@ -555,6 +677,16 @@ export default function CounselorDashboard({
                                      disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {loadingDetail === "scenario" ? "..." : "Scenario"}
+                        </button>
+                        {/* Eval Context button */}
+                        <button
+                          onClick={() => handleViewEvalContext(assignment)}
+                          disabled={loadingDetail === "evalContext"}
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white
+                                     font-marfa font-bold py-2 px-3 rounded text-sm
+                                     disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {loadingDetail === "evalContext" ? "..." : "Eval Context"}
                         </button>
                       </div>
                     )}
@@ -590,9 +722,18 @@ export default function CounselorDashboard({
               </button>
             </div>
             <div className="p-4 overflow-y-auto flex-grow">
-              <pre className="whitespace-pre-wrap text-gray-200 font-marfa text-sm leading-relaxed">
-                {detailModal.content}
-              </pre>
+              {detailModal.isImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={detailModal.content}
+                  alt="Evaluator Context"
+                  className="max-w-full h-auto mx-auto"
+                />
+              ) : (
+                <pre className="whitespace-pre-wrap text-gray-200 font-marfa text-sm leading-relaxed">
+                  {detailModal.content}
+                </pre>
+              )}
             </div>
             <div className="p-4 border-t border-gray-600 flex justify-end">
               <button

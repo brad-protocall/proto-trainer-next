@@ -70,6 +70,16 @@ export default function VoiceTrainingView({
   });
 
   const handleConnect = async () => {
+    // Safeguard: If we have an assignment but no scenarioId, something is wrong
+    if (assignment && !scenarioId) {
+      console.error("[Voice View] Cannot connect: assignment exists but scenarioId is missing!", {
+        assignment,
+        keys: Object.keys(assignment),
+        scenario: assignment.scenario
+      });
+      return;
+    }
+
     try {
       await connect();
     } catch {
@@ -92,6 +102,7 @@ export default function VoiceTrainingView({
   const handleGetFeedback = async () => {
     stopListening();
     disconnect();
+    // requestEvaluation has retry logic to wait for transcript persistence
     await requestEvaluation();
   };
 
@@ -134,9 +145,9 @@ export default function VoiceTrainingView({
         )}
       </div>
 
-      {/* Transcript Area */}
+      {/* Session Area - No live transcript to simulate real phone call */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {transcript.length === 0 && !isConnected && (
+        {!isConnected && (
           <div className="text-center py-8">
             <p className="text-gray-400 font-marfa">
               Click &quot;Start Session&quot; to begin your voice training
@@ -144,37 +155,26 @@ export default function VoiceTrainingView({
           </div>
         )}
 
-        {transcript.length === 0 && isConnected && !isListening && (
-          <div className="text-center py-8">
-            <p className="text-gray-400 font-marfa">
-              Click the microphone button to start speaking
+        {isConnected && !evaluation && (
+          <div className="flex flex-col items-center justify-center h-full">
+            <div className={`text-6xl mb-4 ${isListening ? "animate-pulse" : ""}`}>
+              {isListening ? "🎙️" : "📞"}
+            </div>
+            <p className="text-white font-marfa font-medium text-lg">
+              {isListening ? "Call in progress..." : "Ready to speak"}
             </p>
+            <p className="text-gray-400 font-marfa text-sm mt-2">
+              {isListening
+                ? "Speak naturally as you would on a real call"
+                : "Click the microphone button to start speaking"}
+            </p>
+            {transcript.length > 0 && (
+              <p className="text-gray-500 font-marfa text-xs mt-4">
+                {transcript.length} exchange{transcript.length !== 1 ? "s" : ""} recorded
+              </p>
+            )}
           </div>
         )}
-
-        {transcript.map((turn) => (
-          <div
-            key={turn.id}
-            className={`flex ${
-              turn.role === "user" ? "justify-end" : "justify-start"
-            }`}
-          >
-            <div
-              className={`max-w-[70%] rounded-lg p-3 ${
-                turn.role === "user"
-                  ? "bg-brand-orange text-white"
-                  : "bg-gray-700 text-white"
-              }`}
-            >
-              <div className="text-xs text-gray-300 mb-1 font-marfa">
-                {turn.role === "user" ? "You (Counselor)" : "Caller"}
-              </div>
-              <p className="text-sm font-marfa whitespace-pre-wrap">
-                {turn.content}
-              </p>
-            </div>
-          </div>
-        ))}
       </div>
 
       {/* Controls Area or Evaluation */}
@@ -217,24 +217,27 @@ export default function VoiceTrainingView({
           )}
         </div>
       ) : (
-        <div className="p-4 border-t border-gray-700 max-h-[50vh] overflow-y-auto">
-          <div className="bg-gray-800 rounded-lg p-4">
-            <h3 className="text-white font-marfa font-bold mb-3">
-              Session Feedback
-            </h3>
-            <div className="prose prose-sm prose-invert max-w-none prose-headings:text-white prose-p:text-gray-300 prose-li:text-gray-300 prose-strong:text-white">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-gray-800 font-marfa">Session Feedback</h2>
+            </div>
+
+            <div className="prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-800">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {evaluation.evaluation}
               </ReactMarkdown>
             </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={onComplete}
+                className="bg-brand-orange hover:bg-brand-orange-hover text-white px-6 py-2 rounded-lg font-marfa font-medium"
+              >
+                Back to Dashboard
+              </button>
+            </div>
           </div>
-          <button
-            onClick={onComplete}
-            className="mt-4 w-full bg-brand-orange hover:bg-brand-orange-hover
-                       text-white py-2 rounded-lg font-marfa font-medium"
-          >
-            Back to Dashboard
-          </button>
         </div>
       )}
     </div>

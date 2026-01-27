@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import VoiceTrainingView from "@/components/voice-training-view";
 import Loading from "@/components/loading";
 import { Assignment, User, ApiResponse } from "@/types";
@@ -9,7 +9,9 @@ import { Assignment, User, ApiResponse } from "@/types";
 export default function VoiceTrainingPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const assignmentId = params.assignmentId as string;
+  const userIdParam = searchParams.get("userId");
 
   const [assignment, setAssignment] = useState<Assignment | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -30,10 +32,16 @@ export default function VoiceTrainingPage() {
             ...u,
             display_name: u.displayName || u.display_name,
           }));
-          const testCounselor = users.find(
-            (c) => c.display_name === "Test Counselor"
-          );
-          user = testCounselor || users[0];
+          // Use userId from URL if provided, otherwise fall back to Test Counselor
+          if (userIdParam) {
+            user = users.find((c: User) => c.id === userIdParam);
+          }
+          if (!user) {
+            const testCounselor = users.find(
+              (c: User) => c.display_name === "Test Counselor"
+            );
+            user = testCounselor || users[0];
+          }
           setCurrentUser(user);
         }
 
@@ -64,7 +72,7 @@ export default function VoiceTrainingPage() {
     }
 
     fetchData();
-  }, [assignmentId]);
+  }, [assignmentId, userIdParam]);
 
   const handleComplete = () => {
     router.push("/counselor");

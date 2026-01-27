@@ -11,16 +11,17 @@ function CounselorPageContent() {
   const searchParams = useSearchParams();
   const counselorId = searchParams.get("userId");
 
-  const handleStartTraining = (assignment: Assignment) => {
+  const handleStartTraining = (assignment: Assignment, userId?: string) => {
     // Handle both camelCase (API) and snake_case (types) field names
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const a = assignment as any;
     const scenarioMode = a.scenarioMode || a.scenario_mode;
+    const userParam = userId ? `?userId=${userId}` : "";
     if (scenarioMode === "chat") {
-      router.push(`/training/chat/${assignment.id}`);
+      router.push(`/training/chat/${assignment.id}${userParam}`);
     } else {
       // Voice training would go to a different route
-      router.push(`/training/voice/${assignment.id}`);
+      router.push(`/training/voice/${assignment.id}${userParam}`);
     }
   };
 

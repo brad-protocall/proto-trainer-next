@@ -124,11 +124,54 @@ export class RealtimeSession {
             session_id: this.dbSessionId,
           });
         }
+      } else if (response.status === 409 && this.params.assignmentId) {
+        // Session already exists for this assignment - look it up and use it
+        console.log(`[Session] Session already exists for assignment, fetching existing session...`);
+        await this.fetchExistingSession();
       } else {
         console.error(`[Session] Failed to create DB session: ${response.status}`);
       }
     } catch (error) {
       console.error("[Session] Error creating DB session:", error);
+    }
+  }
+
+  /**
+   * Fetch existing session for this assignment when one already exists
+   */
+  private async fetchExistingSession(): Promise<void> {
+    if (!this.params.assignmentId) return;
+
+    try {
+      // Fetch the assignment to get its existing session
+      const response = await fetch(
+        `${getApiUrl()}/api/assignments/${this.params.assignmentId}`,
+        {
+          headers: {
+            "x-user-id": this.params.userId,
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.ok && data.data?.sessionId) {
+          this.dbSessionId = data.data.sessionId;
+          console.log(`[Session] Using existing DB session: ${this.dbSessionId}`);
+
+          // Send DB session ID to client
+          this.sendToClient({
+            type: "session.id",
+            session_id: this.dbSessionId,
+          });
+        } else {
+          console.error(`[Session] Assignment has no session ID`);
+        }
+      } else {
+        console.error(`[Session] Failed to fetch assignment: ${response.status}`);
+      }
+    } catch (error) {
+      console.error("[Session] Error fetching existing session:", error);
     }
   }
 
@@ -151,7 +194,11 @@ export class RealtimeSession {
     }
 
     try {
-      const response = await fetch(`${getApiUrl()}/api/scenarios/${scenarioId}`);
+      const response = await fetch(`${getApiUrl()}/api/scenarios/${scenarioId}`, {
+        headers: {
+          "x-user-id": this.params.userId,
+        },
+      });
       if (!response.ok) {
         console.warn(`[Session] Failed to fetch scenario ${scenarioId}: ${response.status}`);
         return null;

@@ -155,27 +155,65 @@ export async function POST(request: NextRequest) {
       return notFound(`Scenario '${scenarioId}' not found`)
     }
 
-    // Create the assignment
-    const assignment = await prisma.assignment.create({
-      data: {
-        scenarioId: scenario.id,
+    // Check for existing active assignment (prevent duplicates)
+    const existingActive = await prisma.assignment.findFirst({
+      where: {
         counselorId: user.id,
-        assignedBy: EXTERNAL_SYSTEM_USER_ID,
-        accountId: EXTERNAL_ACCOUNT_ID,
-        status: 'pending',
-        dueDate: dueDate ? new Date(dueDate) : null,
-      },
-      include: {
-        scenario: {
-          select: {
-            id: true,
-            title: true,
-          },
-        },
+        scenarioId: scenarioId,
+        status: { not: 'completed' },
       },
     })
 
-    return apiSuccess({ assignment: toExternalAssignment(assignment) }, 201)
+    if (existingActive) {
+      return apiError(
+        {
+          type: 'CONFLICT',
+          message: `Active assignment already exists for this counselor and scenario`,
+        },
+        409
+      )
+    }
+
+    // Create the assignment
+    // Note: A partial unique index prevents race conditions at the DB level
+    // If two concurrent requests pass the findFirst check, one will fail here
+    try {
+      const assignment = await prisma.assignment.create({
+        data: {
+          scenarioId: scenario.id,
+          counselorId: user.id,
+          assignedBy: EXTERNAL_SYSTEM_USER_ID,
+          accountId: EXTERNAL_ACCOUNT_ID,
+          status: 'pending',
+          dueDate: dueDate ? new Date(dueDate) : null,
+        },
+        include: {
+          scenario: {
+            select: {
+              id: true,
+              title: true,
+            },
+          },
+        },
+      })
+
+      return apiSuccess({ assignment: toExternalAssignment(assignment) }, 201)
+    } catch (createError) {
+      // Handle unique constraint violation (race condition caught by DB index)
+      if (
+        createError instanceof Error &&
+        createError.message.includes('Unique constraint failed')
+      ) {
+        return apiError(
+          {
+            type: 'CONFLICT',
+            message: 'Active assignment already exists for this counselor and scenario',
+          },
+          409
+        )
+      }
+      throw createError
+    }
   } catch (error) {
     return handleApiError(error)
   }
