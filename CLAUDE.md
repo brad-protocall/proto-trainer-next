@@ -124,10 +124,33 @@ proto-trainer-next/
 
 | Route | Method | Description |
 |-------|--------|-------------|
-| `/api/external/scenarios` | GET | List scenarios for external integrations |
+| `/api/external/scenarios` | GET | List reusable scenarios |
+| `/api/external/scenarios` | POST | Create scenario (supports one-time and reusable) |
 | `/api/external/assignments` | GET | List assignments by `?user_id` (external ID) |
 | `/api/external/assignments` | POST | Create assignment for counselor |
 | `/api/external/assignments/[id]/result` | GET | Get evaluation result |
+
+#### POST /api/external/scenarios
+
+Create scenarios programmatically (e.g., from Personalized Training Guide):
+
+```json
+{
+  "title": "Caller with financial stress",
+  "prompt": "You are Sarah, 34, calling about...",
+  "description": "Practice de-escalation",
+  "mode": "phone",
+  "category": "sales",
+  "skills": ["de-escalation", "active-listening"],
+  "difficulty": "intermediate",
+  "estimated_time": 15,
+  "is_one_time": true,
+  "relevant_policy_sections": "Section 4.2..."
+}
+```
+
+- `is_one_time: true` → Hidden from GET list, for single-use assignments
+- `is_one_time: false` (default) → Appears in GET list, reusable
 
 ## Database Models
 
@@ -309,41 +332,51 @@ if (userId) headers['x-user-id'] = userId;
 
 ---
 
-## Resume Context (2026-01-26 Night)
+## Resume Context (2026-01-27)
 
-### Current State: All P1s Fixed, Compounded, Pushed
+### Current State: PTG Integration Enhanced
 
-All feature work committed and pushed. P1 issues resolved. Solution documentation created for Jan 22-26 work. Prototype ready for demos with DEMO_MODE.
+External API now supports creating scenarios programmatically. Categories expanded. Ready for continued PTG integration work.
 
-### Session Summary (2026-01-26 Night)
+### Session Summary (2026-01-27)
 
-1. **Fixed All P1 Issues** ✅
-   - 029: Counselor impersonation → Gated behind `NEXT_PUBLIC_DEMO_MODE`
-   - 030: Race condition → Added partial unique index on assignments
-   - 031: Duplicate function → Extracted to `src/lib/assignment-utils.ts`
+1. **Added POST /api/external/scenarios** ✅
+   - Personalized Training Guide can now create scenarios dynamically
+   - Supports one-time (single-use) and reusable scenarios
+   - Accepts skills array, difficulty, estimated_time, category
+   - One-time scenarios hidden from GET list
 
-2. **Fixed P2-032** ✅
-   - Removed debug console.log statements from voice training
+2. **Expanded Scenario Categories** ✅
+   - Added 4 new categories: `sales`, `customer_facing`, `tap`, `supervisors`
+   - Total now 8 categories
+   - Exported `ScenarioCategoryValues` from validators.ts as single source of truth
+   - Updated bulk-import-modal and import route to derive from validators
 
 3. **Committed & Pushed** ✅
-   - `5c1f4ed` feat: add recording playback, fix P1 issues, add DEMO_MODE
-   - `6883b00` docs: add solution documentation for Jan 22-26 work
+   - `073d756` feat: add POST /api/external/scenarios and expand categories
 
-4. **Compounded Knowledge** ✅
-   - Created 4 new solution docs (~39 KB):
-     - `docs/solutions/integration-issues/external-api-ptg-integration-2026-01-22.md`
-     - `docs/solutions/database-issues/postgresql-migration-skills-array-2026-01-25.md`
-     - `docs/solutions/security-issues/demo-mode-prototype-gating-2026-01-26.md`
-     - `docs/solutions/database-issues/partial-unique-index-race-condition-2026-01-26.md`
+### Scenario Categories (8 total)
 
-### Key Patterns Documented
+| Category | Type |
+|----------|------|
+| `cohort_training` | Original |
+| `onboarding` | Original |
+| `expert_skill_path` | Original |
+| `account_specific` | Original |
+| `sales` | **New** |
+| `customer_facing` | **New** |
+| `tap` | **New** |
+| `supervisors` | **New** |
 
-| Pattern | Use Case | Doc Location |
-|---------|----------|--------------|
-| **DEMO_MODE** | Gate prototype features | `security-issues/demo-mode-prototype-gating` |
-| **Partial Unique Index** | Prevent race condition duplicates | `database-issues/partial-unique-index-race-condition` |
-| **X-API-Key Auth** | Service-to-service API | `integration-issues/external-api-ptg-integration` |
-| **PostgreSQL Arrays** | Skills as native array | `database-issues/postgresql-migration-skills-array` |
+### External API Capabilities
+
+| Capability | Endpoint | Status |
+|------------|----------|--------|
+| List scenarios | GET /api/external/scenarios | ✅ |
+| **Create scenarios** | POST /api/external/scenarios | ✅ **New** |
+| List assignments | GET /api/external/assignments | ✅ |
+| Create assignments | POST /api/external/assignments | ✅ |
+| Get results | GET /api/external/assignments/[id]/result | ✅ |
 
 ### 🟡 Remaining P2s (Deferred)
 
@@ -360,28 +393,27 @@ All feature work committed and pushed. P1 issues resolved. Solution documentatio
 ### Quick Start
 
 ```bash
-docker-compose up -d     # Start PostgreSQL (needs POSTGRES_PASSWORD in .env!)
-npx prisma migrate deploy # Apply migrations (including new partial unique index)
-npm run dev              # Next.js on :3003
-npm run ws:dev           # WebSocket on :3004
+docker-compose up -d      # Start PostgreSQL (needs POSTGRES_PASSWORD in .env!)
+npx prisma migrate deploy # Apply migrations
+npm run dev               # Next.js on :3003
+npm run ws:dev            # WebSocket on :3004
 ```
 
-**Enable Demo Mode** (for user switching in demos):
+**Required .env variables for PostgreSQL:**
 ```bash
-# Add to .env
-NEXT_PUBLIC_DEMO_MODE=true
+POSTGRES_PASSWORD=proto_dev_2026
+DATABASE_URL="postgresql://proto:proto_dev_2026@127.0.0.1:5432/proto_trainer"
 ```
 
 ### Git Status
 
-- Latest commit: `6883b00` (pushed to main)
+- Latest commit: `073d756` (pushed to main)
 - Branch: main
 - Working tree clean (except build artifacts)
-- Pending todos: 8 P2s, 1 P3 (all deferred, non-blocking)
 
 ### Next Session Options
 
-1. **Demo the prototype** - DEMO_MODE enables user switching
+1. **Continue PTG integration** - Test create_scenario from PTG side
 2. **Fix P2s** - Start with easy ones (034, 027)
-3. **Add new features** - Recording playback is working
+3. **Add admin category UI** - If dynamic categories needed later
 4. **SWE handoff prep** - Review "Prototype-Only Features" section above
