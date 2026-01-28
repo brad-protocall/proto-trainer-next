@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import prisma from '@/lib/prisma'
 import { apiSuccess, apiError, handleApiError } from '@/lib/api'
 import { requireSupervisor } from '@/lib/auth'
+import { ScenarioCategorySchema } from '@/lib/validators'
 import { z } from 'zod'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
@@ -11,7 +12,7 @@ const importScenarioSchema = z.object({
   description: z.string().optional(),
   prompt: z.string().min(1),
   mode: z.enum(['phone', 'chat']).default('phone'),
-  category: z.enum(['cohort_training', 'onboarding', 'expert_skill_path', 'account_specific']).optional(),
+  category: ScenarioCategorySchema.optional(),
   evaluatorContext: z.string().optional(),
   accountId: z.string().uuid().optional(),
   isOneTime: z.boolean().default(false),

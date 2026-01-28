@@ -3,7 +3,21 @@ import { z } from 'zod'
 // Domain enum schemas as string literals (lowercase to match DB)
 const UserRoleSchema = z.enum(['supervisor', 'counselor'])
 const ScenarioModeSchema = z.enum(['phone', 'chat'])
-const ScenarioCategorySchema = z.enum(['cohort_training', 'onboarding', 'expert_skill_path', 'account_specific'])
+
+// Single source of truth for category values - export for use in frontend validation
+export const ScenarioCategoryValues = [
+  'cohort_training',
+  'onboarding',
+  'expert_skill_path',
+  'account_specific',
+  'sales',
+  'customer_facing',
+  'tap',
+  'supervisors',
+] as const
+export const ScenarioCategorySchema = z.enum(ScenarioCategoryValues)
+export type ScenarioCategory = z.infer<typeof ScenarioCategorySchema>
+
 const AssignmentStatusSchema = z.enum(['pending', 'in_progress', 'completed'])
 
 // User validation

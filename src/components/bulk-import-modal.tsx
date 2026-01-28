@@ -3,6 +3,7 @@
 import { useState, useRef, ChangeEvent } from "react";
 import Papa from "papaparse";
 import { ScenarioCategory, ScenarioMode } from "@/types";
+import { ScenarioCategoryValues } from "@/lib/validators";
 
 // Validation constants
 const MAX_SCENARIOS = 100;
@@ -12,13 +13,8 @@ const MAX_DESCRIPTION_LENGTH = 1000;
 const MAX_EVALUATOR_CONTEXT_LENGTH = 50000;
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
-const VALID_CATEGORIES: string[] = [
-  "cohort_training",
-  "onboarding",
-  "expert_skill_path",
-  "account_specific",
-  "",
-];
+// Derive from single source of truth (validators.ts) - include empty string for optional field
+const VALID_CATEGORIES: string[] = [...ScenarioCategoryValues, ""];
 
 // CSV template content
 const CSV_TEMPLATE = `title,prompt,description,evaluator_context,mode,category
@@ -166,7 +162,7 @@ export default function BulkImportModal({
       errors.push({
         row,
         field: "category",
-        message: `Category must be one of: cohort_training, onboarding, expert_skill_path, account_specific (got: ${scenario.category})`,
+        message: `Category must be one of: ${ScenarioCategoryValues.join(', ')} (got: ${scenario.category})`,
       });
     }
 
