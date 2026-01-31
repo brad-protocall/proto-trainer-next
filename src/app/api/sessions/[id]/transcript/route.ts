@@ -13,6 +13,7 @@ const saveTranscriptTurnSchema = z.object({
   role: z.enum(['user', 'assistant']),
   content: z.string().min(1).max(50000),
   turnOrder: z.number().int().min(0).optional(),
+  attemptNumber: z.number().int().min(1).optional(),
 })
 
 // Schema for bulk saving transcript turns
@@ -80,9 +81,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Save all turns in a transaction with proper turnOrder
     const savedTurns = await prisma.$transaction(async (tx) => {
-      // Get current max turnOrder
+      // Get session's current attempt number for default
+      const currentSession = await tx.session.findUnique({
+        where: { id },
+        select: { currentAttempt: true },
+      })
+      const defaultAttemptNumber = currentSession?.currentAttempt ?? 1
+
+      // Get current max turnOrder for this attempt
       const maxResult = await tx.transcriptTurn.aggregate({
-        where: { sessionId: id },
+        where: { sessionId: id, attemptNumber: defaultAttemptNumber },
         _max: { turnOrder: true },
       })
       let nextTurnOrder = (maxResult._max.turnOrder ?? 0) + 1
@@ -95,6 +103,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             role: turn.role,
             content: turn.content,
             turnOrder: turn.turnOrder ?? nextTurnOrder,
+            attemptNumber: turn.attemptNumber ?? defaultAttemptNumber,
           },
         })
         results.push(saved)

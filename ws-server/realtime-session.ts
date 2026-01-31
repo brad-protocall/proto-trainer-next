@@ -66,6 +66,7 @@ export class RealtimeSession {
   private params: ConnectionParams;
   private sessionId: string | null = null;
   private dbSessionId: string | null = null;
+  private currentAttempt: number = 1;
   private transcripts: TranscriptTurn[] = [];
   private currentUserTranscript: string = "";
   private currentAssistantTranscript: string = "";
@@ -137,7 +138,8 @@ export class RealtimeSession {
   }
 
   /**
-   * Fetch existing session for this assignment when one already exists
+   * Fetch existing session for this assignment when one already exists.
+   * Increments the attempt number for retry tracking.
    */
   private async fetchExistingSession(): Promise<void> {
     if (!this.params.assignmentId) return;
@@ -159,6 +161,9 @@ export class RealtimeSession {
           this.dbSessionId = data.data.sessionId;
           console.log(`[Session] Using existing DB session: ${this.dbSessionId}`);
 
+          // Increment the attempt number for this retry
+          await this.incrementSessionAttempt();
+
           // Send DB session ID to client
           this.sendToClient({
             type: "session.id",
@@ -172,6 +177,40 @@ export class RealtimeSession {
       }
     } catch (error) {
       console.error("[Session] Error fetching existing session:", error);
+    }
+  }
+
+  /**
+   * Increment the session's attempt number when reusing an existing session.
+   * This allows tracking multiple attempts within the same session.
+   */
+  private async incrementSessionAttempt(): Promise<void> {
+    if (!this.dbSessionId) return;
+
+    try {
+      const response = await fetch(
+        `${getApiUrl()}/api/sessions/${this.dbSessionId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-id": this.params.userId,
+          },
+          body: JSON.stringify({ incrementAttempt: true }),
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.ok && data.data?.currentAttempt) {
+          this.currentAttempt = data.data.currentAttempt;
+          console.log(`[Session] Incremented to attempt ${this.currentAttempt}`);
+        }
+      } else {
+        console.error(`[Session] Failed to increment attempt: ${response.status}`);
+      }
+    } catch (error) {
+      console.error("[Session] Error incrementing session attempt:", error);
     }
   }
 
@@ -623,6 +662,7 @@ export class RealtimeSession {
             role: turn.role,
             content: turn.content,
             turnOrder: i + 1, // 1-indexed to match chat convention
+            attemptNumber: this.currentAttempt,
           })),
         }),
       });
