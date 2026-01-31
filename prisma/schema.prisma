@@ -87,6 +87,9 @@ model Assignment {
   session    Session?
   evaluation Evaluation?
 
+  @@index([counselorId])
+  @@index([scenarioId])
+  @@index([status])
   @@map("assignments")
 }
 
@@ -106,6 +109,9 @@ model Session {
   transcript TranscriptTurn[]
   recording  Recording?
 
+  @@index([assignmentId])
+  @@index([userId])
+  @@index([scenarioId])
   @@map("sessions")
 }
 
