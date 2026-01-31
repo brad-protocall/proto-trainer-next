@@ -257,11 +257,70 @@ export class RealtimeSession {
     }
   }
 
+  /**
+   * Verify the user is authorized to access the assignment.
+   * Throws an error if the user doesn't own the assignment.
+   */
+  private async verifyAssignmentOwnership(): Promise<void> {
+    const { assignmentId, userId } = this.params;
+
+    // No assignment = free practice mode, no ownership check needed
+    if (!assignmentId) {
+      return;
+    }
+
+    // Validate assignmentId format to prevent injection
+    if (!UUID_REGEX.test(assignmentId)) {
+      throw new Error("Invalid assignmentId format");
+    }
+
+    try {
+      const response = await fetch(
+        `${getApiUrl()}/api/assignments/${assignmentId}`,
+        {
+          headers: {
+            "x-user-id": userId,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error("User is not authorized to access this assignment");
+        }
+        if (response.status === 404) {
+          throw new Error("Assignment not found");
+        }
+        throw new Error(`Failed to verify assignment ownership: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!data.ok) {
+        throw new Error("Failed to verify assignment ownership");
+      }
+
+      // Double-check counselorId matches userId (belt and suspenders)
+      if (data.data?.counselorId && data.data.counselorId !== userId) {
+        throw new Error("User is not authorized to access this assignment");
+      }
+
+      console.log(`[Session] Assignment ownership verified for user ${userId}`);
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error("Failed to verify assignment ownership");
+    }
+  }
+
   async connect(): Promise<void> {
     const apiKey = getApiKey();
     if (!apiKey) {
       throw new Error("OPENAI_API_KEY environment variable is not set");
     }
+
+    // Verify assignment ownership before connecting to OpenAI
+    await this.verifyAssignmentOwnership();
 
     // Fetch scenario prompt before connecting to OpenAI
     this.scenarioPrompt = await this.fetchScenarioPrompt();
