@@ -282,9 +282,24 @@ async function handleBulkCreate(body: unknown, userId: string): Promise<Response
   }
 
   if (assignmentsToCreate.length > 0) {
-    await prisma.assignment.createMany({
-      data: assignmentsToCreate,
-    })
+    try {
+      await prisma.assignment.createMany({
+        data: assignmentsToCreate,
+      })
+    } catch (createError) {
+      // Handle unique constraint violation (race condition caught by DB index)
+      // This can occur when concurrent bulk requests try to create the same assignment
+      if (
+        createError instanceof Error &&
+        createError.message.includes('Unique constraint failed')
+      ) {
+        return apiError(
+          { type: 'CONFLICT', message: 'Duplicate active assignment detected. Please retry the operation.' },
+          409
+        )
+      }
+      throw createError
+    }
   }
 
   const responseData: BulkAssignmentResponse = {
