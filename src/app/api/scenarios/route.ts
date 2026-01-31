@@ -102,6 +102,7 @@ export async function POST(request: NextRequest) {
         prompt: result.data.prompt,
         mode: result.data.mode,
         category: result.data.category || null,
+        skills: result.data.skills || [],
         accountId,
         isOneTime: result.data.isOneTime,
         relevantPolicySections: result.data.relevantPolicySections,
