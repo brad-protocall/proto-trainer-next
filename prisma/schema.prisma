@@ -94,14 +94,15 @@ model Assignment {
 }
 
 model Session {
-  id           String    @id @default(uuid())
-  assignmentId String?   @unique @map("assignment_id")
-  userId       String?   @map("user_id")
-  scenarioId   String?   @map("scenario_id")
-  modelType    String    @default("chat") @map("model_type") // ModelType: phone, chat
-  status       String    @default("active") // SessionStatus: active, completed, abandoned
-  startedAt    DateTime  @default(now()) @map("started_at")
-  endedAt      DateTime? @map("ended_at")
+  id             String    @id @default(uuid())
+  assignmentId   String?   @unique @map("assignment_id")
+  userId         String?   @map("user_id")
+  scenarioId     String?   @map("scenario_id")
+  modelType      String    @default("chat") @map("model_type") // ModelType: phone, chat
+  status         String    @default("active") // SessionStatus: active, completed, abandoned
+  startedAt      DateTime  @default(now()) @map("started_at")
+  endedAt        DateTime? @map("ended_at")
+  currentAttempt Int       @default(1) @map("current_attempt")
 
   assignment Assignment?      @relation(fields: [assignmentId], references: [id])
   user       User?            @relation("UserSessions", fields: [userId], references: [id])
@@ -116,12 +117,13 @@ model Session {
 }
 
 model TranscriptTurn {
-  id        String   @id @default(uuid())
-  sessionId String   @map("session_id")
-  role      String   // TranscriptRole: user, assistant
-  content   String
-  turnOrder Int      @map("turn_order")
-  createdAt DateTime @default(now()) @map("created_at")
+  id            String   @id @default(uuid())
+  sessionId     String   @map("session_id")
+  role          String   // TranscriptRole: user, assistant
+  content       String
+  turnOrder     Int      @map("turn_order")
+  attemptNumber Int      @default(1) @map("attempt_number")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
