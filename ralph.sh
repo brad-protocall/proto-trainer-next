@@ -247,7 +247,7 @@ main() {
     # Process each story in priority order
     for row in $(jq -r '.userStories | sort_by(.priority) | .[] | @base64' "$PRD_FILE"); do
         _jq() {
-            echo ${row} | base64 --decode | jq -r ${1}
+            echo "${row}" | base64 --decode | jq -r "$1"
         }
 
         local story_id=$(_jq '.id')
@@ -255,7 +255,7 @@ main() {
         local story_desc=$(_jq '.description')
         local story_notes=$(_jq '.notes')
         local already_passed=$(_jq '.passes')
-        local criteria=$(_jq '.acceptanceCriteria | map("- " + .) | join("\n")')
+        local criteria=$(echo "${row}" | base64 --decode | jq -r '.acceptanceCriteria | map("- " + .) | join("\n")')
 
         # Skip already passed stories
         if [ "$already_passed" = "true" ]; then
