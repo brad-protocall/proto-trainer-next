@@ -1,59 +1,59 @@
-"use client";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import prisma from "@/lib/prisma";
+import CounselorPageClient from "./client";
 
-import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense } from "react";
-import Header from "@/components/header";
-import CounselorDashboard from "@/components/counselor-dashboard";
-import { Assignment, UserRole } from "@/types";
-
-function CounselorPageContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const counselorId = searchParams.get("userId");
-  // If userId param is present, assume supervisor is viewing (view-as mode)
-  // Real auth would validate this server-side
-  const viewerRole: UserRole = counselorId ? "supervisor" : "counselor";
-
-  const handleStartTraining = (assignment: Assignment, userId?: string) => {
-    // Handle both camelCase (API) and snake_case (types) field names
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const a = assignment as any;
-    const scenarioMode = a.scenarioMode || a.scenario_mode;
-    const userParam = userId ? `?userId=${userId}` : "";
-    if (scenarioMode === "chat") {
-      router.push(`/training/chat/${assignment.id}${userParam}`);
-    } else {
-      // Voice training would go to a different route
-      router.push(`/training/voice/${assignment.id}${userParam}`);
-    }
-  };
-
-  const handleRoleChange = (role: UserRole) => {
-    router.push(`/${role}`);
-  };
-
-  return (
-    <main className="min-h-screen bg-slate-700">
-      <div className="max-w-4xl mx-auto px-4">
-        <Header
-          title="Counselor Dashboard"
-          role="counselor"
-          onRoleChange={handleRoleChange}
-        />
-        <CounselorDashboard
-          onStartTraining={handleStartTraining}
-          counselorId={counselorId}
-          viewerRole={viewerRole}
-        />
-      </div>
-    </main>
-  );
+interface PageProps {
+  searchParams: Promise<{ userId?: string }>;
 }
 
-export default function CounselorPage() {
-  return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-700" />}>
-      <CounselorPageContent />
-    </Suspense>
-  );
+export default async function CounselorPage({ searchParams }: PageProps) {
+  const headersList = await headers();
+  const authenticatedUserId = headersList.get("x-user-id");
+
+  // Get the userId from URL params (if supervisor is viewing another counselor)
+  const params = await searchParams;
+  const targetUserId = params.userId;
+
+  // If no authenticated user, redirect to home
+  if (!authenticatedUserId) {
+    redirect("/");
+  }
+
+  // If a target userId is specified, validate authorization
+  if (targetUserId && targetUserId !== authenticatedUserId) {
+    // Fetch the authenticated user to check their role
+    const authenticatedUser = await prisma.user.findUnique({
+      where: { id: authenticatedUserId },
+      select: { role: true },
+    });
+
+    // If the authenticated user is not a supervisor, deny access
+    if (!authenticatedUser || authenticatedUser.role !== "supervisor") {
+      // Return 403 Forbidden for non-supervisors trying to access another user's dashboard
+      return (
+        <main className="min-h-screen bg-slate-700 flex items-center justify-center">
+          <div className="text-center p-8 bg-red-900/50 border border-red-500 rounded-lg max-w-md">
+            <h1 className="text-2xl font-marfa font-bold text-white mb-4">
+              Access Denied
+            </h1>
+            <p className="text-gray-300 mb-4">
+              You are not authorized to view another counselor&apos;s dashboard.
+            </p>
+            <a
+              href="/counselor"
+              className="inline-block bg-brand-orange hover:bg-brand-orange-hover text-white font-marfa font-bold py-2 px-4 rounded"
+            >
+              Go to Your Dashboard
+            </a>
+          </div>
+        </main>
+      );
+    }
+  }
+
+  // Determine if viewing as supervisor (userId param present and user is supervisor)
+  const isSupervisorView = Boolean(targetUserId);
+
+  return <CounselorPageClient counselorId={targetUserId} isSupervisorView={isSupervisorView} />;
 }
