@@ -16,11 +16,8 @@ export default function ChatTrainingView({
   userId,
   onComplete,
 }: ChatTrainingViewProps) {
-  // Handle both camelCase (API) and snake_case (types) field names
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const a = assignment as any;
-  const scenarioId = a?.scenarioId || a?.scenario_id;
-  const scenarioTitle = a?.scenarioTitle || a?.scenario_title || "Untitled";
+  const scenarioId = assignment?.scenarioId;
+  const scenarioTitle = assignment?.scenarioTitle || "Untitled";
 
   const {
     messages,

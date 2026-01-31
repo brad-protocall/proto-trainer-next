@@ -168,9 +168,7 @@ export default function SupervisorDashboard() {
     globalScenariosCache.forEach((s) => scenarioCategories.set(s.id, s.category));
 
     return assignments.filter((a) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const scenarioId = (a as any).scenarioId || (a as any).scenario_id;
-      const category = scenarioCategories.get(scenarioId);
+      const category = scenarioCategories.get(a.scenarioId);
 
       if (categoryFilter === "uncategorized") {
         return !category;
@@ -761,17 +759,7 @@ export default function SupervisorDashboard() {
             </p>
           ) : (
             <div className="space-y-3">
-              {filteredAssignments.map((assignment) => {
-                // Handle both camelCase (API) and snake_case (types) field names
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const a = assignment as any;
-                const scenarioTitle = a.scenarioTitle || a.scenario_title || "Untitled";
-                const counselorName = a.counselorName || a.counselor_name || "Unknown";
-                const isOverdue = a.isOverdue || a.is_overdue;
-                const dueDate = a.dueDate || a.due_date;
-                const completedAt = a.completedAt || a.completed_at;
-
-                return (
+              {filteredAssignments.map((assignment) => (
                   <div
                     key={assignment.id}
                     className="bg-brand-navy border border-gray-700 rounded-lg p-4"
@@ -780,7 +768,7 @@ export default function SupervisorDashboard() {
                       <div className="flex-grow">
                         <div className="flex items-center gap-3">
                           <h3 className="text-white font-marfa font-medium">
-                            {scenarioTitle}
+                            {assignment.scenarioTitle || "Untitled"}
                           </h3>
                           <span
                             className={`text-xs px-2 py-1 rounded ${getStatusColor(
@@ -789,23 +777,23 @@ export default function SupervisorDashboard() {
                           >
                             {assignment.status.replace("_", " ")}
                           </span>
-                          {isOverdue && (
+                          {assignment.isOverdue && (
                             <span className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-300">
                               Overdue
                             </span>
                           )}
                         </div>
                         <p className="text-gray-400 text-sm mt-1">
-                          Assigned to: {counselorName}
+                          Assigned to: {assignment.counselorName || "Unknown"}
                         </p>
-                        {dueDate && (
+                        {assignment.dueDate && (
                           <p className="text-gray-500 text-xs mt-1">
-                            Due: {formatDate(dueDate)}
+                            Due: {formatDate(assignment.dueDate)}
                           </p>
                         )}
-                        {completedAt && (
+                        {assignment.completedAt && (
                           <p className="text-green-400 text-xs mt-1">
-                            Completed: {formatDate(completedAt)}
+                            Completed: {formatDate(assignment.completedAt)}
                           </p>
                         )}
                       </div>
@@ -819,8 +807,8 @@ export default function SupervisorDashboard() {
                       </div>
                     </div>
                   </div>
-                );
-              })}
+                )
+              )}
             </div>
           )}
         </div>

@@ -125,24 +125,31 @@ export interface Scenario {
 
 export interface Assignment {
   id: string;
-  scenario_id: string;
-  counselor_id: string;
+  scenarioId: string;
+  counselorId: string;
   status: AssignmentStatus;
-  due_date: string | null;
-  completed_at: string | null;
-  supervisor_notes: string | null;
-  require_recording?: boolean;
-  session_id: string | null;
-  created_at: string;
-  updated_at: string;
+  dueDate: string | null;
+  completedAt: string | null;
+  supervisorNotes: string | null;
+  requireRecording?: boolean;
+  sessionId: string | null;
+  createdAt: string;
+  updatedAt: string;
   scenario?: Scenario;
   counselor?: User;
   // Computed fields for display
-  scenario_title?: string;
-  scenario_mode?: ScenarioMode;
-  counselor_name?: string;
-  is_overdue?: boolean;
-  has_transcript?: boolean;
+  scenarioTitle?: string;
+  scenarioMode?: ScenarioMode;
+  counselorName?: string;
+  isOverdue?: boolean;
+  hasTranscript?: boolean;
+  // Additional fields from API
+  accountId?: string | null;
+  assignedBy?: string;
+  assignedByName?: string | null;
+  startedAt?: string | null;
+  evaluationId?: string | null;
+  recordingId?: string | null;
 }
 
 export interface Session {
