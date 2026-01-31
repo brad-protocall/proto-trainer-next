@@ -330,6 +330,66 @@ const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 if (userId) headers['x-user-id'] = userId;
 ```
 
+### Migration Script Best Practices
+
+Scripts in `scripts/` that modify database records should follow these patterns:
+
+#### 1. Use Transactions for Bulk Updates
+
+Wrap multi-record updates in a Prisma transaction for atomicity:
+
+```typescript
+// GOOD: All-or-nothing updates
+await prisma.$transaction(async (tx) => {
+  for (const record of records) {
+    await tx.model.update({ where: { id: record.id }, data: { ... } });
+  }
+});
+
+// BAD: Individual updates leave partial state on failure
+for (const record of records) {
+  await prisma.model.update({ ... }); // If this fails mid-way, DB is inconsistent
+}
+```
+
+#### 2. Idempotent Design
+
+Scripts should be safe to re-run:
+
+```typescript
+// Check if already migrated before updating
+if (record.newField && record.newField.length > 0) {
+  console.log('Already migrated, skipping');
+  continue;
+}
+```
+
+#### 3. Progress Logging with Verification
+
+```typescript
+let migrated = 0, skipped = 0, errors = 0;
+
+// Log each operation
+console.log(`✓ ${record.title} → updated`);
+migrated++;
+
+// Verify final state
+const count = await prisma.model.count({ where: { newField: { not: null } } });
+console.log(`\nVerification: ${count}/${total} records migrated`);
+```
+
+#### 4. Clean Exit on Errors
+
+```typescript
+if (errors > 0) {
+  console.error(`${errors} errors occurred`);
+  process.exit(1); // Signal failure to calling process
+}
+await prisma.$disconnect();
+```
+
+See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.ts` for examples.
+
 ---
 
 ## Resume Context (2026-01-30)

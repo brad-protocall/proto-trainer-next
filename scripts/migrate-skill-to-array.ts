@@ -1,4 +1,25 @@
 // scripts/migrate-skill-to-array.ts
+//
+// IMPORTANT: Transaction Wrapping for Migration Scripts
+// -----------------------------------------------------
+// This script updates multiple records. In production, wrap bulk operations
+// in a Prisma transaction to ensure atomicity:
+//
+//   await prisma.$transaction(async (tx) => {
+//     for (const s of scenarios) {
+//       await tx.scenario.update({ ... });
+//     }
+//   });
+//
+// Benefits:
+// - All-or-nothing: If any update fails, all changes roll back
+// - No partial state: Database never left in inconsistent state
+// - Safe retries: Can re-run the script without duplicate updates
+//
+// Current implementation uses individual updates for better progress logging
+// and error isolation during development. For production migrations, prefer
+// transaction wrapping.
+
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
