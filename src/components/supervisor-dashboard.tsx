@@ -14,20 +14,29 @@ import { createAuthFetch } from "@/lib/fetch";
 import { formatDate, getStatusColor } from "@/lib/format";
 import BulkImportModal from "./bulk-import-modal";
 
+// Categories must match ScenarioCategoryValues in src/lib/validators.ts
 const SCENARIO_CATEGORIES = [
   { value: "", label: "All" },
+  { value: "cohort_training", label: "Cohort Training" },
   { value: "onboarding", label: "Onboarding" },
-  { value: "refresher", label: "Refresher" },
-  { value: "advanced", label: "Advanced" },
-  { value: "assessment", label: "Assessment" },
+  { value: "expert_skill_path", label: "Expert Skill Path" },
+  { value: "account_specific", label: "Account Specific" },
+  { value: "sales", label: "Sales" },
+  { value: "customer_facing", label: "Customer Facing" },
+  { value: "tap", label: "TAP" },
+  { value: "supervisors", label: "Supervisors" },
   { value: "uncategorized", label: "Uncategorized" },
 ];
 
 const CATEGORY_LABELS: Record<string, string> = {
+  cohort_training: "Cohort Training",
   onboarding: "Onboarding",
-  refresher: "Refresher",
-  advanced: "Advanced",
-  assessment: "Assessment",
+  expert_skill_path: "Expert Skill Path",
+  account_specific: "Account Specific",
+  sales: "Sales",
+  customer_facing: "Customer Facing",
+  tap: "TAP",
+  supervisors: "Supervisors",
 };
 
 interface ScenarioFormData {
@@ -149,6 +158,38 @@ export default function SupervisorDashboard() {
       categoryFilter === "uncategorized" ? !s.category : s.category === categoryFilter
     );
   }, [categoryFilter, globalScenariosCache]);
+
+  // Filter assignments by category (lookup scenario category from cache)
+  const filteredAssignments = useMemo(() => {
+    if (!categoryFilter) return assignments;
+
+    // Build a map of scenario ID -> category for fast lookup
+    const scenarioCategories = new Map<string, string | null>();
+    globalScenariosCache.forEach((s) => scenarioCategories.set(s.id, s.category));
+
+    return assignments.filter((a) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const scenarioId = (a as any).scenarioId || (a as any).scenario_id;
+      const category = scenarioCategories.get(scenarioId);
+
+      if (categoryFilter === "uncategorized") {
+        return !category;
+      }
+      return category === categoryFilter;
+    });
+  }, [categoryFilter, assignments, globalScenariosCache]);
+
+  // Filter scenarios by category for the Scenarios tab
+  const filteredScenarios = useMemo(() => {
+    if (!categoryFilter) return scenarios;
+    return scenarios.filter((s) => {
+      if (categoryFilter === "uncategorized") {
+        // Category can be null, undefined, or empty string in practice
+        return !s.category;
+      }
+      return s.category === categoryFilter;
+    });
+  }, [categoryFilter, scenarios]);
 
   const assignmentCount = selectedCounselorIds.size * selectedScenarioIds.size;
 
@@ -599,15 +640,17 @@ export default function SupervisorDashboard() {
 
           {loading ? (
             <p className="text-gray-400">Loading scenarios...</p>
-          ) : scenarios.length === 0 ? (
+          ) : filteredScenarios.length === 0 ? (
             <p className="text-gray-400">
-              {scenarioFilter === "one-time"
-                ? "No one-time scenarios yet."
-                : "No scenarios yet. Create your first one!"}
+              {categoryFilter
+                ? `No scenarios in "${CATEGORY_LABELS[categoryFilter] || categoryFilter}" category.`
+                : scenarioFilter === "one-time"
+                  ? "No one-time scenarios yet."
+                  : "No scenarios yet. Create your first one!"}
             </p>
           ) : (
             <div className="space-y-3">
-              {scenarios.map((scenario) => (
+              {filteredScenarios.map((scenario) => (
                 <div
                   key={scenario.id}
                   className="bg-brand-navy border border-gray-700 rounded-lg p-4
@@ -712,11 +755,13 @@ export default function SupervisorDashboard() {
 
           {assignmentsLoading ? (
             <p className="text-gray-400">Loading assignments...</p>
-          ) : assignments.length === 0 ? (
-            <p className="text-gray-400">No assignments yet.</p>
+          ) : filteredAssignments.length === 0 ? (
+            <p className="text-gray-400">
+              {categoryFilter ? `No assignments in "${CATEGORY_LABELS[categoryFilter] || categoryFilter}" category.` : "No assignments yet."}
+            </p>
           ) : (
             <div className="space-y-3">
-              {assignments.map((assignment) => {
+              {filteredAssignments.map((assignment) => {
                 // Handle both camelCase (API) and snake_case (types) field names
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const a = assignment as any;
@@ -860,10 +905,14 @@ export default function SupervisorDashboard() {
                              text-white font-marfa focus:outline-none focus:border-brand-orange"
                 >
                   <option value="">-- None --</option>
+                  <option value="cohort_training">Cohort Training</option>
                   <option value="onboarding">Onboarding</option>
-                  <option value="refresher">Refresher</option>
-                  <option value="advanced">Advanced</option>
-                  <option value="assessment">Assessment</option>
+                  <option value="expert_skill_path">Expert Skill Path</option>
+                  <option value="account_specific">Account Specific</option>
+                  <option value="sales">Sales</option>
+                  <option value="customer_facing">Customer Facing</option>
+                  <option value="tap">TAP</option>
+                  <option value="supervisors">Supervisors</option>
                 </select>
               </div>
 

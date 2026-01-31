@@ -610,28 +610,30 @@ export class RealtimeSession {
     try {
       console.log(`[Session] Persisting ${this.transcripts.length} transcript turns to session ${this.dbSessionId}...`);
 
-      // Save each transcript turn to the existing session
-      for (let i = 0; i < this.transcripts.length; i++) {
-        const turn = this.transcripts[i];
-        const turnResponse = await fetch(`${getApiUrl()}/api/sessions/${this.dbSessionId}/message`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-user-id": this.params.userId,
-          },
-          body: JSON.stringify({
+      // Use the dedicated /transcript endpoint for voice sessions
+      // This saves transcripts WITHOUT generating chat AI responses
+      const response = await fetch(`${getApiUrl()}/api/sessions/${this.dbSessionId}/transcript`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": this.params.userId,
+        },
+        body: JSON.stringify({
+          turns: this.transcripts.map((turn, i) => ({
             role: turn.role,
             content: turn.content,
-            turnOrder: i,
-          }),
-        });
+            turnOrder: i + 1, // 1-indexed to match chat convention
+          })),
+        }),
+      });
 
-        if (!turnResponse.ok) {
-          console.warn(`[Session] Failed to save turn ${i}: ${turnResponse.status}`);
-        }
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`[Session] Transcripts persisted: ${data.data?.saved ?? 0} turns saved`);
+      } else {
+        const errorText = await response.text();
+        console.error(`[Session] Failed to persist transcripts: ${response.status} - ${errorText}`);
       }
-
-      console.log(`[Session] Transcripts persisted to session ${this.dbSessionId}`);
     } catch (error) {
       console.error("[Session] Failed to persist transcripts:", error);
     }
