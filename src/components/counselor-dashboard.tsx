@@ -20,11 +20,14 @@ function getAssignmentField(assignment: any, camelCase: string, snakeCase: strin
 interface CounselorDashboardProps {
   onStartTraining: (assignment: Assignment, userId?: string) => void;
   counselorId?: string | null;
+  /** Role of the viewing user - supervisors can switch between counselors */
+  viewerRole?: "counselor" | "supervisor" | "admin";
 }
 
 export default function CounselorDashboard({
   onStartTraining,
   counselorId: propCounselorId,
+  viewerRole = "counselor",
 }: CounselorDashboardProps) {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -339,16 +342,16 @@ export default function CounselorDashboard({
 
   return (
     <div className="pb-8">
-      {/* Counselor Selector - DEMO_MODE only (remove for production) */}
-      {process.env.NEXT_PUBLIC_DEMO_MODE === 'true' && allCounselors.length > 1 ? (
+      {/* Counselor Selector - only for supervisors (view-as functionality) */}
+      {viewerRole === "supervisor" && allCounselors.length > 1 ? (
         <div className="flex flex-col items-center mb-6">
           <label className="text-gray-400 text-sm mb-2 font-marfa">
-            <span className="text-yellow-500">[DEMO]</span> Viewing as:
+            Viewing as:
           </label>
           <select
             value={currentUser?.id || ""}
             onChange={(e) => handleCounselorChange(e.target.value)}
-            className="bg-gray-800 border border-yellow-600 rounded-lg px-4 py-2
+            className="bg-gray-800 border border-gray-600 rounded-lg px-4 py-2
                        text-white font-marfa font-bold text-lg
                        focus:outline-none focus:border-brand-orange
                        cursor-pointer min-w-[200px] text-center"

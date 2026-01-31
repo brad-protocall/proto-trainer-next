@@ -10,6 +10,9 @@ function CounselorPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const counselorId = searchParams.get("userId");
+  // If userId param is present, assume supervisor is viewing (view-as mode)
+  // Real auth would validate this server-side
+  const viewerRole: UserRole = counselorId ? "supervisor" : "counselor";
 
   const handleStartTraining = (assignment: Assignment, userId?: string) => {
     // Handle both camelCase (API) and snake_case (types) field names
@@ -40,6 +43,7 @@ function CounselorPageContent() {
         <CounselorDashboard
           onStartTraining={handleStartTraining}
           counselorId={counselorId}
+          viewerRole={viewerRole}
         />
       </div>
     </main>
