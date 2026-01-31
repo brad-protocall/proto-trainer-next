@@ -285,6 +285,11 @@ export default function CounselorDashboard({
               <source src="${blobUrl}" type="audio/wav">
               Your browser does not support audio playback.
             </audio>
+            <script>
+              window.onbeforeunload = function() {
+                URL.revokeObjectURL("${blobUrl}");
+              };
+            </script>
           </body>
           </html>
         `);
