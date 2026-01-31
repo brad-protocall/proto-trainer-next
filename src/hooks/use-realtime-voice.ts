@@ -181,7 +181,6 @@ export function useRealtimeVoice(
   const connect = useCallback(async () => {
     // Guard against concurrent connect calls
     if (isConnectingRef.current) {
-      console.warn("Connection already in progress");
       return;
     }
     isConnectingRef.current = true;
@@ -238,7 +237,6 @@ export function useRealtimeVoice(
         if (event.code !== 1000 && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
           setConnectionStatus("connecting");
           reconnectAttemptsRef.current++;
-          console.log(`WebSocket closed unexpectedly, attempting reconnect (${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})`);
 
           reconnectTimeoutRef.current = setTimeout(() => {
             if (wsRef.current?.readyState === WebSocket.CLOSED) {
@@ -434,7 +432,6 @@ export function useRealtimeVoice(
         // If we get 409 (conflict - likely "not enough conversation"),
         // wait and retry as transcripts may still be persisting
         if (response.status === 409 && attempt < maxRetries - 1) {
-          console.log(`[Evaluation] Attempt ${attempt + 1} returned 409, waiting for transcripts...`);
           await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
           continue;
         }
