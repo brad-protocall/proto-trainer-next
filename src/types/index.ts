@@ -3,6 +3,7 @@ export type ApiErrorType =
   | "VALIDATION_ERROR"
   | "NOT_FOUND"
   | "UNAUTHORIZED"
+  | "FORBIDDEN"
   | "CONFLICT"
   | "INTERNAL_ERROR";
 

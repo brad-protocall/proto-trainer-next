@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { apiSuccess, handleApiError, notFound } from '@/lib/api'
+import { apiSuccess, apiError, handleApiError, notFound } from '@/lib/api'
 import { requireAuth } from '@/lib/auth'
 import { readFile } from 'fs/promises'
 import { existsSync } from 'fs'
@@ -41,10 +41,31 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       })
     }
 
-    // Resolve the file path
-    const filePath = path.isAbsolute(scenario.evaluatorContextPath)
+    // Resolve the file path with security validation
+    const allowedBaseDirs = [
+      path.resolve(process.cwd(), 'uploads'),
+      path.resolve(process.cwd(), 'evaluator-contexts'),
+      path.resolve(process.cwd(), 'public'),
+    ]
+
+    const rawPath = path.isAbsolute(scenario.evaluatorContextPath)
       ? scenario.evaluatorContextPath
       : path.join(process.cwd(), scenario.evaluatorContextPath)
+
+    // Resolve to absolute path (handles ../ sequences)
+    const filePath = path.resolve(rawPath)
+
+    // Security check: ensure resolved path is within allowed directories
+    const isWithinAllowedDir = allowedBaseDirs.some(baseDir =>
+      filePath.startsWith(baseDir + path.sep) || filePath === baseDir
+    )
+
+    if (!isWithinAllowedDir) {
+      return apiError(
+        { type: 'FORBIDDEN', message: 'Access to this file path is not allowed' },
+        403
+      )
+    }
 
     if (!existsSync(filePath)) {
       return apiSuccess({

@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { apiSuccess, handleApiError, notFound, conflict, forbidden } from '@/lib/api'
 import { createSessionSchema } from '@/lib/validators'
-import { generateInitialGreeting, getDefaultChextPrompt } from '@/lib/openai'
+import { generateInitialGreeting } from '@/lib/openai'
 import { requireAuth, canAccessResource } from '@/lib/auth'
 import type { User } from '@prisma/client'
 

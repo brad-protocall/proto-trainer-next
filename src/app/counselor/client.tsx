@@ -7,6 +7,7 @@ import { Assignment, UserRole } from "@/types";
 
 interface CounselorPageClientProps {
   counselorId?: string | null;
+  /** Hint that this might be a supervisor view (URL had userId param) */
   isSupervisorView: boolean;
 }
 
@@ -15,6 +16,10 @@ export default function CounselorPageClient({
   isSupervisorView,
 }: CounselorPageClientProps) {
   const router = useRouter();
+
+  // For the prototype: if accessing /counselor (no param), user is a counselor
+  // If accessing /counselor?userId=X, they came from supervisor dashboard
+  // The dashboard component will verify authorization via API
   const viewerRole: UserRole = isSupervisorView ? "supervisor" : "counselor";
 
   const handleStartTraining = (assignment: Assignment, userId?: string) => {
