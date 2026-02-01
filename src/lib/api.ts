@@ -24,7 +24,7 @@ export function unauthorized(message: string): Response {
 }
 
 export function forbidden(message: string): Response {
-  return apiError({ type: 'UNAUTHORIZED', message }, 403)
+  return apiError({ type: 'FORBIDDEN', message }, 403)
 }
 
 export function badRequest(message: string): Response {

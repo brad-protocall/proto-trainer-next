@@ -2,15 +2,18 @@ import { NextRequest } from 'next/server'
 import prisma from '@/lib/prisma'
 import { apiSuccess, apiError, handleApiError } from '@/lib/api'
 import { createUserSchema } from '@/lib/validators'
-import { requireSupervisor } from '@/lib/auth'
+import { requireAuth, requireSupervisor } from '@/lib/auth'
 
 /**
  * GET /api/users
- * List all users - public for prototype (no real auth)
+ * List all users - requires authentication
  * Supports ?role=supervisor or ?role=counselor filter
  */
 export async function GET(request: NextRequest) {
   try {
+    const authResult = await requireAuth(request)
+    if (authResult.error) return authResult.error
+
     const role = request.nextUrl.searchParams.get('role')
 
     const users = await prisma.user.findMany({

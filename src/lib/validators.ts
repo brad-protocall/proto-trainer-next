@@ -71,6 +71,8 @@ export const scenarioQuerySchema = z.object({
   category: ScenarioCategorySchema.optional(),
   mode: ScenarioModeSchema.optional(),
   isOneTime: z.enum(['true', 'false']).optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
 })
 
 // Assignment validation

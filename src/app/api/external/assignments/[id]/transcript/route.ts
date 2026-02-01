@@ -1,26 +1,7 @@
 import { NextRequest } from 'next/server'
-import { timingSafeEqual, createHash } from 'crypto'
 import prisma from '@/lib/prisma'
 import { apiSuccess, apiError, handleApiError, notFound, conflict } from '@/lib/api'
-
-/**
- * Timing-safe API key comparison.
- * Uses SHA-256 hashing to ensure constant-time comparison regardless of key lengths.
- */
-function validateApiKey(request: NextRequest): boolean {
-  const apiKey = request.headers.get('X-API-Key')
-  const expectedKey = process.env.EXTERNAL_API_KEY
-
-  if (!apiKey || !expectedKey) {
-    return false
-  }
-
-  // Hash both keys to ensure constant-length comparison (prevents length oracle)
-  const providedHash = createHash('sha256').update(apiKey).digest()
-  const expectedHash = createHash('sha256').update(expectedKey).digest()
-
-  return timingSafeEqual(providedHash, expectedHash)
-}
+import { requireExternalApiKey } from '@/lib/external-auth'
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -35,9 +16,8 @@ interface RouteParams {
  *   ?attempt=N - Get specific attempt (default: latest)
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
-  if (!validateApiKey(request)) {
-    return apiError({ type: 'UNAUTHORIZED', message: 'Invalid or missing API key' }, 401)
-  }
+  const authError = requireExternalApiKey(request)
+  if (authError) return authError
 
   try {
     const { id: assignmentId } = await params
@@ -64,7 +44,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     })
 
     if (!assignment) {
-      return notFound(`Assignment '${assignmentId}' not found`)
+      return notFound('Assignment not found')
     }
 
     if (!assignment.session) {

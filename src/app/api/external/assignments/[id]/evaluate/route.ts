@@ -1,28 +1,9 @@
 import { NextRequest } from 'next/server'
-import { timingSafeEqual, createHash } from 'crypto'
 import prisma from '@/lib/prisma'
-import { apiSuccess, apiError, handleApiError, notFound, conflict } from '@/lib/api'
+import { apiSuccess, handleApiError, notFound, conflict } from '@/lib/api'
 import { generateEvaluation } from '@/lib/openai'
+import { requireExternalApiKey } from '@/lib/external-auth'
 import type { TranscriptTurn } from '@/types'
-
-/**
- * Timing-safe API key comparison.
- * Uses SHA-256 hashing to ensure constant-time comparison regardless of key lengths.
- */
-function validateApiKey(request: NextRequest): boolean {
-  const apiKey = request.headers.get('X-API-Key')
-  const expectedKey = process.env.EXTERNAL_API_KEY
-
-  if (!apiKey || !expectedKey) {
-    return false
-  }
-
-  // Hash both keys to ensure constant-length comparison (prevents length oracle)
-  const providedHash = createHash('sha256').update(apiKey).digest()
-  const expectedHash = createHash('sha256').update(expectedKey).digest()
-
-  return timingSafeEqual(providedHash, expectedHash)
-}
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -36,9 +17,8 @@ interface RouteParams {
  * Returns the evaluation result with score, grade, and feedback.
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
-  if (!validateApiKey(request)) {
-    return apiError({ type: 'UNAUTHORIZED', message: 'Invalid or missing API key' }, 401)
-  }
+  const authError = requireExternalApiKey(request)
+  if (authError) return authError
 
   try {
     const { id: assignmentId } = await params
@@ -63,7 +43,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     })
 
     if (!assignment) {
-      return notFound(`Assignment '${assignmentId}' not found`)
+      return notFound('Assignment not found')
     }
 
     // Check if evaluation already exists

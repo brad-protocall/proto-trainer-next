@@ -625,9 +625,13 @@ export class RealtimeSession {
       console.log(`[Session] Recording saved: ${filePath} (${wavBuffer.length} bytes, ${duration}s)`);
 
       // Create recording entry in database via API
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (process.env.INTERNAL_SERVICE_KEY) {
+        headers["X-Internal-Service-Key"] = process.env.INTERNAL_SERVICE_KEY;
+      }
       const response = await fetch(`${getApiUrl()}/api/recordings`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           sessionId: dbSessionId,
           filePath: `uploads/recordings/${filename}`,

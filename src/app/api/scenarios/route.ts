@@ -39,6 +39,10 @@ export async function GET(request: NextRequest) {
       where.isOneTime = false
     }
 
+    // Pagination with defaults
+    const limit = queryResult.success ? queryResult.data.limit ?? 100 : 100
+    const offset = queryResult.success ? queryResult.data.offset ?? 0 : 0
+
     const scenarios = await prisma.scenario.findMany({
       where,
       include: {
@@ -46,6 +50,8 @@ export async function GET(request: NextRequest) {
         account: { select: { name: true } },
       },
       orderBy: { createdAt: 'desc' },
+      take: limit,
+      skip: offset,
     })
 
     return apiSuccess(scenarios)

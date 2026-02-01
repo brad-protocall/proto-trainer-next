@@ -1,32 +1,9 @@
 import { NextRequest } from 'next/server'
-import { timingSafeEqual, createHash } from 'crypto'
 import { z } from 'zod'
 import prisma from '@/lib/prisma'
 import { apiSuccess, apiError, handleApiError } from '@/lib/api'
 import { ScenarioCategorySchema } from '@/lib/validators'
-
-// Constants for external API
-const EXTERNAL_SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000099'
-const EXTERNAL_ACCOUNT_ID = '00000000-0000-0000-0000-000000000020'
-
-/**
- * Timing-safe API key comparison to prevent timing attacks.
- * Uses SHA-256 hashing to ensure constant-time comparison regardless of key lengths.
- */
-function validateApiKey(request: NextRequest): boolean {
-  const apiKey = request.headers.get('X-API-Key')
-  const expectedKey = process.env.EXTERNAL_API_KEY
-
-  if (!apiKey || !expectedKey) {
-    return false
-  }
-
-  // Hash both keys to ensure constant-length comparison (prevents length oracle)
-  const providedHash = createHash('sha256').update(apiKey).digest()
-  const expectedHash = createHash('sha256').update(expectedKey).digest()
-
-  return timingSafeEqual(providedHash, expectedHash)
-}
+import { requireExternalApiKey, EXTERNAL_SYSTEM_USER_ID, EXTERNAL_ACCOUNT_ID } from '@/lib/external-auth'
 
 // Request body schema for POST (snake_case for external API)
 const CreateScenarioSchema = z.object({
@@ -76,10 +53,8 @@ function toExternalScenario(s: {
  * List available simulation scenarios for external integrations
  */
 export async function GET(request: NextRequest) {
-  // Validate API key
-  if (!validateApiKey(request)) {
-    return apiError({ type: 'UNAUTHORIZED', message: 'Invalid or missing API key' }, 401)
-  }
+  const authError = requireExternalApiKey(request)
+  if (authError) return authError
 
   try {
     const scenarios = await prisma.scenario.findMany({
@@ -134,9 +109,8 @@ export async function GET(request: NextRequest) {
  * One-time scenarios (is_one_time: true) are hidden from the GET list.
  */
 export async function POST(request: NextRequest) {
-  if (!validateApiKey(request)) {
-    return apiError({ type: 'UNAUTHORIZED', message: 'Invalid or missing API key' }, 401)
-  }
+  const authError = requireExternalApiKey(request)
+  if (authError) return authError
 
   try {
     const body = await request.json()
