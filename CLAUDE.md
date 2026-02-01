@@ -129,6 +129,8 @@ proto-trainer-next/
 | `/api/external/assignments` | GET | List assignments by `?user_id` (external ID) |
 | `/api/external/assignments` | POST | Create assignment for counselor |
 | `/api/external/assignments/[id]/result` | GET | Get evaluation result |
+| `/api/external/assignments/[id]/evaluate` | POST | Trigger evaluation for assignment |
+| `/api/external/assignments/[id]/transcript` | GET | Get transcript (optional `?attempt=N`) |
 
 #### POST /api/external/scenarios
 
@@ -180,6 +182,33 @@ These features exist for demo/prototype purposes and **MUST be addressed before 
 | **User Switching** | `counselor-dashboard.tsx` | Gated by `NEXT_PUBLIC_DEMO_MODE`. Set to `false` or remove entirely. Replace with proper session-based auth. |
 | **No Real Auth** | Throughout | Uses `x-user-id` header. Replace with JWT/session auth. |
 | **Seeded Test Users** | `prisma/seed.ts` | Remove test data seeding for production. |
+| **WebSocket Auth** | `ws-server/index.ts` | Accepts client-provided `userId` without verification. Implement JWT/signed token validation. See below. |
+| **No CSRF Protection** | All API routes | Custom `x-user-id` header provides implicit CSRF protection, but implement explicit CSRF tokens for production. |
+
+### WebSocket Authentication (P2 - Required for Production)
+
+**Current State**: The WebSocket server accepts `userId` from query parameters without server-side verification. While `verifyAssignmentOwnership()` validates assignment access, the userId itself is trusted from the client.
+
+**Risk**: A malicious client could spoof any userId to access sessions.
+
+**Recommended Fix**:
+1. Generate a short-lived signed token on HTTP side: `POST /api/websocket-token` → `{ token, expiresAt }`
+2. Pass token instead of userId to WebSocket: `ws://localhost:3004?token=...`
+3. Verify token signature and expiry on WebSocket connect
+4. Extract userId from verified token payload
+
+**Effort**: 2-4 hours
+
+### CSRF Protection (P2 - Required for Production)
+
+**Current State**: No explicit CSRF tokens. The `x-user-id` custom header provides implicit protection (custom headers cannot be sent cross-origin without CORS), but this is not explicit.
+
+**Recommended Fix**:
+1. Generate CSRF token on session/page load
+2. Include token in request headers for state-changing operations
+3. Validate token server-side before processing
+
+**Effort**: 4 hours
 
 When `NEXT_PUBLIC_DEMO_MODE=true`:
 - Counselor dashboard shows a user selector (yellow border, "[DEMO]" label)
@@ -330,90 +359,143 @@ const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 if (userId) headers['x-user-id'] = userId;
 ```
 
+### Migration Script Best Practices
+
+Scripts in `scripts/` that modify database records should follow these patterns:
+
+#### 1. Use Transactions for Bulk Updates
+
+Wrap multi-record updates in a Prisma transaction for atomicity:
+
+```typescript
+// GOOD: All-or-nothing updates
+await prisma.$transaction(async (tx) => {
+  for (const record of records) {
+    await tx.model.update({ where: { id: record.id }, data: { ... } });
+  }
+});
+
+// BAD: Individual updates leave partial state on failure
+for (const record of records) {
+  await prisma.model.update({ ... }); // If this fails mid-way, DB is inconsistent
+}
+```
+
+#### 2. Idempotent Design
+
+Scripts should be safe to re-run:
+
+```typescript
+// Check if already migrated before updating
+if (record.newField && record.newField.length > 0) {
+  console.log('Already migrated, skipping');
+  continue;
+}
+```
+
+#### 3. Progress Logging with Verification
+
+```typescript
+let migrated = 0, skipped = 0, errors = 0;
+
+// Log each operation
+console.log(`✓ ${record.title} → updated`);
+migrated++;
+
+// Verify final state
+const count = await prisma.model.count({ where: { newField: { not: null } } });
+console.log(`\nVerification: ${count}/${total} records migrated`);
+```
+
+#### 4. Clean Exit on Errors
+
+```typescript
+if (errors > 0) {
+  console.error(`${errors} errors occurred`);
+  process.exit(1); // Signal failure to calling process
+}
+await prisma.$disconnect();
+```
+
+See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.ts` for examples.
+
 ---
 
-## Resume Context (2026-01-27)
+## Resume Context (2026-01-30)
 
-### Current State: PTG Integration Enhanced
+### Current State: Sales Training Experiment SUCCESSFUL
 
-External API now supports creating scenarios programmatically. Categories expanded. Ready for continued PTG integration work.
+Validated that scenario prompts can override system-level instructions to repurpose the training platform for sales roleplay. The same infrastructure can train both crisis counselors AND sales teams.
 
-### Session Summary (2026-01-27)
+### Session Summary (2026-01-30)
 
-1. **Added POST /api/external/scenarios** ✅
-   - Personalized Training Guide can now create scenarios dynamically
-   - Supports one-time (single-use) and reusable scenarios
-   - Accepts skills array, difficulty, estimated_time, category
-   - One-time scenarios hidden from GET list
+1. **Sales Training Scenario Experiment** ✅ SUCCESS
+   - **Goal**: Test if scenario prompts can redirect Realtime API from "crisis caller" to "sales prospect"
+   - **Result**: The "CONTEXT OVERRIDE" technique worked - AI played prospect role correctly
+   - **Created scenario**: "Higher Ed Discovery Call - Director of Counseling Services"
+   - **Scenario ID**: `f24e41e5-561e-4e27-a1d3-819c9df9cc5b`
+   - **Category**: `sales`
 
-2. **Expanded Scenario Categories** ✅
-   - Added 4 new categories: `sales`, `customer_facing`, `tap`, `supervisors`
-   - Total now 8 categories
-   - Exported `ScenarioCategoryValues` from validators.ts as single source of truth
-   - Updated bulk-import-modal and import route to derive from validators
+2. **Key Finding - Prompt Needs Refinement**:
+   - **Issue**: Prospect gave information too freely upfront
+   - **Problem**: Made the conversation too easy for the salesperson
+   - **Fix needed**: Make prospect more guarded initially; require good discovery questions to unlock information
+   - **Realistic behavior**: Real prospects don't dump their entire situation immediately - salespeople must earn trust and ask the right questions
 
-3. **Committed & Pushed** ✅
-   - `073d756` feat: add POST /api/external/scenarios and expand categories
+3. **Scenario Persona Details** (for reference):
+   - Dr. Michelle Torres, Director of Counseling Services
+   - Ridgeview State University, 18K students, Midwest
+   - Pain points: 3-4 week wait times, 8 counselors (understaffed), after-hours gaps
+   - Budget: $50-80K annual
+   - EHR: Titanium Schedule
+   - Found Protocall at NASPA conference
 
-### Scenario Categories (8 total)
+### Prompt Engineering Learnings
 
-| Category | Type |
-|----------|------|
-| `cohort_training` | Original |
-| `onboarding` | Original |
-| `expert_skill_path` | Original |
-| `account_specific` | Original |
-| `sales` | **New** |
-| `customer_facing` | **New** |
-| `tap` | **New** |
-| `supervisors` | **New** |
+**What worked:**
+- "IMPORTANT CONTEXT OVERRIDE" at prompt start successfully redirected AI role
+- Detailed persona with specific numbers made responses realistic
+- Variable endings based on salesperson performance
 
-### External API Capabilities
+**What needs improvement:**
+- Add "information gating" - prospect should reveal details progressively based on rapport/questions
+- Consider adding: "Only share budget details if directly asked" type instructions
+- Make objections arise more naturally in conversation flow
 
-| Capability | Endpoint | Status |
-|------------|----------|--------|
-| List scenarios | GET /api/external/scenarios | ✅ |
-| **Create scenarios** | POST /api/external/scenarios | ✅ **New** |
-| List assignments | GET /api/external/assignments | ✅ |
-| Create assignments | POST /api/external/assignments | ✅ |
-| Get results | GET /api/external/assignments/[id]/result | ✅ |
+### Previous Sessions
+
+- **2026-01-29**: Fixed Pre-Chat Survey bug, restored demo mode, fixed category filtering
+- **2026-01-28**: Created `/api/sessions/[id]/transcript` endpoint for voice transcripts
+- **2026-01-27**: Added POST /api/external/scenarios, expanded categories to 8
 
 ### 🟡 Remaining P2s (Deferred)
 
-| Todo | Issue | Effort |
-|------|-------|--------|
-| `033-pending-p2-websocket-auth-missing.md` | WebSocket trusts client-provided userId | 1 hour |
-| `034-pending-p2-blob-url-memory-leak.md` | Recording playback leaks memory | 15 min |
-| `035-pending-p2-session-reuse-mixed-transcripts.md` | Reconnecting mixes old/new transcripts | 30 min |
-| `036-pending-p2-camelcase-snakecase-inconsistency.md` | Uses `any` to handle naming inconsistency | 1 hour |
-| `025-pending-p2-missing-database-indexes.md` | No indexes on foreign keys | 30 min |
-| `027-pending-p2-skills-validation-missing.md` | No CHECK constraint on valid skills | 15 min |
-| `028-pending-p2-agent-native-skills-endpoints.md` | Missing /api/skills endpoints | 1 hour |
+| Todo | Issue | Effort | Status |
+|------|-------|--------|--------|
+| `033-pending-p2-websocket-auth-missing.md` | WebSocket trusts client-provided userId | 1 hour | Open |
+| `034-pending-p2-blob-url-memory-leak.md` | Recording playback leaks memory | 15 min | Open |
+| `036-pending-p2-camelcase-snakecase-inconsistency.md` | Uses `any` to handle naming | 1 hour | Open |
+| `025-pending-p2-missing-database-indexes.md` | No indexes on foreign keys | 30 min | Open |
+| `027-pending-p2-skills-validation-missing.md` | No CHECK constraint on skills | 15 min | Open |
+| `028-pending-p2-agent-native-skills-endpoints.md` | Missing /api/skills endpoints | 1 hour | Open |
 
 ### Quick Start
 
 ```bash
-docker-compose up -d      # Start PostgreSQL (needs POSTGRES_PASSWORD in .env!)
-npx prisma migrate deploy # Apply migrations
+docker-compose up -d      # Start PostgreSQL
 npm run dev               # Next.js on :3003
 npm run ws:dev            # WebSocket on :3004
-```
-
-**Required .env variables for PostgreSQL:**
-```bash
-POSTGRES_PASSWORD=proto_dev_2026
-DATABASE_URL="postgresql://proto:proto_dev_2026@127.0.0.1:5432/proto_trainer"
 ```
 
 ### Git Status
 
 - Latest commit: `073d756` (pushed to main)
+- **Uncommitted changes**: Multiple fixes from 2026-01-29 session still pending
 - Branch: main
-- Working tree clean (except build artifacts)
 
-### Next Session Options
+### Next Session Tasks
 
-1. **Continue PTG integration** - Test create_scenario from PTG side
-2. **Fix P2s** - Start with easy ones (034, 027)
-3. **Add admin category UI** - If dynamic categories needed later
-4. **SWE handoff prep** - Review "Prototype-Only Features" section above
+1. **Refine sales scenario prompt** - Add information gating so prospect reveals details progressively
+2. **Consider sales-specific evaluation criteria** - Current evaluator tuned for crisis counseling skills
+3. **Commit pending fixes** - 2026-01-29 fixes (Pre-Chat Survey, category filtering, etc.)
+4. **Explore more sales scenarios** - Different verticals (K-12, corporate EAP, etc.)

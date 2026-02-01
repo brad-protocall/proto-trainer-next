@@ -1,55 +1,32 @@
-"use client";
+import CounselorPageClient from "./client";
 
-import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense } from "react";
-import Header from "@/components/header";
-import CounselorDashboard from "@/components/counselor-dashboard";
-import { Assignment, UserRole } from "@/types";
-
-function CounselorPageContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const counselorId = searchParams.get("userId");
-
-  const handleStartTraining = (assignment: Assignment, userId?: string) => {
-    // Handle both camelCase (API) and snake_case (types) field names
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const a = assignment as any;
-    const scenarioMode = a.scenarioMode || a.scenario_mode;
-    const userParam = userId ? `?userId=${userId}` : "";
-    if (scenarioMode === "chat") {
-      router.push(`/training/chat/${assignment.id}${userParam}`);
-    } else {
-      // Voice training would go to a different route
-      router.push(`/training/voice/${assignment.id}${userParam}`);
-    }
-  };
-
-  const handleRoleChange = (role: UserRole) => {
-    router.push(`/${role}`);
-  };
-
-  return (
-    <main className="min-h-screen bg-slate-700">
-      <div className="max-w-4xl mx-auto px-4">
-        <Header
-          title="Counselor Dashboard"
-          role="counselor"
-          onRoleChange={handleRoleChange}
-        />
-        <CounselorDashboard
-          onStartTraining={handleStartTraining}
-          counselorId={counselorId}
-        />
-      </div>
-    </main>
-  );
+interface PageProps {
+  searchParams: Promise<{ userId?: string }>;
 }
 
-export default function CounselorPage() {
+/**
+ * Counselor Dashboard Page
+ *
+ * Authorization model (prototype):
+ * - No server-side auth (uses client-side role selection)
+ * - If ?userId=X is provided, the client component handles authorization
+ * - Supervisors can view any counselor's dashboard via URL param
+ * - Counselors viewing without param see their own dashboard
+ *
+ * Note: For production, implement proper session-based auth.
+ */
+export default async function CounselorPage({ searchParams }: PageProps) {
+  const params = await searchParams;
+  const targetUserId = params.userId || null;
+
+  // When a userId is specified, it's a supervisor viewing another counselor
+  // The client component will verify authorization
+  const isSupervisorView = Boolean(targetUserId);
+
   return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-700" />}>
-      <CounselorPageContent />
-    </Suspense>
+    <CounselorPageClient
+      counselorId={targetUserId}
+      isSupervisorView={isSupervisorView}
+    />
   );
 }

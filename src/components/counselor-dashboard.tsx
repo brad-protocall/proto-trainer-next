@@ -11,20 +11,18 @@ import { createAuthFetch } from "@/lib/fetch";
 import { formatDate, getDaysUntilDue, getStatusColor, getStatusIcon } from "@/lib/format";
 import EvaluationResults from "./evaluation-results";
 
-// Helper to get assignment fields (handles both camelCase API and snake_case types)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getAssignmentField(assignment: any, camelCase: string, snakeCase: string) {
-  return assignment?.[camelCase] || assignment?.[snakeCase];
-}
 
 interface CounselorDashboardProps {
   onStartTraining: (assignment: Assignment, userId?: string) => void;
   counselorId?: string | null;
+  /** Role of the viewing user - supervisors can switch between counselors */
+  viewerRole?: "counselor" | "supervisor" | "admin";
 }
 
 export default function CounselorDashboard({
   onStartTraining,
   counselorId: propCounselorId,
+  viewerRole = "counselor",
 }: CounselorDashboardProps) {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,14 +69,9 @@ export default function CounselorDashboard({
     const loadCounselorUser = async () => {
       try {
         const response = await fetch("/api/users?role=counselor");
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const data: ApiResponse<any[]> = await response.json();
+        const data: ApiResponse<User[]> = await response.json();
         if (data.ok && data.data.length > 0) {
-          // API returns camelCase, transform to match our User type
-          const users = data.data.map((u) => ({
-            ...u,
-            display_name: u.displayName || u.display_name,
-          }));
+          const users = data.data;
 
           // Store all counselors for the selector
           setAllCounselors(users);
@@ -91,7 +84,7 @@ export default function CounselorDashboard({
           if (!selectedUser) {
             // Fall back to Test Counselor or first counselor
             selectedUser = users.find(
-              (c: User) => c.display_name === "Test Counselor"
+              (c: User) => c.displayName === "Test Counselor"
             ) || users[0];
           }
           setCurrentUser(selectedUser);
@@ -145,11 +138,11 @@ export default function CounselorDashboard({
   };
 
   const handleGetFeedback = async (assignment: Assignment) => {
-    const sessionId = getAssignmentField(assignment, "sessionId", "session_id");
-    if (!sessionId) {
+    if (!assignment.sessionId) {
       setError("No session found for this assignment");
       return;
     }
+    const sessionId = assignment.sessionId;
     setOpenDropdown(null);
     setLoadingFeedback(assignment.id);
     setError(null);
@@ -173,11 +166,11 @@ export default function CounselorDashboard({
   };
 
   const handleViewFeedback = async (assignment: Assignment) => {
-    const evaluationId = getAssignmentField(assignment, "evaluationId", "evaluation_id");
-    if (!evaluationId) {
+    if (!assignment.evaluationId) {
       setError("No evaluation found for this assignment");
       return;
     }
+    const evaluationId = assignment.evaluationId;
     setLoadingFeedback(assignment.id);
     setError(null);
     try {
@@ -198,7 +191,7 @@ export default function CounselorDashboard({
   };
 
   const handleViewScenario = async (assignment: Assignment) => {
-    const scenarioId = getAssignmentField(assignment, "scenarioId", "scenario_id");
+    const scenarioId = assignment.scenarioId;
     setLoadingDetail("scenario");
     setError(null);
     try {
@@ -218,11 +211,11 @@ export default function CounselorDashboard({
   };
 
   const handleViewTranscript = async (assignment: Assignment) => {
-    const sessionId = getAssignmentField(assignment, "sessionId", "session_id");
-    if (!sessionId) {
+    if (!assignment.sessionId) {
       setError("No session found for this assignment");
       return;
     }
+    const sessionId = assignment.sessionId;
     setLoadingDetail("transcript");
     setError(null);
     try {
@@ -256,11 +249,11 @@ export default function CounselorDashboard({
   };
 
   const handlePlayRecording = async (assignment: Assignment) => {
-    const recordingId = getAssignmentField(assignment, "recordingId", "recording_id");
-    if (!recordingId) {
+    if (!assignment.recordingId) {
       setError("No recording found for this assignment");
       return;
     }
+    const recordingId = assignment.recordingId;
     setPlayingRecording(assignment.id);
     setError(null);
     try {
@@ -276,15 +269,33 @@ export default function CounselorDashboard({
       // Open audio in new tab with blob URL
       const audioWindow = window.open("", "_blank");
       if (audioWindow) {
+        // Use multiple cleanup mechanisms for reliability
+        // onbeforeunload alone is unreliable on mobile and some browsers
         audioWindow.document.write(`
           <!DOCTYPE html>
           <html>
           <head><title>Recording Playback</title></head>
           <body style="display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#1a1a2e;">
-            <audio controls autoplay style="width:80%;max-width:600px;">
+            <audio id="audio" controls autoplay style="width:80%;max-width:600px;">
               <source src="${blobUrl}" type="audio/wav">
               Your browser does not support audio playback.
             </audio>
+            <script>
+              var blobUrl = "${blobUrl}";
+              var cleaned = false;
+              function cleanup() {
+                if (!cleaned) {
+                  cleaned = true;
+                  URL.revokeObjectURL(blobUrl);
+                }
+              }
+              // Multiple cleanup triggers for reliability
+              document.getElementById('audio').onended = cleanup;
+              window.onbeforeunload = cleanup;
+              window.onpagehide = cleanup;
+              // Fallback: cleanup after 30 minutes max
+              setTimeout(cleanup, 30 * 60 * 1000);
+            </script>
           </body>
           </html>
         `);
@@ -297,7 +308,7 @@ export default function CounselorDashboard({
   };
 
   const handleViewEvalContext = async (assignment: Assignment) => {
-    const scenarioId = getAssignmentField(assignment, "scenarioId", "scenario_id");
+    const scenarioId = assignment.scenarioId;
     setLoadingDetail("evalContext");
     setError(null);
     try {
@@ -334,23 +345,23 @@ export default function CounselorDashboard({
 
   return (
     <div className="pb-8">
-      {/* Counselor Selector - DEMO_MODE only (remove for production) */}
-      {process.env.NEXT_PUBLIC_DEMO_MODE === 'true' && allCounselors.length > 1 ? (
+      {/* Counselor Selector - only for supervisors (view-as functionality) */}
+      {viewerRole === "supervisor" && allCounselors.length > 1 ? (
         <div className="flex flex-col items-center mb-6">
           <label className="text-gray-400 text-sm mb-2 font-marfa">
-            <span className="text-yellow-500">[DEMO]</span> Viewing as:
+            Viewing as:
           </label>
           <select
             value={currentUser?.id || ""}
             onChange={(e) => handleCounselorChange(e.target.value)}
-            className="bg-gray-800 border border-yellow-600 rounded-lg px-4 py-2
+            className="bg-gray-800 border border-gray-600 rounded-lg px-4 py-2
                        text-white font-marfa font-bold text-lg
                        focus:outline-none focus:border-brand-orange
                        cursor-pointer min-w-[200px] text-center"
           >
             {allCounselors.map((counselor) => (
               <option key={counselor.id} value={counselor.id}>
-                {counselor.display_name}
+                {counselor.displayName}
               </option>
             ))}
           </select>
@@ -361,7 +372,7 @@ export default function CounselorDashboard({
             Logged in as:
           </label>
           <span className="text-white font-marfa font-bold text-lg">
-            {currentUser.display_name}
+            {currentUser.displayName}
           </span>
         </div>
       ) : null}
@@ -407,17 +418,17 @@ export default function CounselorDashboard({
             onClick={() =>
               onStartTraining({
                 id: "free-practice",
-                scenario_id: "",
-                scenario_mode: "phone",
-                scenario_title: "Free Practice",
-                counselor_id: currentUser?.id || "",
+                scenarioId: "",
+                scenarioMode: "phone",
+                scenarioTitle: "Free Practice",
+                counselorId: currentUser?.id || "",
                 status: "in_progress",
-                due_date: null,
-                completed_at: null,
-                supervisor_notes: null,
-                session_id: null,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
+                dueDate: null,
+                completedAt: null,
+                supervisorNotes: null,
+                sessionId: null,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
               }, currentUser?.id)
             }
             className="flex-1 bg-brand-orange hover:bg-brand-orange-hover text-white
@@ -430,17 +441,17 @@ export default function CounselorDashboard({
             onClick={() =>
               onStartTraining({
                 id: "free-practice",
-                scenario_id: "",
-                scenario_mode: "chat",
-                scenario_title: "Free Practice",
-                counselor_id: currentUser?.id || "",
+                scenarioId: "",
+                scenarioMode: "chat",
+                scenarioTitle: "Free Practice",
+                counselorId: currentUser?.id || "",
                 status: "in_progress",
-                due_date: null,
-                completed_at: null,
-                supervisor_notes: null,
-                session_id: null,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
+                dueDate: null,
+                completedAt: null,
+                supervisorNotes: null,
+                sessionId: null,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
               }, currentUser?.id)
             }
             className="flex-1 bg-blue-500 hover:bg-blue-600 text-white
@@ -473,19 +484,7 @@ export default function CounselorDashboard({
       ) : (
         <div className="space-y-4">
           {assignments.map((assignment) => {
-            // Handle both camelCase (API) and snake_case (types) field names
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const a = assignment as any;
-            const scenarioTitle = a.scenarioTitle || a.scenario_title || "Untitled";
-            const scenarioMode = a.scenarioMode || a.scenario_mode || "phone";
-            const dueDate = a.dueDate || a.due_date;
-            const completedAt = a.completedAt || a.completed_at;
-            const supervisorNotes = a.supervisorNotes || a.supervisor_notes;
-            const isOverdue = a.isOverdue || a.is_overdue;
-            const hasTranscript = a.hasTranscript || a.has_transcript;
-            const sessionId = a.sessionId || a.session_id;
-
-            const daysUntilDue = getDaysUntilDue(dueDate);
+            const daysUntilDue = getDaysUntilDue(assignment.dueDate);
             const canStart = assignment.status === "pending";
             const canContinue = assignment.status === "in_progress";
             const isCompleted = assignment.status === "completed";
@@ -508,16 +507,16 @@ export default function CounselorDashboard({
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="text-white font-marfa font-medium text-lg">
-                            {scenarioTitle}
+                            {assignment.scenarioTitle || "Untitled"}
                           </h3>
                           <span
                             className={`px-2 py-0.5 rounded text-xs font-marfa flex-shrink-0 ${
-                              scenarioMode === "chat"
+                              assignment.scenarioMode === "chat"
                                 ? "bg-blue-500/20 text-blue-300"
                                 : "bg-green-500/20 text-green-300"
                             }`}
                           >
-                            {scenarioMode === "chat" ? "Chat" : "Phone"}
+                            {assignment.scenarioMode === "chat" ? "Chat" : "Phone"}
                           </span>
                         </div>
                       </div>
@@ -532,7 +531,7 @@ export default function CounselorDashboard({
                       >
                         {assignment.status.replace("_", " ")}
                       </span>
-                      {isOverdue && (
+                      {assignment.isOverdue && (
                         <span className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-300">
                           Overdue
                         </span>
@@ -540,14 +539,14 @@ export default function CounselorDashboard({
                     </div>
 
                     {/* Due date */}
-                    {dueDate && !isCompleted && (
+                    {assignment.dueDate && !isCompleted && (
                       <p
                         className={`text-sm ${
-                          isOverdue ? "text-red-400" : "text-gray-400"
+                          assignment.isOverdue ? "text-red-400" : "text-gray-400"
                         }`}
                       >
-                        Due: {formatDate(dueDate)}
-                        {daysUntilDue !== null && !isOverdue && (
+                        Due: {formatDate(assignment.dueDate)}
+                        {daysUntilDue !== null && !assignment.isOverdue && (
                           <span className="ml-2 text-gray-500">
                             (
                             {daysUntilDue === 0
@@ -562,16 +561,16 @@ export default function CounselorDashboard({
                     )}
 
                     {/* Completed date */}
-                    {completedAt && (
+                    {assignment.completedAt && (
                       <p className="text-green-400 text-sm">
-                        Completed: {formatDate(completedAt)}
+                        Completed: {formatDate(assignment.completedAt)}
                       </p>
                     )}
 
                     {/* Supervisor notes */}
-                    {supervisorNotes && (
+                    {assignment.supervisorNotes && (
                       <p className="text-gray-500 text-sm mt-2 italic">
-                        &quot;{supervisorNotes}&quot;
+                        &quot;{assignment.supervisorNotes}&quot;
                       </p>
                     )}
                   </div>
@@ -615,7 +614,7 @@ export default function CounselorDashboard({
                         </button>
                         {openDropdown === assignment.id && (
                           <div className="absolute right-0 mt-1 w-40 bg-gray-800 border border-gray-600 rounded shadow-lg z-10">
-                            {hasTranscript && (
+                            {assignment.hasTranscript && (
                               <button
                                 onClick={() => handleGetFeedback(assignment)}
                                 className="w-full text-left px-4 py-2 text-white hover:bg-gray-700 font-marfa text-sm"
@@ -636,7 +635,7 @@ export default function CounselorDashboard({
                     {isCompleted && (
                       <div className="flex flex-nowrap gap-2 flex-shrink-0">
                         {/* Play button - only show if recording exists */}
-                        {(a.recordingId || a.recording_id) && (
+                        {assignment.recordingId && (
                           <button
                             onClick={() => handlePlayRecording(assignment)}
                             disabled={playingRecording === assignment.id}
@@ -647,7 +646,7 @@ export default function CounselorDashboard({
                             {playingRecording === assignment.id ? "..." : "Play"}
                           </button>
                         )}
-                        {sessionId && (
+                        {assignment.sessionId && (
                           <>
                             <button
                               onClick={() => handleViewFeedback(assignment)}

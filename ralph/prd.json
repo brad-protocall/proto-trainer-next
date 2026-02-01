@@ -1,0 +1,211 @@
+{
+  "project": "Proto Trainer Next",
+  "branchName": "ralph/pre-handoff-cleanup",
+  "description": "Pre-Handoff Cleanup - Fix all P1 and P2 issues before sharing codebase with Software Engineering",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Extract buildAssignmentResponse to shared utility",
+      "description": "As a developer, I want a single source of truth for assignment response building so changes don't need to be made in multiple places.",
+      "acceptanceCriteria": [
+        "Create src/lib/assignment-utils.ts with buildAssignmentResponse function",
+        "Remove duplicate from src/app/api/assignments/route.ts",
+        "Remove duplicate from src/app/api/assignments/[id]/route.ts",
+        "Both routes import from shared utility",
+        "npx tsc --noEmit passes",
+        "npm run lint passes",
+        "Commit with message: refactor: extract buildAssignmentResponse to shared utility"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "Todo reference: 031-pending-p1"
+    },
+    {
+      "id": "US-002",
+      "title": "Remove debug console.log statements",
+      "description": "As a user, I don't want to see debug information in my browser console when using the app.",
+      "acceptanceCriteria": [
+        "Remove console.log from src/components/voice-training-view.tsx (around lines 47-49)",
+        "Remove console.log from src/app/training/voice/[assignmentId]/page.tsx (around lines 63-66, 107-111)",
+        "Remove console.log/warn from src/hooks/use-realtime-voice.ts (around lines 213, 217-218)",
+        "npx tsc --noEmit passes",
+        "Commit with message: chore: remove debug console.log statements"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "Todo reference: 032-pending-p2"
+    },
+    {
+      "id": "US-003",
+      "title": "Fix blob URL memory leak in recording playback",
+      "description": "As a counselor playing back multiple recordings, I don't want my browser to run out of memory.",
+      "acceptanceCriteria": [
+        "Modify handlePlayRecording in src/components/counselor-dashboard.tsx",
+        "Add URL.revokeObjectURL() call when audio window closes via onbeforeunload script injection",
+        "npx tsc --noEmit passes",
+        "Commit with message: fix: revoke blob URLs on recording window close"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "Todo reference: 034-pending-p2"
+    },
+    {
+      "id": "US-004",
+      "title": "Add database indexes for performance",
+      "description": "As a developer, I want database queries to remain fast as data grows.",
+      "acceptanceCriteria": [
+        "Add @@index([counselorId]) to Assignment model in prisma/schema.prisma",
+        "Add @@index([scenarioId]) to Assignment model",
+        "Add @@index([status]) to Assignment model",
+        "Add @@index([assignmentId]) to Session model",
+        "Add @@index([userId]) to Session model",
+        "Add @@index([scenarioId]) to Session model",
+        "Run npx prisma migrate dev --name add_performance_indexes",
+        "Migration applies successfully",
+        "npx tsc --noEmit passes",
+        "Commit with message: perf: add database indexes on foreign keys"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "Todo reference: 025-pending-p2"
+    },
+    {
+      "id": "US-005",
+      "title": "Add unique index to prevent duplicate active assignments",
+      "description": "As a system, I must prevent two active assignments for the same counselor+scenario combination.",
+      "acceptanceCriteria": [
+        "Create new migration with raw SQL for partial unique index: CREATE UNIQUE INDEX unique_active_assignment ON Assignment (counselorId, scenarioId) WHERE status != 'completed'",
+        "Run npx prisma migrate dev --name unique_active_assignment_index",
+        "Update src/app/api/external/assignments/route.ts to catch unique constraint violation and return 409 Conflict",
+        "Update src/app/api/assignments/route.ts bulk create to handle unique constraint violation",
+        "npx tsc --noEmit passes",
+        "Commit with message: data: add unique index for active assignments"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "Todo reference: 030-pending-p1. Use PostgreSQL partial index syntax."
+    },
+    {
+      "id": "US-006",
+      "title": "Add attempt tracking schema for session transcripts",
+      "description": "As a system, I must keep transcripts from different attempts separate to ensure clean evaluation data.",
+      "acceptanceCriteria": [
+        "Add attemptNumber Int @default(1) field to TranscriptTurn model in prisma/schema.prisma",
+        "Add currentAttempt Int @default(1) field to Session model",
+        "Run npx prisma migrate dev --name add_attempt_tracking",
+        "Migration applies successfully",
+        "npx tsc --noEmit passes",
+        "Commit with message: schema: add attempt tracking fields for sessions"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "Todo reference: 035-pending-p2. Schema-only change, implementation in next story."
+    },
+    {
+      "id": "US-007",
+      "title": "Implement attempt tracking in WebSocket session",
+      "description": "As a system, I must increment attempt numbers when reusing sessions and tag transcript turns.",
+      "acceptanceCriteria": [
+        "Modify ws-server/realtime-session.ts: when reusing existing session, increment currentAttempt in database",
+        "Pass attemptNumber when creating transcript turns in saveTranscript method",
+        "Modify evaluation query to filter by latest attempt (highest attemptNumber) only",
+        "npx tsc --noEmit passes",
+        "Commit with message: feat: implement attempt tracking for session transcripts"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "Todo reference: 035-pending-p2. Implementation using schema from US-006."
+    },
+    {
+      "id": "US-008",
+      "title": "Make counselor selector read-only for non-supervisors",
+      "description": "As a counselor, I should only see my own dashboard and not be able to impersonate other counselors.",
+      "acceptanceCriteria": [
+        "Modify src/components/counselor-dashboard.tsx: check user role before rendering selector",
+        "If role !== 'supervisor', show read-only display of current user name instead of dropdown",
+        "If role === 'supervisor', show full selector for view-as functionality",
+        "npx tsc --noEmit passes",
+        "Commit with message: security: make counselor selector read-only for non-supervisors"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "Todo reference: 029-pending-p1. Part 1: UI change."
+    },
+    {
+      "id": "US-009",
+      "title": "Add server-side authorization for counselor dashboard",
+      "description": "As a system, I must prevent URL manipulation from bypassing counselor authorization.",
+      "acceptanceCriteria": [
+        "Modify src/app/counselor/page.tsx: validate URL userId param matches x-user-id header for non-supervisors",
+        "Return 403 Forbidden if counselor tries to access another counselor's dashboard via URL manipulation",
+        "Supervisors can still access any counselor's dashboard",
+        "npx tsc --noEmit passes",
+        "Commit with message: security: validate counselor dashboard authorization"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "Todo reference: 029-pending-p1. Part 2: Server-side validation."
+    },
+    {
+      "id": "US-010",
+      "title": "Add WebSocket authentication for assignment ownership",
+      "description": "As a system, I must verify users are authorized before starting voice training sessions.",
+      "acceptanceCriteria": [
+        "Modify ws-server/realtime-session.ts: in createDbSession(), verify userId owns the assignmentId",
+        "Call internal API to fetch assignment and check counselorId matches userId",
+        "Return WebSocket error and close connection if unauthorized",
+        "npx tsc --noEmit passes",
+        "Commit with message: security: validate assignment ownership on WebSocket connect"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "Todo reference: 033-pending-p2"
+    },
+    {
+      "id": "US-011",
+      "title": "Fix camelCase/snake_case type inconsistency",
+      "description": "As a developer, I want type-safe field access without any type assertions.",
+      "acceptanceCriteria": [
+        "Update src/types/index.ts: change Assignment interface to use camelCase matching API response",
+        "Remove getAssignmentField helper from src/components/counselor-dashboard.tsx",
+        "Update all field accesses to use consistent camelCase",
+        "Remove eslint-disable-next-line @typescript-eslint/no-explicit-any comments related to assignments",
+        "npx tsc --noEmit passes with zero any for assignment field access",
+        "Commit with message: types: standardize Assignment fields to camelCase"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "Todo reference: 036-pending-p2"
+    },
+    {
+      "id": "US-012",
+      "title": "Add Zod validation for skills array",
+      "description": "As a system, I should reject invalid skill values at the API layer.",
+      "acceptanceCriteria": [
+        "Create SkillSchema in src/lib/validators.ts using VALID_SKILLS from src/lib/skills.ts",
+        "Add Zod validation to scenario create endpoint in src/app/api/scenarios/route.ts",
+        "Add Zod validation to scenario update endpoint in src/app/api/scenarios/[id]/route.ts",
+        "Invalid skills return 400 Bad Request with clear error message listing valid skills",
+        "npx tsc --noEmit passes",
+        "Commit with message: validation: add Zod schema for skills array"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": "Todo reference: 027-pending-p2"
+    },
+    {
+      "id": "US-013",
+      "title": "Document migration script transaction pattern",
+      "description": "As a future developer, I should know that migration scripts need transaction wrapping.",
+      "acceptanceCriteria": [
+        "Add comment block to scripts/backfill-scenario-metadata.ts explaining transaction importance",
+        "Add same documentation to scripts/migrate-skill-to-array.ts",
+        "Update CLAUDE.md with migration script best practices in a new section",
+        "Commit with message: docs: add transaction guidance to migration scripts"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": "Todo reference: 026-pending-p2. Documentation only, do last."
+    }
+  ]
+}

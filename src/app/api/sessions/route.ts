@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { apiSuccess, handleApiError, notFound, conflict, forbidden } from '@/lib/api'
 import { createSessionSchema } from '@/lib/validators'
-import { generateInitialGreeting, getDefaultChextPrompt } from '@/lib/openai'
+import { generateInitialGreeting } from '@/lib/openai'
 import { requireAuth, canAccessResource } from '@/lib/auth'
 import type { User } from '@prisma/client'
 
@@ -119,6 +119,10 @@ async function handleAssignmentSession(
 
 /**
  * Handle free practice session creation
+ *
+ * Phone: No initial greeting - voice AI handles the conversation flow
+ * Chat without scenario: Ask what they want to practice (no Pre-Chat Survey yet)
+ * Chat with scenario: Generate initial greeting from scenario prompt
  */
 async function handleFreePracticeSession(
   data: { type: 'free_practice'; userId: string; modelType: 'phone' | 'chat'; scenarioId?: string },
@@ -142,10 +146,7 @@ async function handleFreePracticeSession(
     scenarioPrompt = scenario.prompt
   }
 
-  // Generate initial greeting - use scenario prompt if provided, otherwise default chext prompt
-  const initialGreeting = await generateInitialGreeting(scenarioPrompt ?? getDefaultChextPrompt())
-
-  // Create session and initial transcript turn in a transaction
+  // Create session (and optionally initial transcript) in a transaction
   const session = await prisma.$transaction(async (tx) => {
     // Create the session
     const newSession = await tx.session.create({
@@ -157,15 +158,28 @@ async function handleFreePracticeSession(
       },
     })
 
-    // Create the initial AI greeting turn
-    await tx.transcriptTurn.create({
-      data: {
-        sessionId: newSession.id,
-        role: 'assistant',
-        content: initialGreeting,
-        turnOrder: 1,
-      },
-    })
+    // Only create initial transcript turn for CHAT sessions
+    // Phone sessions: Voice AI handles conversation flow (no pre-seeded transcript)
+    if (data.modelType === 'chat') {
+      let initialGreeting: string
+
+      if (scenarioPrompt) {
+        // Scenario provided: Generate visitor greeting from scenario
+        initialGreeting = await generateInitialGreeting(scenarioPrompt)
+      } else {
+        // No scenario: Ask what they want to practice (no Pre-Chat Survey yet)
+        initialGreeting = "What would you like to practice today? Give me a brief situation and I'll play the visitor."
+      }
+
+      await tx.transcriptTurn.create({
+        data: {
+          sessionId: newSession.id,
+          role: 'assistant',
+          content: initialGreeting,
+          turnOrder: 1,
+        },
+      })
+    }
 
     // Return session with transcript
     return tx.session.findUnique({

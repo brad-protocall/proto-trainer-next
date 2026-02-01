@@ -66,6 +66,7 @@ export class RealtimeSession {
   private params: ConnectionParams;
   private sessionId: string | null = null;
   private dbSessionId: string | null = null;
+  private currentAttempt: number = 1;
   private transcripts: TranscriptTurn[] = [];
   private currentUserTranscript: string = "";
   private currentAssistantTranscript: string = "";
@@ -137,7 +138,8 @@ export class RealtimeSession {
   }
 
   /**
-   * Fetch existing session for this assignment when one already exists
+   * Fetch existing session for this assignment when one already exists.
+   * Increments the attempt number for retry tracking.
    */
   private async fetchExistingSession(): Promise<void> {
     if (!this.params.assignmentId) return;
@@ -159,6 +161,9 @@ export class RealtimeSession {
           this.dbSessionId = data.data.sessionId;
           console.log(`[Session] Using existing DB session: ${this.dbSessionId}`);
 
+          // Increment the attempt number for this retry
+          await this.incrementSessionAttempt();
+
           // Send DB session ID to client
           this.sendToClient({
             type: "session.id",
@@ -172,6 +177,40 @@ export class RealtimeSession {
       }
     } catch (error) {
       console.error("[Session] Error fetching existing session:", error);
+    }
+  }
+
+  /**
+   * Increment the session's attempt number when reusing an existing session.
+   * This allows tracking multiple attempts within the same session.
+   */
+  private async incrementSessionAttempt(): Promise<void> {
+    if (!this.dbSessionId) return;
+
+    try {
+      const response = await fetch(
+        `${getApiUrl()}/api/sessions/${this.dbSessionId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-id": this.params.userId,
+          },
+          body: JSON.stringify({ incrementAttempt: true }),
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.ok && data.data?.currentAttempt) {
+          this.currentAttempt = data.data.currentAttempt;
+          console.log(`[Session] Incremented to attempt ${this.currentAttempt}`);
+        }
+      } else {
+        console.error(`[Session] Failed to increment attempt: ${response.status}`);
+      }
+    } catch (error) {
+      console.error("[Session] Error incrementing session attempt:", error);
     }
   }
 
@@ -218,11 +257,63 @@ export class RealtimeSession {
     }
   }
 
+  /**
+   * Verify the user is authorized to access the assignment.
+   * Throws an error if the user doesn't own the assignment.
+   */
+  private async verifyAssignmentOwnership(): Promise<void> {
+    const { assignmentId, userId } = this.params;
+
+    // No assignment = free practice mode, no ownership check needed
+    if (!assignmentId) {
+      return;
+    }
+
+    // Validate assignmentId format to prevent injection
+    if (!UUID_REGEX.test(assignmentId)) {
+      throw new Error("Invalid assignmentId format");
+    }
+
+    try {
+      const response = await fetch(
+        `${getApiUrl()}/api/assignments/${assignmentId}`,
+        {
+          headers: {
+            "x-user-id": userId,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error("User is not authorized to access this assignment");
+        }
+        if (response.status === 404) {
+          throw new Error("Assignment not found");
+        }
+        throw new Error(`Failed to verify assignment ownership: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!data.ok) {
+        // API already validates ownership - 403 means unauthorized
+        throw new Error(data.error?.message || "Failed to verify assignment ownership");
+      }
+
+      console.log(`[Session] Assignment ownership verified for user ${userId}`);
+    } catch (error) {
+      throw error instanceof Error ? error : new Error("Failed to verify assignment ownership");
+    }
+  }
+
   async connect(): Promise<void> {
     const apiKey = getApiKey();
     if (!apiKey) {
       throw new Error("OPENAI_API_KEY environment variable is not set");
     }
+
+    // Verify assignment ownership before connecting to OpenAI
+    await this.verifyAssignmentOwnership();
 
     // Fetch scenario prompt before connecting to OpenAI
     this.scenarioPrompt = await this.fetchScenarioPrompt();
@@ -610,28 +701,31 @@ export class RealtimeSession {
     try {
       console.log(`[Session] Persisting ${this.transcripts.length} transcript turns to session ${this.dbSessionId}...`);
 
-      // Save each transcript turn to the existing session
-      for (let i = 0; i < this.transcripts.length; i++) {
-        const turn = this.transcripts[i];
-        const turnResponse = await fetch(`${getApiUrl()}/api/sessions/${this.dbSessionId}/message`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-user-id": this.params.userId,
-          },
-          body: JSON.stringify({
+      // Use the dedicated /transcript endpoint for voice sessions
+      // This saves transcripts WITHOUT generating chat AI responses
+      const response = await fetch(`${getApiUrl()}/api/sessions/${this.dbSessionId}/transcript`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": this.params.userId,
+        },
+        body: JSON.stringify({
+          turns: this.transcripts.map((turn, i) => ({
             role: turn.role,
             content: turn.content,
-            turnOrder: i,
-          }),
-        });
+            turnOrder: i + 1, // 1-indexed to match chat convention
+            attemptNumber: this.currentAttempt,
+          })),
+        }),
+      });
 
-        if (!turnResponse.ok) {
-          console.warn(`[Session] Failed to save turn ${i}: ${turnResponse.status}`);
-        }
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`[Session] Transcripts persisted: ${data.data?.saved ?? 0} turns saved`);
+      } else {
+        const errorText = await response.text();
+        console.error(`[Session] Failed to persist transcripts: ${response.status} - ${errorText}`);
       }
-
-      console.log(`[Session] Transcripts persisted to session ${this.dbSessionId}`);
     } catch (error) {
       console.error("[Session] Failed to persist transcripts:", error);
     }

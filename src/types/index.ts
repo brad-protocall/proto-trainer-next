@@ -3,6 +3,7 @@ export type ApiErrorType =
   | "VALIDATION_ERROR"
   | "NOT_FOUND"
   | "UNAUTHORIZED"
+  | "FORBIDDEN"
   | "CONFLICT"
   | "INTERNAL_ERROR";
 
@@ -19,11 +20,16 @@ export type ApiResponse<T> =
 // Domain Enums
 export type UserRole = "counselor" | "supervisor" | "admin";
 export type ScenarioMode = "phone" | "chat";
+// Must match ScenarioCategoryValues in src/lib/validators.ts
 export type ScenarioCategory =
   | "cohort_training"
   | "onboarding"
   | "expert_skill_path"
-  | "account_specific";
+  | "account_specific"
+  | "sales"
+  | "customer_facing"
+  | "tap"
+  | "supervisors";
 export type AssignmentStatus = "pending" | "in_progress" | "completed";
 export type SessionStatus = "active" | "completed" | "abandoned";
 export type TranscriptRole = "user" | "assistant" | "system";
@@ -78,24 +84,24 @@ export interface RealtimeVoice {
   description: string;
 }
 
-// Domain Interfaces (API response shapes with snake_case from DB)
+// Domain Interfaces (API response shapes - camelCase to match Prisma output)
 export interface User {
   id: string;
-  external_id: string;
-  display_name: string | null;
+  externalId: string;
+  displayName: string | null;
   email: string | null;
   role: UserRole;
-  created_at: string;
-  updated_at: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Account {
   id: string;
   name: string;
-  policies_procedures_path: string | null;
-  vector_store_id: string | null;
-  created_at: string;
-  updated_at: string;
+  policiesProceduresPath: string | null;
+  vectorStoreId: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type ScenarioDifficulty = "beginner" | "intermediate" | "advanced";
@@ -107,84 +113,93 @@ export interface Scenario {
   prompt: string;
   mode: ScenarioMode;
   category: ScenarioCategory | null;
-  is_one_time: boolean;
-  account_id: string | null;
-  creator_id: string | null;
-  evaluator_context_path: string | null;
-  relevant_policy_sections: string | null;
-  created_at: string;
-  updated_at: string;
+  isOneTime: boolean;
+  accountId: string | null;
+  creatorId: string | null;
+  evaluatorContextPath: string | null;
+  relevantPolicySections: string | null;
+  createdAt: string;
+  updatedAt: string;
   // External API metadata
   skill: string | null;  // DEPRECATED - use skills array
   skills: string[];
   difficulty: ScenarioDifficulty | null;
-  estimated_time: number | null;
+  estimatedTime: number | null;
   account?: Account;
   creator?: User;
 }
 
 export interface Assignment {
   id: string;
-  scenario_id: string;
-  counselor_id: string;
+  scenarioId: string;
+  counselorId: string;
   status: AssignmentStatus;
-  due_date: string | null;
-  completed_at: string | null;
-  supervisor_notes: string | null;
-  require_recording?: boolean;
-  session_id: string | null;
-  created_at: string;
-  updated_at: string;
+  dueDate: string | null;
+  completedAt: string | null;
+  supervisorNotes: string | null;
+  requireRecording?: boolean;
+  sessionId: string | null;
+  createdAt: string;
+  updatedAt: string;
   scenario?: Scenario;
   counselor?: User;
   // Computed fields for display
-  scenario_title?: string;
-  scenario_mode?: ScenarioMode;
-  counselor_name?: string;
-  is_overdue?: boolean;
-  has_transcript?: boolean;
+  scenarioTitle?: string;
+  scenarioMode?: ScenarioMode;
+  counselorName?: string;
+  isOverdue?: boolean;
+  hasTranscript?: boolean;
+  // Additional fields from API
+  accountId?: string | null;
+  assignedBy?: string;
+  assignedByName?: string | null;
+  startedAt?: string | null;
+  evaluationId?: string | null;
+  recordingId?: string | null;
 }
 
 export interface Session {
   id: string;
-  assignment_id: string | null;
-  user_id: string | null;
-  scenario_id: string | null;
-  model_type: ModelType;
+  assignmentId: string | null;
+  userId: string | null;
+  scenarioId: string | null;
+  modelType: ModelType;
   status: SessionStatus;
-  started_at: string;
-  ended_at: string | null;
-  created_at: string;
-  updated_at: string;
+  startedAt: string;
+  endedAt: string | null;
+  currentAttempt?: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface TranscriptTurn {
   id: string;
-  session_id: string;
+  sessionId: string;
   role: TranscriptRole;
   content: string;
-  turn_index: number;
-  created_at: string;
+  turnOrder: number;
+  attemptNumber?: number;
+  createdAt: string;
 }
 
 export interface Evaluation {
   id: string;
-  assignment_id: string;
-  overall_score: number;
-  feedback_json: string;
+  assignmentId: string;
+  overallScore: number;
+  feedbackJson: string;
   strengths: string;
-  areas_to_improve: string;
-  raw_response: string | null;
-  created_at: string;
+  areasToImprove: string;
+  rawResponse: string | null;
+  createdAt: string;
 }
 
 export interface Recording {
   id: string;
-  session_id: string;
-  file_path: string;
+  sessionId: string;
+  filePath: string;
   duration: number | null;
-  file_size_bytes: number | null;
-  created_at: string;
+  fileSizeBytes: number | null;
+  createdAt: string;
 }
 
 // UI State Types

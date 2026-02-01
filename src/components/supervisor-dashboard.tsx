@@ -14,20 +14,29 @@ import { createAuthFetch } from "@/lib/fetch";
 import { formatDate, getStatusColor } from "@/lib/format";
 import BulkImportModal from "./bulk-import-modal";
 
+// Categories must match ScenarioCategoryValues in src/lib/validators.ts
 const SCENARIO_CATEGORIES = [
   { value: "", label: "All" },
+  { value: "cohort_training", label: "Cohort Training" },
   { value: "onboarding", label: "Onboarding" },
-  { value: "refresher", label: "Refresher" },
-  { value: "advanced", label: "Advanced" },
-  { value: "assessment", label: "Assessment" },
+  { value: "expert_skill_path", label: "Expert Skill Path" },
+  { value: "account_specific", label: "Account Specific" },
+  { value: "sales", label: "Sales" },
+  { value: "customer_facing", label: "Customer Facing" },
+  { value: "tap", label: "TAP" },
+  { value: "supervisors", label: "Supervisors" },
   { value: "uncategorized", label: "Uncategorized" },
 ];
 
 const CATEGORY_LABELS: Record<string, string> = {
+  cohort_training: "Cohort Training",
   onboarding: "Onboarding",
-  refresher: "Refresher",
-  advanced: "Advanced",
-  assessment: "Assessment",
+  expert_skill_path: "Expert Skill Path",
+  account_specific: "Account Specific",
+  sales: "Sales",
+  customer_facing: "Customer Facing",
+  tap: "TAP",
+  supervisors: "Supervisors",
 };
 
 interface ScenarioFormData {
@@ -149,6 +158,36 @@ export default function SupervisorDashboard() {
       categoryFilter === "uncategorized" ? !s.category : s.category === categoryFilter
     );
   }, [categoryFilter, globalScenariosCache]);
+
+  // Filter assignments by category (lookup scenario category from cache)
+  const filteredAssignments = useMemo(() => {
+    if (!categoryFilter) return assignments;
+
+    // Build a map of scenario ID -> category for fast lookup
+    const scenarioCategories = new Map<string, string | null>();
+    globalScenariosCache.forEach((s) => scenarioCategories.set(s.id, s.category));
+
+    return assignments.filter((a) => {
+      const category = scenarioCategories.get(a.scenarioId);
+
+      if (categoryFilter === "uncategorized") {
+        return !category;
+      }
+      return category === categoryFilter;
+    });
+  }, [categoryFilter, assignments, globalScenariosCache]);
+
+  // Filter scenarios by category for the Scenarios tab
+  const filteredScenarios = useMemo(() => {
+    if (!categoryFilter) return scenarios;
+    return scenarios.filter((s) => {
+      if (categoryFilter === "uncategorized") {
+        // Category can be null, undefined, or empty string in practice
+        return !s.category;
+      }
+      return s.category === categoryFilter;
+    });
+  }, [categoryFilter, scenarios]);
 
   const assignmentCount = selectedCounselorIds.size * selectedScenarioIds.size;
 
@@ -290,15 +329,15 @@ export default function SupervisorDashboard() {
       title: scenario.title,
       description: scenario.description || "",
       prompt: scenario.prompt,
-      account_id: scenario.account_id,
+      account_id: scenario.accountId,
       mode: scenario.mode,
-      relevant_policy_sections: scenario.relevant_policy_sections || "",
+      relevant_policy_sections: scenario.relevantPolicySections || "",
       category: scenario.category,
       evaluator_context: "",
       evaluator_context_file: null,
     });
     setPromptInputMode("text");
-    setContextInputMode(scenario.evaluator_context_path ? "file" : "text");
+    setContextInputMode(scenario.evaluatorContextPath ? "file" : "text");
     setEditingScenario(scenario);
     setShowForm(true);
   };
@@ -599,15 +638,17 @@ export default function SupervisorDashboard() {
 
           {loading ? (
             <p className="text-gray-400">Loading scenarios...</p>
-          ) : scenarios.length === 0 ? (
+          ) : filteredScenarios.length === 0 ? (
             <p className="text-gray-400">
-              {scenarioFilter === "one-time"
-                ? "No one-time scenarios yet."
-                : "No scenarios yet. Create your first one!"}
+              {categoryFilter
+                ? `No scenarios in "${CATEGORY_LABELS[categoryFilter] || categoryFilter}" category.`
+                : scenarioFilter === "one-time"
+                  ? "No one-time scenarios yet."
+                  : "No scenarios yet. Create your first one!"}
             </p>
           ) : (
             <div className="space-y-3">
-              {scenarios.map((scenario) => (
+              {filteredScenarios.map((scenario) => (
                 <div
                   key={scenario.id}
                   className="bg-brand-navy border border-gray-700 rounded-lg p-4
@@ -626,7 +667,7 @@ export default function SupervisorDashboard() {
                           {CATEGORY_LABELS[scenario.category] || scenario.category}
                         </span>
                       )}
-                      {scenario.is_one_time && (
+                      {scenario.isOneTime && (
                         <span className="text-xs px-2 py-1 rounded bg-yellow-500/20 text-yellow-300">
                           One-Time
                         </span>
@@ -637,7 +678,7 @@ export default function SupervisorDashboard() {
                         {scenario.description}
                       </p>
                     )}
-                    {scenario.evaluator_context_path && (
+                    {scenario.evaluatorContextPath && (
                       <span className="inline-block mt-2 text-xs bg-brand-orange/20 text-brand-orange px-2 py-1 rounded">
                         Has evaluator context
                       </span>
@@ -712,21 +753,13 @@ export default function SupervisorDashboard() {
 
           {assignmentsLoading ? (
             <p className="text-gray-400">Loading assignments...</p>
-          ) : assignments.length === 0 ? (
-            <p className="text-gray-400">No assignments yet.</p>
+          ) : filteredAssignments.length === 0 ? (
+            <p className="text-gray-400">
+              {categoryFilter ? `No assignments in "${CATEGORY_LABELS[categoryFilter] || categoryFilter}" category.` : "No assignments yet."}
+            </p>
           ) : (
             <div className="space-y-3">
-              {assignments.map((assignment) => {
-                // Handle both camelCase (API) and snake_case (types) field names
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const a = assignment as any;
-                const scenarioTitle = a.scenarioTitle || a.scenario_title || "Untitled";
-                const counselorName = a.counselorName || a.counselor_name || "Unknown";
-                const isOverdue = a.isOverdue || a.is_overdue;
-                const dueDate = a.dueDate || a.due_date;
-                const completedAt = a.completedAt || a.completed_at;
-
-                return (
+              {filteredAssignments.map((assignment) => (
                   <div
                     key={assignment.id}
                     className="bg-brand-navy border border-gray-700 rounded-lg p-4"
@@ -735,7 +768,7 @@ export default function SupervisorDashboard() {
                       <div className="flex-grow">
                         <div className="flex items-center gap-3">
                           <h3 className="text-white font-marfa font-medium">
-                            {scenarioTitle}
+                            {assignment.scenarioTitle || "Untitled"}
                           </h3>
                           <span
                             className={`text-xs px-2 py-1 rounded ${getStatusColor(
@@ -744,23 +777,23 @@ export default function SupervisorDashboard() {
                           >
                             {assignment.status.replace("_", " ")}
                           </span>
-                          {isOverdue && (
+                          {assignment.isOverdue && (
                             <span className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-300">
                               Overdue
                             </span>
                           )}
                         </div>
                         <p className="text-gray-400 text-sm mt-1">
-                          Assigned to: {counselorName}
+                          Assigned to: {assignment.counselorName || "Unknown"}
                         </p>
-                        {dueDate && (
+                        {assignment.dueDate && (
                           <p className="text-gray-500 text-xs mt-1">
-                            Due: {formatDate(dueDate)}
+                            Due: {formatDate(assignment.dueDate)}
                           </p>
                         )}
-                        {completedAt && (
+                        {assignment.completedAt && (
                           <p className="text-green-400 text-xs mt-1">
-                            Completed: {formatDate(completedAt)}
+                            Completed: {formatDate(assignment.completedAt)}
                           </p>
                         )}
                       </div>
@@ -774,8 +807,8 @@ export default function SupervisorDashboard() {
                       </div>
                     </div>
                   </div>
-                );
-              })}
+                )
+              )}
             </div>
           )}
         </div>
@@ -860,10 +893,14 @@ export default function SupervisorDashboard() {
                              text-white font-marfa focus:outline-none focus:border-brand-orange"
                 >
                   <option value="">-- None --</option>
+                  <option value="cohort_training">Cohort Training</option>
                   <option value="onboarding">Onboarding</option>
-                  <option value="refresher">Refresher</option>
-                  <option value="advanced">Advanced</option>
-                  <option value="assessment">Assessment</option>
+                  <option value="expert_skill_path">Expert Skill Path</option>
+                  <option value="account_specific">Account Specific</option>
+                  <option value="sales">Sales</option>
+                  <option value="customer_facing">Customer Facing</option>
+                  <option value="tap">TAP</option>
+                  <option value="supervisors">Supervisors</option>
                 </select>
               </div>
 
@@ -1001,7 +1038,7 @@ export default function SupervisorDashboard() {
                         Selected: {formData.evaluator_context_file.name}
                       </p>
                     )}
-                    {editingScenario?.evaluator_context_path && !formData.evaluator_context_file && (
+                    {editingScenario?.evaluatorContextPath && !formData.evaluator_context_file && (
                       <p className="text-xs text-green-400 mt-1">
                         ✓ Existing file uploaded
                       </p>

@@ -46,8 +46,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return forbidden('Access denied')
     }
 
-    // Get file path
-    const filePath = path.join(process.cwd(), recording.filePath)
+    // Get file path with security validation
+    const allowedBaseDir = path.resolve(process.cwd(), 'recordings')
+    const rawPath = path.join(process.cwd(), recording.filePath)
+    const filePath = path.resolve(rawPath)
+
+    // Security check: ensure resolved path is within recordings directory
+    if (!filePath.startsWith(allowedBaseDir + path.sep) && filePath !== allowedBaseDir) {
+      return forbidden('Access to this file path is not allowed')
+    }
 
     // Check if file exists and get stats
     let stat

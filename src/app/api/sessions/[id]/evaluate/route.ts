@@ -22,13 +22,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (authResult.error) return authResult.error
     const user = authResult.user
 
-    // Get session with transcript and scenario
+    // Get session with scenario info first
     const session = await prisma.session.findUnique({
       where: { id },
       include: {
-        transcript: {
-          orderBy: { turnOrder: 'asc' },
-        },
         assignment: {
           include: {
             scenario: {
@@ -58,19 +55,28 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return conflict('Evaluation already exists for this assignment')
     }
 
+    // Get transcript for the latest attempt only
+    const latestTranscript = await prisma.transcriptTurn.findMany({
+      where: {
+        sessionId: id,
+        attemptNumber: session.currentAttempt,
+      },
+      orderBy: { turnOrder: 'asc' },
+    })
+
     // Check if there's enough transcript to evaluate
-    if (session.transcript.length < 2) {
+    if (latestTranscript.length < 2) {
       return conflict('Not enough conversation to evaluate')
     }
 
-    // Convert transcript to TranscriptTurn format
-    const transcriptForEval: TranscriptTurn[] = session.transcript.map((turn) => ({
+    // Convert transcript to TranscriptTurn format (using latest attempt only)
+    const transcriptForEval: TranscriptTurn[] = latestTranscript.map((turn) => ({
       id: turn.id,
-      session_id: session.id,
+      sessionId: session.id,
       role: turn.role as TranscriptTurn['role'],
       content: turn.content,
-      turn_index: turn.turnOrder,
-      created_at: turn.createdAt.toISOString(),
+      turnOrder: turn.turnOrder,
+      createdAt: turn.createdAt.toISOString(),
     }))
 
     // Get scenario info - either from assignment or directly from session

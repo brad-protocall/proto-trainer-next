@@ -1,9 +1,17 @@
-import { readFileSync } from "fs";
+import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 
-// Prompts directory is at project root level
-// Works when running from project root (npm run ws:dev) or ws-server dir
-const PROMPTS_DIR = join(process.cwd(), "prompts");
+// Prompts directory: try parent directory first (when running from ws-server/),
+// then current directory (when running from project root)
+function getPromptsDir(): string {
+  const parentPrompts = join(process.cwd(), "..", "prompts");
+  if (existsSync(parentPrompts)) {
+    return parentPrompts;
+  }
+  return join(process.cwd(), "prompts");
+}
+
+const PROMPTS_DIR = getPromptsDir();
 
 /**
  * Load a prompt file by name.

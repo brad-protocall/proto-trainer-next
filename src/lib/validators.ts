@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { VALID_SKILLS } from './skills'
 
 // Domain enum schemas as string literals (lowercase to match DB)
 const UserRoleSchema = z.enum(['supervisor', 'counselor'])
@@ -17,6 +18,16 @@ export const ScenarioCategoryValues = [
 ] as const
 export const ScenarioCategorySchema = z.enum(ScenarioCategoryValues)
 export type ScenarioCategory = z.infer<typeof ScenarioCategorySchema>
+
+// Single source of truth for skill values - derived from skills.ts
+export const SkillSchema = z.enum(VALID_SKILLS)
+export type Skill = z.infer<typeof SkillSchema>
+
+// Skills array validation with clear error message
+export const SkillsArraySchema = z.array(SkillSchema).optional().refine(
+  (skills) => !skills || skills.length <= 10,
+  { message: 'Maximum 10 skills allowed per scenario' }
+)
 
 const AssignmentStatusSchema = z.enum(['pending', 'in_progress', 'completed'])
 
@@ -47,6 +58,7 @@ export const createScenarioSchema = z.object({
   prompt: z.string().min(1),
   mode: ScenarioModeSchema,
   category: ScenarioCategorySchema.optional().nullable(),
+  skills: SkillsArraySchema,
   accountId: z.string().uuid().optional().nullable(),
   isOneTime: z.boolean().default(false),
   relevantPolicySections: z.string().max(500).optional(),

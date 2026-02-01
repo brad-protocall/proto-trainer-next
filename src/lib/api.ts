@@ -27,6 +27,10 @@ export function forbidden(message: string): Response {
   return apiError({ type: 'UNAUTHORIZED', message }, 403)
 }
 
+export function badRequest(message: string): Response {
+  return apiError({ type: 'VALIDATION_ERROR', message }, 400)
+}
+
 export function handleApiError(error: unknown): Response {
   console.error('API Error:', error)
 
