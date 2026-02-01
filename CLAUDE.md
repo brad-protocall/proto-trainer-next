@@ -180,6 +180,33 @@ These features exist for demo/prototype purposes and **MUST be addressed before 
 | **User Switching** | `counselor-dashboard.tsx` | Gated by `NEXT_PUBLIC_DEMO_MODE`. Set to `false` or remove entirely. Replace with proper session-based auth. |
 | **No Real Auth** | Throughout | Uses `x-user-id` header. Replace with JWT/session auth. |
 | **Seeded Test Users** | `prisma/seed.ts` | Remove test data seeding for production. |
+| **WebSocket Auth** | `ws-server/index.ts` | Accepts client-provided `userId` without verification. Implement JWT/signed token validation. See below. |
+| **No CSRF Protection** | All API routes | Custom `x-user-id` header provides implicit CSRF protection, but implement explicit CSRF tokens for production. |
+
+### WebSocket Authentication (P2 - Required for Production)
+
+**Current State**: The WebSocket server accepts `userId` from query parameters without server-side verification. While `verifyAssignmentOwnership()` validates assignment access, the userId itself is trusted from the client.
+
+**Risk**: A malicious client could spoof any userId to access sessions.
+
+**Recommended Fix**:
+1. Generate a short-lived signed token on HTTP side: `POST /api/websocket-token` → `{ token, expiresAt }`
+2. Pass token instead of userId to WebSocket: `ws://localhost:3004?token=...`
+3. Verify token signature and expiry on WebSocket connect
+4. Extract userId from verified token payload
+
+**Effort**: 2-4 hours
+
+### CSRF Protection (P2 - Required for Production)
+
+**Current State**: No explicit CSRF tokens. The `x-user-id` custom header provides implicit protection (custom headers cannot be sent cross-origin without CORS), but this is not explicit.
+
+**Recommended Fix**:
+1. Generate CSRF token on session/page load
+2. Include token in request headers for state-changing operations
+3. Validate token server-side before processing
+
+**Effort**: 4 hours
 
 When `NEXT_PUBLIC_DEMO_MODE=true`:
 - Counselor dashboard shows a user selector (yellow border, "[DEMO]" label)

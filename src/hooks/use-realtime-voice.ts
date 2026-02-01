@@ -127,11 +127,11 @@ export function useRealtimeVoice(
           if (currentTranscriptRef.current && onTranscript) {
             const turn: TranscriptTurn = {
               id: `assistant_${Date.now()}`,
-              session_id: "",
+              sessionId: "",
               role: "assistant",
               content: currentTranscriptRef.current,
-              turn_index: turnIndexRef.current++,
-              created_at: new Date().toISOString(),
+              turnOrder: turnIndexRef.current++,
+              createdAt: new Date().toISOString(),
             };
             onTranscript(turn);
             currentTranscriptRef.current = "";
@@ -143,11 +143,11 @@ export function useRealtimeVoice(
           if (event.transcript && onTranscript) {
             const turn: TranscriptTurn = {
               id: `user_${Date.now()}`,
-              session_id: "",
+              sessionId: "",
               role: "user",
               content: event.transcript,
-              turn_index: turnIndexRef.current++,
-              created_at: new Date().toISOString(),
+              turnOrder: turnIndexRef.current++,
+              createdAt: new Date().toISOString(),
             };
             onTranscript(turn);
           }

@@ -329,15 +329,15 @@ export default function SupervisorDashboard() {
       title: scenario.title,
       description: scenario.description || "",
       prompt: scenario.prompt,
-      account_id: scenario.account_id,
+      account_id: scenario.accountId,
       mode: scenario.mode,
-      relevant_policy_sections: scenario.relevant_policy_sections || "",
+      relevant_policy_sections: scenario.relevantPolicySections || "",
       category: scenario.category,
       evaluator_context: "",
       evaluator_context_file: null,
     });
     setPromptInputMode("text");
-    setContextInputMode(scenario.evaluator_context_path ? "file" : "text");
+    setContextInputMode(scenario.evaluatorContextPath ? "file" : "text");
     setEditingScenario(scenario);
     setShowForm(true);
   };
@@ -667,7 +667,7 @@ export default function SupervisorDashboard() {
                           {CATEGORY_LABELS[scenario.category] || scenario.category}
                         </span>
                       )}
-                      {scenario.is_one_time && (
+                      {scenario.isOneTime && (
                         <span className="text-xs px-2 py-1 rounded bg-yellow-500/20 text-yellow-300">
                           One-Time
                         </span>
@@ -678,7 +678,7 @@ export default function SupervisorDashboard() {
                         {scenario.description}
                       </p>
                     )}
-                    {scenario.evaluator_context_path && (
+                    {scenario.evaluatorContextPath && (
                       <span className="inline-block mt-2 text-xs bg-brand-orange/20 text-brand-orange px-2 py-1 rounded">
                         Has evaluator context
                       </span>
@@ -1038,7 +1038,7 @@ export default function SupervisorDashboard() {
                         Selected: {formData.evaluator_context_file.name}
                       </p>
                     )}
-                    {editingScenario?.evaluator_context_path && !formData.evaluator_context_file && (
+                    {editingScenario?.evaluatorContextPath && !formData.evaluator_context_file && (
                       <p className="text-xs text-green-400 mt-1">
                         ✓ Existing file uploaded
                       </p>

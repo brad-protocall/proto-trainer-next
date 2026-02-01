@@ -30,7 +30,7 @@ export default function ChatTrainingPage() {
           // API returns camelCase, handle both naming conventions
           const users = userData.data.map((u) => ({
             ...u,
-            display_name: u.displayName || u.display_name,
+            display_name: u.displayName || u.displayName,
           }));
           // Use userId from URL if provided, otherwise fall back to Test Counselor
           if (userIdParam) {
@@ -38,7 +38,7 @@ export default function ChatTrainingPage() {
           }
           if (!user) {
             const testCounselor = users.find(
-              (c: User) => c.display_name === "Test Counselor"
+              (c: User) => c.displayName === "Test Counselor"
             );
             user = testCounselor || users[0];
           }

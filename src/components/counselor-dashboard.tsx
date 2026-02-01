@@ -69,14 +69,9 @@ export default function CounselorDashboard({
     const loadCounselorUser = async () => {
       try {
         const response = await fetch("/api/users?role=counselor");
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const data: ApiResponse<any[]> = await response.json();
+        const data: ApiResponse<User[]> = await response.json();
         if (data.ok && data.data.length > 0) {
-          // API returns camelCase, transform to match our User type
-          const users = data.data.map((u) => ({
-            ...u,
-            display_name: u.displayName || u.display_name,
-          }));
+          const users = data.data;
 
           // Store all counselors for the selector
           setAllCounselors(users);
@@ -89,7 +84,7 @@ export default function CounselorDashboard({
           if (!selectedUser) {
             // Fall back to Test Counselor or first counselor
             selectedUser = users.find(
-              (c: User) => c.display_name === "Test Counselor"
+              (c: User) => c.displayName === "Test Counselor"
             ) || users[0];
           }
           setCurrentUser(selectedUser);
@@ -353,7 +348,7 @@ export default function CounselorDashboard({
           >
             {allCounselors.map((counselor) => (
               <option key={counselor.id} value={counselor.id}>
-                {counselor.display_name}
+                {counselor.displayName}
               </option>
             ))}
           </select>
@@ -364,7 +359,7 @@ export default function CounselorDashboard({
             Logged in as:
           </label>
           <span className="text-white font-marfa font-bold text-lg">
-            {currentUser.display_name}
+            {currentUser.displayName}
           </span>
         </div>
       ) : null}

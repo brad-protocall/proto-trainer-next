@@ -72,11 +72,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Convert transcript to TranscriptTurn format (using latest attempt only)
     const transcriptForEval: TranscriptTurn[] = latestTranscript.map((turn) => ({
       id: turn.id,
-      session_id: session.id,
+      sessionId: session.id,
       role: turn.role as TranscriptTurn['role'],
       content: turn.content,
-      turn_index: turn.turnOrder,
-      created_at: turn.createdAt.toISOString(),
+      turnOrder: turn.turnOrder,
+      createdAt: turn.createdAt.toISOString(),
     }))
 
     // Get scenario info - either from assignment or directly from session

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { timingSafeEqual } from 'crypto'
+import { timingSafeEqual, createHash } from 'crypto'
 import { z } from 'zod'
 import prisma from '@/lib/prisma'
 import { apiSuccess, apiError, handleApiError, notFound } from '@/lib/api'
@@ -9,7 +9,8 @@ const EXTERNAL_SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000099'
 const EXTERNAL_ACCOUNT_ID = '00000000-0000-0000-0000-000000000020'
 
 /**
- * Timing-safe API key comparison
+ * Timing-safe API key comparison.
+ * Uses SHA-256 hashing to ensure constant-time comparison regardless of key lengths.
  */
 function validateApiKey(request: NextRequest): boolean {
   const apiKey = request.headers.get('X-API-Key')
@@ -19,11 +20,11 @@ function validateApiKey(request: NextRequest): boolean {
     return false
   }
 
-  if (apiKey.length !== expectedKey.length) {
-    return false
-  }
+  // Hash both keys to ensure constant-length comparison (prevents length oracle)
+  const providedHash = createHash('sha256').update(apiKey).digest()
+  const expectedHash = createHash('sha256').update(expectedKey).digest()
 
-  return timingSafeEqual(Buffer.from(apiKey), Buffer.from(expectedKey))
+  return timingSafeEqual(providedHash, expectedHash)
 }
 
 // Request body schema for POST

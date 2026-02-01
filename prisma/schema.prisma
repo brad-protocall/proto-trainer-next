@@ -127,6 +127,8 @@ model TranscriptTurn {
 
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
+  @@index([sessionId])
+  @@index([sessionId, attemptNumber])
   @@map("transcript_turns")
 }
 
