@@ -421,81 +421,66 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ---
 
-## Resume Context (2026-01-30)
+## Resume Context (2026-01-31)
 
-### Current State: Sales Training Experiment SUCCESSFUL
+### Current State: Pre-Handoff Cleanup COMPLETE
 
-Validated that scenario prompts can override system-level instructions to repurpose the training platform for sales roleplay. The same infrastructure can train both crisis counselors AND sales teams.
+All code review findings (P1/P2/P3) from Ralph overnight autonomous agent work have been addressed and merged. The codebase is ready for comprehensive review and SWE handoff assessment.
 
-### Session Summary (2026-01-30)
+### Session Summary (2026-01-31)
 
-1. **Sales Training Scenario Experiment** ✅ SUCCESS
-   - **Goal**: Test if scenario prompts can redirect Realtime API from "crisis caller" to "sales prospect"
-   - **Result**: The "CONTEXT OVERRIDE" technique worked - AI played prospect role correctly
-   - **Created scenario**: "Higher Ed Discovery Call - Director of Counseling Services"
-   - **Scenario ID**: `f24e41e5-561e-4e27-a1d3-819c9df9cc5b`
-   - **Category**: `sales`
+**Pre-Handoff Cleanup Branch** - Merged PR #37 (`50a928e`)
 
-2. **Key Finding - Prompt Needs Refinement**:
-   - **Issue**: Prospect gave information too freely upfront
-   - **Problem**: Made the conversation too easy for the salesperson
-   - **Fix needed**: Make prospect more guarded initially; require good discovery questions to unlock information
-   - **Realistic behavior**: Real prospects don't dump their entire situation immediately - salespeople must earn trust and ask the right questions
-
-3. **Scenario Persona Details** (for reference):
-   - Dr. Michelle Torres, Director of Counseling Services
-   - Ridgeview State University, 18K students, Midwest
-   - Pain points: 3-4 week wait times, 8 counselors (understaffed), after-hours gaps
-   - Budget: $50-80K annual
-   - EHR: Titanium Schedule
-   - Found Protocall at NASPA conference
-
-### Prompt Engineering Learnings
-
-**What worked:**
-- "IMPORTANT CONTEXT OVERRIDE" at prompt start successfully redirected AI role
-- Detailed persona with specific numbers made responses realistic
-- Variable endings based on salesperson performance
-
-**What needs improvement:**
-- Add "information gating" - prospect should reveal details progressively based on rapport/questions
-- Consider adding: "Only share budget details if directly asked" type instructions
-- Make objections arise more naturally in conversation flow
+1. **Code Review Executed** - Multi-agent review of 12 overnight Ralph commits
+2. **P1 Critical Fixes** ✅
+   - Fixed path traversal vulnerability in evaluator-context and recordings download
+   - Fixed API key length oracle with SHA-256 hashing
+   - Added `requireSupervisor()` auth to accounts API
+3. **P2 Important Fixes** ✅
+   - Standardized all domain types to camelCase
+   - Added missing ScenarioCategory values (sales, customer_facing, tap, supervisors)
+   - Added FORBIDDEN to ApiErrorType
+   - Added database indexes on transcript_turns
+   - Documented WebSocket auth and CSRF patterns
+4. **P3 Nice-to-Have Fixes** ✅
+   - Improved blob URL cleanup with multiple mechanisms
+   - Simplified WebSocket ownership check
+   - Added agent-native external API endpoints:
+     - `POST /api/external/assignments/[id]/evaluate`
+     - `GET /api/external/assignments/[id]/transcript`
 
 ### Previous Sessions
 
+- **2026-01-30**: Sales training scenario experiment - validated prompt override technique
 - **2026-01-29**: Fixed Pre-Chat Survey bug, restored demo mode, fixed category filtering
-- **2026-01-28**: Created `/api/sessions/[id]/transcript` endpoint for voice transcripts
-- **2026-01-27**: Added POST /api/external/scenarios, expanded categories to 8
-
-### 🟡 Remaining P2s (Deferred)
-
-| Todo | Issue | Effort | Status |
-|------|-------|--------|--------|
-| `033-pending-p2-websocket-auth-missing.md` | WebSocket trusts client-provided userId | 1 hour | Open |
-| `034-pending-p2-blob-url-memory-leak.md` | Recording playback leaks memory | 15 min | Open |
-| `036-pending-p2-camelcase-snakecase-inconsistency.md` | Uses `any` to handle naming | 1 hour | Open |
-| `025-pending-p2-missing-database-indexes.md` | No indexes on foreign keys | 30 min | Open |
-| `027-pending-p2-skills-validation-missing.md` | No CHECK constraint on skills | 15 min | Open |
-| `028-pending-p2-agent-native-skills-endpoints.md` | Missing /api/skills endpoints | 1 hour | Open |
+- **2026-01-28**: Created `/api/sessions/[id]/transcript` endpoint
 
 ### Quick Start
 
 ```bash
-docker-compose up -d      # Start PostgreSQL
 npm run dev               # Next.js on :3003
 npm run ws:dev            # WebSocket on :3004
 ```
 
 ### Git Status
 
-- Latest commit: `073d756` (pushed to main)
-- **Uncommitted changes**: Multiple fixes from 2026-01-29 session still pending
-- Branch: main
+- Latest commit: `50a928e` Pre-handoff cleanup (squash merge of PR #37)
+- Branch: main (clean)
 
 ### Next Session Tasks
 
-1. **Refine sales scenario prompt** - Add information gating so prospect reveals details progressively
-2. **Consider sales-specific evaluation criteria** - Current evaluator tuned for crisis counseling skills
-3. **Commit pending fixes** - 2026-01-29 fixes (Pre-Chat Survey, category filtering, etc.)
-4. **Explore more sales scenarios** - Different verticals (K-12, corporate EAP, etc.)
+**IMMEDIATE**: Run these two workflows to assess production readiness:
+
+1. **Full App Code Review**
+   ```
+   /review main
+   ```
+   Run the comprehensive code review workflow on the entire application to identify any remaining issues.
+
+2. **Production Readiness Assessment**
+   ```
+   /production-ready
+   ```
+   Run the SME prototype readiness skill to assess if the app is ready for SWE handoff.
+
+These two workflows will produce a complete assessment of what (if anything) remains before the prototype can be handed off to Software Engineering for production hardening.
