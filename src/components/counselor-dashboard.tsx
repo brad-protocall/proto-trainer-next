@@ -269,19 +269,32 @@ export default function CounselorDashboard({
       // Open audio in new tab with blob URL
       const audioWindow = window.open("", "_blank");
       if (audioWindow) {
+        // Use multiple cleanup mechanisms for reliability
+        // onbeforeunload alone is unreliable on mobile and some browsers
         audioWindow.document.write(`
           <!DOCTYPE html>
           <html>
           <head><title>Recording Playback</title></head>
           <body style="display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#1a1a2e;">
-            <audio controls autoplay style="width:80%;max-width:600px;">
+            <audio id="audio" controls autoplay style="width:80%;max-width:600px;">
               <source src="${blobUrl}" type="audio/wav">
               Your browser does not support audio playback.
             </audio>
             <script>
-              window.onbeforeunload = function() {
-                URL.revokeObjectURL("${blobUrl}");
-              };
+              var blobUrl = "${blobUrl}";
+              var cleaned = false;
+              function cleanup() {
+                if (!cleaned) {
+                  cleaned = true;
+                  URL.revokeObjectURL(blobUrl);
+                }
+              }
+              // Multiple cleanup triggers for reliability
+              document.getElementById('audio').onended = cleanup;
+              window.onbeforeunload = cleanup;
+              window.onpagehide = cleanup;
+              // Fallback: cleanup after 30 minutes max
+              setTimeout(cleanup, 30 * 60 * 1000);
             </script>
           </body>
           </html>

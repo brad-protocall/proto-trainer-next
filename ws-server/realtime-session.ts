@@ -296,20 +296,13 @@ export class RealtimeSession {
 
       const data = await response.json();
       if (!data.ok) {
-        throw new Error("Failed to verify assignment ownership");
-      }
-
-      // Double-check counselorId matches userId (belt and suspenders)
-      if (data.data?.counselorId && data.data.counselorId !== userId) {
-        throw new Error("User is not authorized to access this assignment");
+        // API already validates ownership - 403 means unauthorized
+        throw new Error(data.error?.message || "Failed to verify assignment ownership");
       }
 
       console.log(`[Session] Assignment ownership verified for user ${userId}`);
     } catch (error) {
-      if (error instanceof Error) {
-        throw error;
-      }
-      throw new Error("Failed to verify assignment ownership");
+      throw error instanceof Error ? error : new Error("Failed to verify assignment ownership");
     }
   }
 

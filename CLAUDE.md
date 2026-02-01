@@ -129,6 +129,8 @@ proto-trainer-next/
 | `/api/external/assignments` | GET | List assignments by `?user_id` (external ID) |
 | `/api/external/assignments` | POST | Create assignment for counselor |
 | `/api/external/assignments/[id]/result` | GET | Get evaluation result |
+| `/api/external/assignments/[id]/evaluate` | POST | Trigger evaluation for assignment |
+| `/api/external/assignments/[id]/transcript` | GET | Get transcript (optional `?attempt=N`) |
 
 #### POST /api/external/scenarios
 
