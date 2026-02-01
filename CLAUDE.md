@@ -429,7 +429,7 @@ Comprehensive multi-agent code review completed. Security hardening applied for 
 
 ### Session Summary (2026-01-31 - Evening)
 
-**Security Hardening Sprint** - Commit `a0aa7d0`
+**Security Hardening Sprint** - Commits `a0aa7d0`, `61d7327`
 
 1. **Multi-Agent Code Review** - 7 specialized agents analyzed full codebase:
    - Security Sentinel, Performance Oracle, Architecture Strategist
@@ -438,7 +438,7 @@ Comprehensive multi-agent code review completed. Security hardening applied for 
 2. **Security Gate**: **GO** - No blocking vulnerabilities
 3. **Production Readiness**: **18/25** - Ready with caveats
 
-**Fixes Applied** (commit `a0aa7d0`):
+**Fixes Applied**:
 - Added auth to GET /api/users (was publicly accessible)
 - Added internal service auth to POST /api/recordings
 - Fixed forbidden() helper to use FORBIDDEN type
@@ -447,13 +447,23 @@ Comprehensive multi-agent code review completed. Security hardening applied for 
 - Generic error messages in external API (prevent ID enumeration)
 - Added INTERNAL_SERVICE_KEY for ws-server → API calls
 
+### Personalized Training Guide Integration
+
+The external API is designed for agent orchestration, not agent-conducted training:
+
+| PTG Role | Capability |
+|----------|------------|
+| **Before training** | Create scenarios, assign to counselors ✅ |
+| **During training** | Counselor uses Proto Trainer UI (human practice) |
+| **After training** | Get results, transcripts, trigger evaluation ✅ |
+
+This is intentional - training requires human practice, agents orchestrate and analyze.
+
 ### For SWE: Top 3 Priorities
 
 1. **Replace x-user-id auth with JWT/sessions** (P0, 1-2 days)
 2. **Add rate limiting** (P1, 4-8 hours)
 3. **WebSocket token auth** (P1, 2-4 hours)
-
-See full review findings in the session transcript.
 
 ### Previous Sessions
 
@@ -470,8 +480,8 @@ npm run ws:dev            # WebSocket on :3004
 
 ### Git Status
 
-- Latest commit: `a0aa7d0` Security hardening for additional users
-- Branch: main (clean)
+- Latest commit: `61d7327` docs: update resume context
+- Branch: main (pushed to origin)
 
 ### For Next Session
 
