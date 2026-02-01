@@ -423,37 +423,43 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ## Resume Context (2026-01-31)
 
-### Current State: Pre-Handoff Cleanup COMPLETE
+### Current State: SWE Handoff Ready
 
-All code review findings (P1/P2/P3) from Ralph overnight autonomous agent work have been addressed and merged. The codebase is ready for comprehensive review and SWE handoff assessment.
+Comprehensive multi-agent code review completed. Security hardening applied for additional test users. Codebase scored **18/25** on production readiness assessment - **READY WITH CAVEATS**.
 
-### Session Summary (2026-01-31)
+### Session Summary (2026-01-31 - Evening)
 
-**Pre-Handoff Cleanup Branch** - Merged PR #37 (`50a928e`)
+**Security Hardening Sprint** - Commit `a0aa7d0`
 
-1. **Code Review Executed** - Multi-agent review of 12 overnight Ralph commits
-2. **P1 Critical Fixes** ✅
-   - Fixed path traversal vulnerability in evaluator-context and recordings download
-   - Fixed API key length oracle with SHA-256 hashing
-   - Added `requireSupervisor()` auth to accounts API
-3. **P2 Important Fixes** ✅
-   - Standardized all domain types to camelCase
-   - Added missing ScenarioCategory values (sales, customer_facing, tap, supervisors)
-   - Added FORBIDDEN to ApiErrorType
-   - Added database indexes on transcript_turns
-   - Documented WebSocket auth and CSRF patterns
-4. **P3 Nice-to-Have Fixes** ✅
-   - Improved blob URL cleanup with multiple mechanisms
-   - Simplified WebSocket ownership check
-   - Added agent-native external API endpoints:
-     - `POST /api/external/assignments/[id]/evaluate`
-     - `GET /api/external/assignments/[id]/transcript`
+1. **Multi-Agent Code Review** - 7 specialized agents analyzed full codebase:
+   - Security Sentinel, Performance Oracle, Architecture Strategist
+   - Data Integrity Guardian, Pattern Recognition, Agent-Native Reviewer
+   - Code Simplicity Reviewer
+2. **Security Gate**: **GO** - No blocking vulnerabilities
+3. **Production Readiness**: **18/25** - Ready with caveats
+
+**Fixes Applied** (commit `a0aa7d0`):
+- Added auth to GET /api/users (was publicly accessible)
+- Added internal service auth to POST /api/recordings
+- Fixed forbidden() helper to use FORBIDDEN type
+- Extracted validateApiKey to shared module (-89 lines, DRY)
+- Added pagination to GET /api/scenarios (limit/offset)
+- Generic error messages in external API (prevent ID enumeration)
+- Added INTERNAL_SERVICE_KEY for ws-server → API calls
+
+### For SWE: Top 3 Priorities
+
+1. **Replace x-user-id auth with JWT/sessions** (P0, 1-2 days)
+2. **Add rate limiting** (P1, 4-8 hours)
+3. **WebSocket token auth** (P1, 2-4 hours)
+
+See full review findings in the session transcript.
 
 ### Previous Sessions
 
-- **2026-01-30**: Sales training scenario experiment - validated prompt override technique
-- **2026-01-29**: Fixed Pre-Chat Survey bug, restored demo mode, fixed category filtering
-- **2026-01-28**: Created `/api/sessions/[id]/transcript` endpoint
+- **2026-01-31 (Morning)**: Pre-handoff cleanup - PR #37 merged
+- **2026-01-30**: Sales training scenario experiment
+- **2026-01-29**: Fixed Pre-Chat Survey bug, demo mode, category filtering
 
 ### Quick Start
 
@@ -464,23 +470,22 @@ npm run ws:dev            # WebSocket on :3004
 
 ### Git Status
 
-- Latest commit: `50a928e` Pre-handoff cleanup (squash merge of PR #37)
+- Latest commit: `a0aa7d0` Security hardening for additional users
 - Branch: main (clean)
 
-### Next Session Tasks
+### For Next Session
 
-**IMMEDIATE**: Run these two workflows to assess production readiness:
+The codebase is ready for additional test users and SWE handoff. Remaining work for SWE:
 
-1. **Full App Code Review**
-   ```
-   /review main
-   ```
-   Run the comprehensive code review workflow on the entire application to identify any remaining issues.
+| Item | Priority | Effort |
+|------|----------|--------|
+| Replace x-user-id with JWT/sessions | P0 | 1-2 days |
+| Add rate limiting | P1 | 4-8 hours |
+| WebSocket signed token auth | P1 | 2-4 hours |
+| CSRF tokens | P2 | 4 hours |
+| Test coverage | P2 | 1-2 days |
 
-2. **Production Readiness Assessment**
-   ```
-   /production-ready
-   ```
+See `src/lib/external-auth.ts` for the pattern to follow for auth.
    Run the SME prototype readiness skill to assess if the app is ready for SWE handoff.
 
 These two workflows will produce a complete assessment of what (if anything) remains before the prototype can be handed off to Software Engineering for production hardening.
