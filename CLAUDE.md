@@ -421,25 +421,45 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ---
 
-## Resume Context (2026-01-31)
+## Resume Context (2026-02-01)
 
 ### Current State: SWE Handoff Ready
 
 Comprehensive multi-agent code review completed. Security hardening applied for additional test users. Codebase scored **18/25** on production readiness assessment - **READY WITH CAVEATS**.
 
-### Session Summary (2026-01-31 - Evening)
+### Session Summary (2026-02-01 - Evening)
+
+**User Testing Bug Fixes** - Commits `ea1e223`, `05b2c51`
+
+During user testing, discovered that the security hardening broke the counselor dashboard:
+
+1. **GET /api/users 401 Error** (`ea1e223`)
+   - Security hardening added auth to GET /api/users
+   - But counselor dashboard needs to fetch users BEFORE knowing who the user is (chicken-and-egg)
+   - Fix: Allow public access for `?role=counselor` queries (needed for demo user switcher)
+   - Other queries still require auth
+
+2. **Demo Mode Dropdown Missing** (`05b2c51`)
+   - The user selector dropdown wasn't showing in demo mode
+   - Dropdown only appeared for `viewerRole === "supervisor"`
+   - Fix: Show dropdown when `NEXT_PUBLIC_DEMO_MODE=true` with yellow border and [DEMO] label
+
+**Key Learning**: The auth chain in this prototype is:
+```
+GET /api/users?role=counselor → set currentUser → pass userId to all subsequent API calls
+```
+Breaking step 1 cascades to break everything downstream (Free Practice buttons, training pages, etc.).
+
+### Previous Session (2026-01-31 - Evening)
 
 **Security Hardening Sprint** - Commits `a0aa7d0`, `61d7327`
 
-1. **Multi-Agent Code Review** - 7 specialized agents analyzed full codebase:
-   - Security Sentinel, Performance Oracle, Architecture Strategist
-   - Data Integrity Guardian, Pattern Recognition, Agent-Native Reviewer
-   - Code Simplicity Reviewer
+1. **Multi-Agent Code Review** - 7 specialized agents analyzed full codebase
 2. **Security Gate**: **GO** - No blocking vulnerabilities
 3. **Production Readiness**: **18/25** - Ready with caveats
 
 **Fixes Applied**:
-- Added auth to GET /api/users (was publicly accessible)
+- Added auth to GET /api/users (was publicly accessible) - *partially reverted for counselor list*
 - Added internal service auth to POST /api/recordings
 - Fixed forbidden() helper to use FORBIDDEN type
 - Extracted validateApiKey to shared module (-89 lines, DRY)
@@ -467,6 +487,7 @@ This is intentional - training requires human practice, agents orchestrate and a
 
 ### Previous Sessions
 
+- **2026-01-31 (Evening)**: Security hardening sprint, multi-agent code review
 - **2026-01-31 (Morning)**: Pre-handoff cleanup - PR #37 merged
 - **2026-01-30**: Sales training scenario experiment
 - **2026-01-29**: Fixed Pre-Chat Survey bug, demo mode, category filtering
@@ -480,12 +501,12 @@ npm run ws:dev            # WebSocket on :3004
 
 ### Git Status
 
-- Latest commit: `61d7327` docs: update resume context
+- Latest commit: `05b2c51` fix: restore demo mode user selector in counselor dashboard
 - Branch: main (pushed to origin)
 
 ### For Next Session
 
-The codebase is ready for additional test users and SWE handoff. Remaining work for SWE:
+The codebase is ready for user testing and SWE handoff. Remaining work for SWE:
 
 | Item | Priority | Effort |
 |------|----------|--------|
