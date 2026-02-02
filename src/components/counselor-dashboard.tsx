@@ -343,13 +343,18 @@ export default function CounselorDashboard({
     window.location.href = `/counselor?userId=${counselorId}`;
   };
 
+  // Demo mode enables user switching for testing
+  const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+  const showUserSelector = (viewerRole === "supervisor" || isDemoMode) && allCounselors.length > 1;
+
   return (
     <div className="pb-8">
-      {/* Counselor Selector - only for supervisors (view-as functionality) */}
-      {viewerRole === "supervisor" && allCounselors.length > 1 ? (
-        <div className="flex flex-col items-center mb-6">
+      {/* Counselor Selector - for supervisors or demo mode */}
+      {showUserSelector ? (
+        <div className={`flex flex-col items-center mb-6 ${isDemoMode ? "border-2 border-yellow-500 rounded-lg p-4" : ""}`}>
           <label className="text-gray-400 text-sm mb-2 font-marfa">
-            Viewing as:
+            {isDemoMode && <span className="text-yellow-500 mr-2">[DEMO]</span>}
+            {viewerRole === "supervisor" ? "Viewing as:" : "Switch user:"}
           </label>
           <select
             value={currentUser?.id || ""}
