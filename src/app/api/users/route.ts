@@ -6,15 +6,21 @@ import { requireAuth, requireSupervisor } from '@/lib/auth'
 
 /**
  * GET /api/users
- * List all users - requires authentication
+ * List all users
+ * - Filtering by role=counselor is public (needed for demo user switcher)
+ * - Other queries require authentication
  * Supports ?role=supervisor or ?role=counselor filter
  */
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await requireAuth(request)
-    if (authResult.error) return authResult.error
-
     const role = request.nextUrl.searchParams.get('role')
+
+    // Allow public access for counselor list (needed for demo mode user switcher)
+    // Other queries require auth
+    if (role !== 'counselor') {
+      const authResult = await requireAuth(request)
+      if (authResult.error) return authResult.error
+    }
 
     const users = await prisma.user.findMany({
       where: role ? { role } : undefined,
