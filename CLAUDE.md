@@ -421,73 +421,95 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ---
 
-## Resume Context (2026-02-01)
+## Resume Context (2026-02-02)
 
-### Current State: SWE Handoff Ready
+### Current State: LiveKit Migration In Progress
 
-Comprehensive multi-agent code review completed. Security hardening applied for additional test users. Codebase scored **18/25** on production readiness assessment - **READY WITH CAVEATS**.
+LiveKit spike completed successfully. Voice AI agent deployed to LiveKit Cloud. Next step is full migration planning to replace `ws-server/` with LiveKit.
 
-### Session Summary (2026-02-01 - Evening)
+### Session Summary (2026-02-02 - Afternoon)
 
-**User Testing Bug Fixes** - Commits `ea1e223`, `05b2c51`
+**LiveKit Spike - VERDICT: GO**
 
-During user testing, discovered that the security hardening broke the counselor dashboard:
+Conducted a time-boxed spike to evaluate LiveKit as replacement for the custom `ws-server/` WebSocket relay.
 
-1. **GET /api/users 401 Error** (`ea1e223`)
-   - Security hardening added auth to GET /api/users
-   - But counselor dashboard needs to fetch users BEFORE knowing who the user is (chicken-and-egg)
-   - Fix: Allow public access for `?role=counselor` queries (needed for demo user switcher)
-   - Other queries still require auth
+**What was tested:**
+- LiveKit Cloud account created (project: Proto-trainer-next)
+- Sandbox deployed: `https://proto-trainer-next-1q4gli.sandbox.livekit.io`
+- Node.js agent created from `agent-starter-node` template
+- Crisis caller prompt integrated (`prompts/realtime-caller.txt`)
+- OpenAI Realtime API with shimmer voice configured
+- Agent deployed to LiveKit Cloud (Agent ID: `CA_GUpZ97G5vvd3`, region: US East B)
+- Voice conversation tested and working
 
-2. **Demo Mode Dropdown Missing** (`05b2c51`)
-   - The user selector dropdown wasn't showing in demo mode
-   - Dropdown only appeared for `viewerRole === "supervisor"`
-   - Fix: Show dropdown when `NEXT_PUBLIC_DEMO_MODE=true` with yellow border and [DEMO] label
+**Spike results:**
 
-**Key Learning**: The auth chain in this prototype is:
-```
-GET /api/users?role=counselor → set currentUser → pass userId to all subsequent API calls
-```
-Breaking step 1 cascades to break everything downstream (Free Practice buttons, training pages, etc.).
+| Criteria | Result |
+|----------|--------|
+| Voice conversation works | ✅ |
+| OpenAI Realtime with crisis caller prompt | ✅ |
+| Shimmer voice (familiar) | ✅ |
+| Cloud deployment (no local process needed) | ✅ |
+| Voice quality | ✅ Better than ws-server |
+| Token-based auth (solves P1 security) | ✅ |
 
-### Previous Session (2026-01-31 - Evening)
+**What was created:**
+- `livekit-agent/` - LiveKit agent project (Node.js, deployed to cloud)
+  - `src/agent.ts` - Crisis caller prompt (from `prompts/realtime-caller.txt`)
+  - `src/main.ts` - OpenAI Realtime with shimmer voice
+  - `.env.local` - LiveKit + OpenAI credentials
+- `src/app/api/livekit/token/route.ts` - Token generation endpoint (spike)
+- `src/app/spike/livekit/page.tsx` - Spike test page (can be deleted)
+- `docs/plans/livekit-spike.md` - Spike plan
 
-**Security Hardening Sprint** - Commits `a0aa7d0`, `61d7327`
+**LiveKit npm packages installed in proto-trainer-next:**
+- `@livekit/components-react`
+- `@livekit/components-styles`
+- `livekit-client`
+- `livekit-server-sdk`
 
-1. **Multi-Agent Code Review** - 7 specialized agents analyzed full codebase
-2. **Security Gate**: **GO** - No blocking vulnerabilities
-3. **Production Readiness**: **18/25** - Ready with caveats
+**Environment variables added to `.env`:**
+- `LIVEKIT_API_KEY`
+- `LIVEKIT_API_SECRET`
+- `NEXT_PUBLIC_LIVEKIT_URL` (`wss://proto-trainer-next-amw48y2e.livekit.cloud`)
 
-**Fixes Applied**:
-- Added auth to GET /api/users (was publicly accessible) - *partially reverted for counselor list*
-- Added internal service auth to POST /api/recordings
-- Fixed forbidden() helper to use FORBIDDEN type
-- Extracted validateApiKey to shared module (-89 lines, DRY)
-- Added pagination to GET /api/scenarios (limit/offset)
-- Generic error messages in external API (prevent ID enumeration)
-- Added INTERNAL_SERVICE_KEY for ws-server → API calls
+**Key architectural insight:** LiveKit replaces ONLY the voice transport layer. The External API (for Personalized-Trainer integration) is completely unaffected. PTG continues to create scenarios, assign counselors, and read evaluation results via the same HTTP REST endpoints.
 
-### Personalized Training Guide Integration
+### For Next Session: Full Migration Plan
 
-The external API is designed for agent orchestration, not agent-conducted training:
+Create a migration plan to integrate LiveKit into the existing app:
 
-| PTG Role | Capability |
-|----------|------------|
-| **Before training** | Create scenarios, assign to counselors ✅ |
-| **During training** | Counselor uses Proto Trainer UI (human practice) |
-| **After training** | Get results, transcripts, trigger evaluation ✅ |
+1. **Replace voice UI** in counselor training pages with LiveKit React components
+2. **Pass scenario context** so assigned scenarios work (not just free practice)
+3. **Transcript capture** - wire LiveKit transcripts to existing `/api/sessions/[id]/transcript` endpoint
+4. **Remove `ws-server/`** and port 3004 dependency
+5. **Update Raspberry Pi deployment** - only need ngrok for Next.js (port 3003), voice goes through LiveKit Cloud
 
-This is intentional - training requires human practice, agents orchestrate and analyze.
+**Impact on SWE priorities:**
 
-### For SWE: Top 3 Priorities
+| Item | Previous Priority | LiveKit Impact |
+|------|-------------------|----------------|
+| WebSocket signed token auth | P1 | **ELIMINATED** - LiveKit handles auth with JWT tokens |
+| Replace x-user-id with JWT/sessions | P0 | Unchanged (still needed for REST API) |
+| Add rate limiting | P1 | Unchanged |
+| CSRF tokens | P2 | Unchanged |
 
-1. **Replace x-user-id auth with JWT/sessions** (P0, 1-2 days)
-2. **Add rate limiting** (P1, 4-8 hours)
-3. **WebSocket token auth** (P1, 2-4 hours)
+### LiveKit Reference
+
+| Resource | Value |
+|----------|-------|
+| Dashboard | https://cloud.livekit.io |
+| Sandbox URL | https://proto-trainer-next-1q4gli.sandbox.livekit.io |
+| Agent ID | CA_GUpZ97G5vvd3 |
+| Cloud Region | US East B |
+| CLI | `lk` (installed via brew) |
+| Agent logs | `lk agent logs` |
+| Redeploy agent | `cd livekit-agent && lk agent deploy` |
 
 ### Previous Sessions
 
-- **2026-01-31 (Evening)**: Security hardening sprint, multi-agent code review
+- **2026-02-01 (Evening)**: User testing bug fixes - demo mode dropdown, counselor list auth
+- **2026-01-31 (Evening)**: Security hardening sprint, multi-agent code review (18/25)
 - **2026-01-31 (Morning)**: Pre-handoff cleanup - PR #37 merged
 - **2026-01-30**: Sales training scenario experiment
 - **2026-01-29**: Fixed Pre-Chat Survey bug, demo mode, category filtering
@@ -496,27 +518,12 @@ This is intentional - training requires human practice, agents orchestrate and a
 
 ```bash
 npm run dev               # Next.js on :3003
-npm run ws:dev            # WebSocket on :3004
+# ws-server no longer needed for voice - LiveKit Cloud handles it
+# To redeploy agent: cd livekit-agent && lk agent deploy
 ```
 
 ### Git Status
 
-- Latest commit: `05b2c51` fix: restore demo mode user selector in counselor dashboard
-- Branch: main (pushed to origin)
-
-### For Next Session
-
-The codebase is ready for user testing and SWE handoff. Remaining work for SWE:
-
-| Item | Priority | Effort |
-|------|----------|--------|
-| Replace x-user-id with JWT/sessions | P0 | 1-2 days |
-| Add rate limiting | P1 | 4-8 hours |
-| WebSocket signed token auth | P1 | 2-4 hours |
-| CSRF tokens | P2 | 4 hours |
-| Test coverage | P2 | 1-2 days |
-
-See `src/lib/external-auth.ts` for the pattern to follow for auth.
-   Run the SME prototype readiness skill to assess if the app is ready for SWE handoff.
-
-These two workflows will produce a complete assessment of what (if anything) remains before the prototype can be handed off to Software Engineering for production hardening.
+- Latest commit: `05b2c51` (LiveKit spike files not yet committed)
+- Branch: main
+- Uncommitted: LiveKit spike files, livekit-agent/, new packages

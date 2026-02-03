@@ -19,8 +19,12 @@
     "ws:start": "cd ws-server && npx tsx index.ts"
   },
   "dependencies": {
+    "@livekit/components-react": "^2.9.19",
+    "@livekit/components-styles": "^1.2.0",
     "@prisma/client": "^6.2.1",
     "@tailwindcss/typography": "^0.5.19",
+    "livekit-client": "^2.17.0",
+    "livekit-server-sdk": "^2.15.0",
     "next": "^15.1.5",
     "openai": "^4.77.4",
     "papaparse": "^5.5.3",
