@@ -422,52 +422,46 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ---
 
-## Resume Context (2026-02-02)
+## Resume Context (2026-02-03)
 
-### Current State: LiveKit Migration Complete — Needs Code Review
+### Current State: LiveKit Migration Committed — Ready to Deploy
 
-Voice training fully migrated from custom `ws-server/` WebSocket relay to LiveKit Cloud. The old WebSocket infrastructure has been removed. Agent is deployed to LiveKit Cloud and handles voice sessions end-to-end.
+Voice training fully migrated from custom `ws-server/` WebSocket relay to LiveKit Cloud. Code reviewed by 7 parallel agents, all findings (P1/P2/P3) addressed, committed as `af5a049`.
 
-### Next Session: Code Review Before Commit
+### Next Session: Deploy Agent + End-to-End Test
 
-Run multi-agent code review on the full LiveKit migration diff before committing. All changes are uncommitted on `main`.
+1. **Deploy agent**: `cd livekit-agent && lk agent deploy`
+2. **End-to-end test**: Start a voice session from the counselor dashboard, verify agent connects, conversation works, evaluation generates
+3. **Address any runtime issues** found during testing
 
-1. **Manual cleanup first**: `rm -rf ws-server/` (node_modules dir remains, needs manual delete)
-2. **Run code review**: Use `/plan_review` or equivalent multi-agent review on the uncommitted changes
-3. **Address findings**, then commit and deploy agent (`cd livekit-agent && lk agent deploy`)
+### Session Summary (2026-02-03)
 
-### Session Summary (2026-02-02 - Evening)
+**7-Agent Code Review + Fixes**
 
-**LiveKit Full Migration - Completed**
+Ran multi-agent review (Security Sentinel, Architecture Strategist, Performance Oracle, Kieran TypeScript, Code Simplicity, Pattern Recognition, Data Integrity) on the full LiveKit migration diff (28 files, +791/-3,387 lines). Found 14 issues across 3 priority levels.
 
-Migrated voice training from custom WebSocket relay to LiveKit Cloud. Implemented in two phases after plan review by 3 agents (DHH, Kieran TypeScript, Code Simplicity).
+**P1 Fixes (3 - Critical):**
+- Timing-unsafe key comparison → consolidated `requireInternalAuth()` to delegate to `validateInternalServiceKey()` (timing-safe)
+- Scenario prompts never loaded by agent → created `GET /api/internal/scenarios/[id]` with service key auth
+- Duplicate internal auth implementations → consolidated into single pattern
 
-**Phase A (Backend):**
-- `POST /api/internal/sessions` - Voice session creation (X-Internal-Service-Key auth)
-- `POST /api/internal/sessions/[id]/transcript` - Bulk transcript persistence
-- `POST /api/livekit/token` - Production token endpoint with Zod validation, assignment ownership checks, agent dispatch with metadata
-- `livekit-agent/src/main.ts` - Full production agent with session creation, transcript capture, shutdown persistence
-- `livekit-agent/src/agent.ts` - `createAssistant()` factory with scenario prompt override
-- `requireInternalAuth()` in `auth.ts` for service-to-service auth
+**P2 Fixes (6 - Important):**
+- Unsafe `as` casts in agent → Zod response schemas (`ScenarioResponseSchema`, `SessionResponseSchema`, `TranscriptResponseSchema`)
+- No idempotency on transcripts → delete-before-insert pattern
+- Sequential transcript creates → `createMany()` bulk insert
+- Sequential agent startup → `Promise.all()` for parallel fetch + session creation
+- Missing ownership check → `assignment.counselorId !== userId` guard in internal sessions endpoint
+- 409 ambiguity → changed "transcripts not ready" to HTTP 425 (Too Early), added `TOO_EARLY` to `ApiErrorType`
 
-**Phase B (Frontend + Cleanup):**
-- `voice-training-view.tsx` - Rewritten with LiveKit React components (no custom hook)
-- Deleted: `use-realtime-voice.ts`, `audio.ts`, `audio-processor.js`, spike page
-- Removed WebSocket types from `types/index.ts`
-- Updated `package.json`, `.env.example`, `CLAUDE.md`
+**P3 Fixes (3 - Nice-to-Have):**
+- Duplicate header JSX → extracted `VoiceTrainingHeader` component
+- Dead `@types/ws` dependency → removed from devDependencies
+- Broad publish permissions → restricted to `TrackSource.MICROPHONE`
 
-**Key architecture:**
-- LiveKit replaces ONLY the voice transport layer
-- Text chat (`POST /api/sessions`) is completely separate and untouched
-- Voice sessions use `POST /api/internal/sessions` (no greeting generation)
-- External API (PTG integration) is completely unaffected
-- Agent communicates session ID to client via participant attributes
-
-**Deleted infrastructure:**
-- `ws-server/` directory (to be deleted)
-- `src/hooks/use-realtime-voice.ts` (522 LOC)
-- `src/lib/audio.ts` (244 LOC)
-- `public/audio-processor.js`
+**Compound Documentation Created:**
+- `docs/solutions/integration-issues/livekit-migration-code-review-2026-02-03.md`
+- `docs/solutions/prevention-strategies/cross-process-integration-patterns.md`
+- `docs/solutions/REVIEW_SESSION_SUMMARY.md`
 
 ### LiveKit Reference
 
@@ -482,6 +476,8 @@ Migrated voice training from custom WebSocket relay to LiveKit Cloud. Implemente
 
 ### Previous Sessions
 
+- **2026-02-03**: 7-agent code review of LiveKit migration, all findings fixed, committed `af5a049`
+- **2026-02-02 (Evening)**: LiveKit full migration (Phase A backend + Phase B frontend)
 - **2026-02-02 (Afternoon)**: LiveKit spike - VERDICT: GO
 - **2026-02-01 (Evening)**: User testing bug fixes - demo mode dropdown, counselor list auth
 - **2026-01-31 (Evening)**: Security hardening sprint, multi-agent code review (18/25)
@@ -499,6 +495,6 @@ npm run dev               # Next.js on :3003
 
 ### Git Status
 
-- Latest commit: `41375b0` (spike commit)
+- Latest commit: `af5a049` (LiveKit migration + review fixes)
 - Branch: main
-- Uncommitted: Full LiveKit migration (Phase A + B)
+- Untracked: compound documentation in `docs/solutions/`
