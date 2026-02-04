@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { apiSuccess, handleApiError, notFound, conflict, forbidden } from '@/lib/api'
+import { apiSuccess, apiError, handleApiError, notFound, conflict, forbidden } from '@/lib/api'
 import { generateEvaluation } from '@/lib/openai'
 import { requireAuth, canAccessResource } from '@/lib/auth'
 import type { TranscriptTurn } from '@/types'
@@ -64,9 +64,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       orderBy: { turnOrder: 'asc' },
     })
 
-    // Check if there's enough transcript to evaluate
+    // Check if there's enough transcript to evaluate.
+    // Returns 425 (Too Early) so the client can distinguish this from a true 409 conflict.
     if (latestTranscript.length < 2) {
-      return conflict('Not enough conversation to evaluate')
+      return apiError({ type: 'TOO_EARLY', message: 'Transcripts not yet available' }, 425)
     }
 
     // Convert transcript to TranscriptTurn format (using latest attempt only)

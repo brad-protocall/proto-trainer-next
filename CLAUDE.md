@@ -15,8 +15,8 @@ npx prisma db seed
 # Start dev server (port 3003)
 npm run dev
 
-# Start WebSocket server (port 3004) - for voice training
-npm run ws:dev
+# Voice training uses LiveKit Cloud (no local server needed)
+# To redeploy agent: cd livekit-agent && lk agent deploy
 ```
 
 ## Architecture
@@ -29,7 +29,7 @@ This is a Next.js 14+ application using the App Router with TypeScript and Prism
 | Backend | Next.js Route Handlers |
 | Database | Prisma + SQLite (dev) |
 | AI Chat | OpenAI Chat Completions API |
-| AI Voice | OpenAI Realtime API (via WebSocket relay) |
+| AI Voice | LiveKit Cloud + OpenAI Realtime API |
 | Styling | Tailwind CSS |
 
 ## Port Assignments
@@ -40,17 +40,13 @@ This is a Next.js 14+ application using the App Router with TypeScript and Prism
 | 3001 | Basic PTG (existing legacy) |
 | 3002 | Agent-Native PTG (existing) |
 | **3003** | **proto-trainer-next (Next.js)** |
-| **3004** | **proto-trainer-next WebSocket** |
 
 ## Environment Variables
 
 Copy `.env.example` to `.env` and configure:
 
 ```env
-# Server ports
 PORT=3003
-WS_PORT=3004
-NEXT_PUBLIC_WS_URL=ws://localhost:3004
 
 # Database
 DATABASE_URL="file:./dev.db"
@@ -63,6 +59,14 @@ CHAT_MODEL=gpt-4o
 EVALUATOR_MODEL=gpt-4o
 REALTIME_MODEL=gpt-4o-realtime-preview
 REALTIME_VOICE=shimmer
+
+# LiveKit (voice training via LiveKit Cloud)
+LIVEKIT_API_KEY=your-livekit-api-key
+LIVEKIT_API_SECRET=your-livekit-api-secret
+NEXT_PUBLIC_LIVEKIT_URL=wss://your-project.livekit.cloud
+
+# Internal Service Key (for LiveKit agent -> Next.js API calls)
+INTERNAL_SERVICE_KEY=your-internal-service-key-here
 
 # External API (for Personalized Training Guide integration)
 EXTERNAL_API_KEY=your-secret-api-key
@@ -87,6 +91,8 @@ proto-trainer-next/
 │   │   │   ├── scenarios/
 │   │   │   ├── assignments/
 │   │   │   ├── sessions/
+│   │   │   ├── internal/  # Internal API (X-Internal-Service-Key auth)
+│   │   │   ├── livekit/   # LiveKit token generation
 │   │   │   └── external/  # External API (X-API-Key auth)
 │   │   ├── supervisor/  # Supervisor dashboard
 │   │   ├── counselor/   # Counselor dashboard
@@ -101,7 +107,7 @@ proto-trainer-next/
 │   │   ├── prisma.ts    # Prisma client singleton
 │   │   └── validators.ts # Zod schemas
 │   └── types/           # TypeScript definitions
-└── ws-server/           # WebSocket relay for voice
+└── livekit-agent/       # LiveKit voice AI agent (deployed to cloud)
 ```
 
 ## API Routes
@@ -119,6 +125,14 @@ proto-trainer-next/
 | `/api/sessions/[id]` | GET | Get session with transcript |
 | `/api/sessions/[id]/message` | POST | Send message, get AI response |
 | `/api/sessions/[id]/evaluate` | POST | Generate evaluation |
+| `/api/livekit/token` | POST | Generate LiveKit room token for voice training |
+
+### Internal API (X-Internal-Service-Key auth)
+
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/internal/sessions` | POST | Create voice training session (called by LiveKit agent) |
+| `/api/internal/sessions/[id]/transcript` | POST | Bulk persist transcript turns (called by LiveKit agent) |
 
 ### External API (X-API-Key auth)
 
@@ -182,22 +196,7 @@ These features exist for demo/prototype purposes and **MUST be addressed before 
 | **User Switching** | `counselor-dashboard.tsx` | Gated by `NEXT_PUBLIC_DEMO_MODE`. Set to `false` or remove entirely. Replace with proper session-based auth. |
 | **No Real Auth** | Throughout | Uses `x-user-id` header. Replace with JWT/session auth. |
 | **Seeded Test Users** | `prisma/seed.ts` | Remove test data seeding for production. |
-| **WebSocket Auth** | `ws-server/index.ts` | Accepts client-provided `userId` without verification. Implement JWT/signed token validation. See below. |
 | **No CSRF Protection** | All API routes | Custom `x-user-id` header provides implicit CSRF protection, but implement explicit CSRF tokens for production. |
-
-### WebSocket Authentication (P2 - Required for Production)
-
-**Current State**: The WebSocket server accepts `userId` from query parameters without server-side verification. While `verifyAssignmentOwnership()` validates assignment access, the userId itself is trusted from the client.
-
-**Risk**: A malicious client could spoof any userId to access sessions.
-
-**Recommended Fix**:
-1. Generate a short-lived signed token on HTTP side: `POST /api/websocket-token` → `{ token, expiresAt }`
-2. Pass token instead of userId to WebSocket: `ws://localhost:3004?token=...`
-3. Verify token signature and expiry on WebSocket connect
-4. Extract userId from verified token payload
-
-**Effort**: 2-4 hours
 
 ### CSRF Protection (P2 - Required for Production)
 
@@ -222,12 +221,14 @@ When `NEXT_PUBLIC_DEMO_MODE=false` (production):
 
 ```bash
 # Development
-npm run dev          # Start Next.js on port 3003
-npm run ws:dev       # Start WebSocket server on port 3004
+npm run dev              # Start Next.js on port 3003
+
+# LiveKit Agent
+npm run agent:deploy     # Deploy voice agent to LiveKit Cloud
 
 # Build
-npm run build        # Production build
-npm run lint         # ESLint
+npm run build            # Production build
+npm run lint             # ESLint
 
 # Database
 npx prisma migrate dev --name <name>  # Create migration
@@ -423,83 +424,56 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ## Resume Context (2026-02-02)
 
-### Current State: LiveKit Migration In Progress
+### Current State: LiveKit Migration Complete — Needs Code Review
 
-LiveKit spike completed successfully. Voice AI agent deployed to LiveKit Cloud. Next step is full migration planning to replace `ws-server/` with LiveKit.
+Voice training fully migrated from custom `ws-server/` WebSocket relay to LiveKit Cloud. The old WebSocket infrastructure has been removed. Agent is deployed to LiveKit Cloud and handles voice sessions end-to-end.
 
-### Session Summary (2026-02-02 - Afternoon)
+### Next Session: Code Review Before Commit
 
-**LiveKit Spike - VERDICT: GO**
+Run multi-agent code review on the full LiveKit migration diff before committing. All changes are uncommitted on `main`.
 
-Conducted a time-boxed spike to evaluate LiveKit as replacement for the custom `ws-server/` WebSocket relay.
+1. **Manual cleanup first**: `rm -rf ws-server/` (node_modules dir remains, needs manual delete)
+2. **Run code review**: Use `/plan_review` or equivalent multi-agent review on the uncommitted changes
+3. **Address findings**, then commit and deploy agent (`cd livekit-agent && lk agent deploy`)
 
-**What was tested:**
-- LiveKit Cloud account created (project: Proto-trainer-next)
-- Sandbox deployed: `https://proto-trainer-next-1q4gli.sandbox.livekit.io`
-- Node.js agent created from `agent-starter-node` template
-- Crisis caller prompt integrated (`prompts/realtime-caller.txt`)
-- OpenAI Realtime API with shimmer voice configured
-- Agent deployed to LiveKit Cloud (Agent ID: `CA_GUpZ97G5vvd3`, region: US East B)
-- Voice conversation tested and working
+### Session Summary (2026-02-02 - Evening)
 
-**Spike results:**
+**LiveKit Full Migration - Completed**
 
-| Criteria | Result |
-|----------|--------|
-| Voice conversation works | ✅ |
-| OpenAI Realtime with crisis caller prompt | ✅ |
-| Shimmer voice (familiar) | ✅ |
-| Cloud deployment (no local process needed) | ✅ |
-| Voice quality | ✅ Better than ws-server |
-| Token-based auth (solves P1 security) | ✅ |
+Migrated voice training from custom WebSocket relay to LiveKit Cloud. Implemented in two phases after plan review by 3 agents (DHH, Kieran TypeScript, Code Simplicity).
 
-**What was created:**
-- `livekit-agent/` - LiveKit agent project (Node.js, deployed to cloud)
-  - `src/agent.ts` - Crisis caller prompt (from `prompts/realtime-caller.txt`)
-  - `src/main.ts` - OpenAI Realtime with shimmer voice
-  - `.env.local` - LiveKit + OpenAI credentials
-- `src/app/api/livekit/token/route.ts` - Token generation endpoint (spike)
-- `src/app/spike/livekit/page.tsx` - Spike test page (can be deleted)
-- `docs/plans/livekit-spike.md` - Spike plan
+**Phase A (Backend):**
+- `POST /api/internal/sessions` - Voice session creation (X-Internal-Service-Key auth)
+- `POST /api/internal/sessions/[id]/transcript` - Bulk transcript persistence
+- `POST /api/livekit/token` - Production token endpoint with Zod validation, assignment ownership checks, agent dispatch with metadata
+- `livekit-agent/src/main.ts` - Full production agent with session creation, transcript capture, shutdown persistence
+- `livekit-agent/src/agent.ts` - `createAssistant()` factory with scenario prompt override
+- `requireInternalAuth()` in `auth.ts` for service-to-service auth
 
-**LiveKit npm packages installed in proto-trainer-next:**
-- `@livekit/components-react`
-- `@livekit/components-styles`
-- `livekit-client`
-- `livekit-server-sdk`
+**Phase B (Frontend + Cleanup):**
+- `voice-training-view.tsx` - Rewritten with LiveKit React components (no custom hook)
+- Deleted: `use-realtime-voice.ts`, `audio.ts`, `audio-processor.js`, spike page
+- Removed WebSocket types from `types/index.ts`
+- Updated `package.json`, `.env.example`, `CLAUDE.md`
 
-**Environment variables added to `.env`:**
-- `LIVEKIT_API_KEY`
-- `LIVEKIT_API_SECRET`
-- `NEXT_PUBLIC_LIVEKIT_URL` (`wss://proto-trainer-next-amw48y2e.livekit.cloud`)
+**Key architecture:**
+- LiveKit replaces ONLY the voice transport layer
+- Text chat (`POST /api/sessions`) is completely separate and untouched
+- Voice sessions use `POST /api/internal/sessions` (no greeting generation)
+- External API (PTG integration) is completely unaffected
+- Agent communicates session ID to client via participant attributes
 
-**Key architectural insight:** LiveKit replaces ONLY the voice transport layer. The External API (for Personalized-Trainer integration) is completely unaffected. PTG continues to create scenarios, assign counselors, and read evaluation results via the same HTTP REST endpoints.
-
-### For Next Session: Full Migration Plan
-
-Create a migration plan to integrate LiveKit into the existing app:
-
-1. **Replace voice UI** in counselor training pages with LiveKit React components
-2. **Pass scenario context** so assigned scenarios work (not just free practice)
-3. **Transcript capture** - wire LiveKit transcripts to existing `/api/sessions/[id]/transcript` endpoint
-4. **Remove `ws-server/`** and port 3004 dependency
-5. **Update Raspberry Pi deployment** - only need ngrok for Next.js (port 3003), voice goes through LiveKit Cloud
-
-**Impact on SWE priorities:**
-
-| Item | Previous Priority | LiveKit Impact |
-|------|-------------------|----------------|
-| WebSocket signed token auth | P1 | **ELIMINATED** - LiveKit handles auth with JWT tokens |
-| Replace x-user-id with JWT/sessions | P0 | Unchanged (still needed for REST API) |
-| Add rate limiting | P1 | Unchanged |
-| CSRF tokens | P2 | Unchanged |
+**Deleted infrastructure:**
+- `ws-server/` directory (to be deleted)
+- `src/hooks/use-realtime-voice.ts` (522 LOC)
+- `src/lib/audio.ts` (244 LOC)
+- `public/audio-processor.js`
 
 ### LiveKit Reference
 
 | Resource | Value |
 |----------|-------|
 | Dashboard | https://cloud.livekit.io |
-| Sandbox URL | https://proto-trainer-next-1q4gli.sandbox.livekit.io |
 | Agent ID | CA_GUpZ97G5vvd3 |
 | Cloud Region | US East B |
 | CLI | `lk` (installed via brew) |
@@ -508,6 +482,7 @@ Create a migration plan to integrate LiveKit into the existing app:
 
 ### Previous Sessions
 
+- **2026-02-02 (Afternoon)**: LiveKit spike - VERDICT: GO
 - **2026-02-01 (Evening)**: User testing bug fixes - demo mode dropdown, counselor list auth
 - **2026-01-31 (Evening)**: Security hardening sprint, multi-agent code review (18/25)
 - **2026-01-31 (Morning)**: Pre-handoff cleanup - PR #37 merged
@@ -518,12 +493,12 @@ Create a migration plan to integrate LiveKit into the existing app:
 
 ```bash
 npm run dev               # Next.js on :3003
-# ws-server no longer needed for voice - LiveKit Cloud handles it
+# Voice training uses LiveKit Cloud (no local server needed)
 # To redeploy agent: cd livekit-agent && lk agent deploy
 ```
 
 ### Git Status
 
-- Latest commit: `05b2c51` (LiveKit spike files not yet committed)
+- Latest commit: `41375b0` (spike commit)
 - Branch: main
-- Uncommitted: LiveKit spike files, livekit-agent/, new packages
+- Uncommitted: Full LiveKit migration (Phase A + B)

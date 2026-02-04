@@ -15,8 +15,7 @@
     "db:migrate": "npx prisma migrate dev",
     "db:studio": "npx prisma studio",
     "db:seed": "npx tsx prisma/seed.ts",
-    "ws:dev": "cd ws-server && npx tsx watch index.ts",
-    "ws:start": "cd ws-server && npx tsx index.ts"
+    "agent:deploy": "cd livekit-agent && lk agent deploy"
   },
   "dependencies": {
     "@livekit/components-react": "^2.9.19",
@@ -40,7 +39,6 @@
     "@types/papaparse": "^5.5.2",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
-    "@types/ws": "^8.18.1",
     "eslint": "^9.18.0",
     "eslint-config-next": "^15.1.5",
     "pg": "^8.17.2",

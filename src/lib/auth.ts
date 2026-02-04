@@ -1,7 +1,23 @@
 import { NextRequest } from 'next/server'
 import prisma from '@/lib/prisma'
 import { unauthorized, forbidden } from '@/lib/api'
+import { validateInternalServiceKey } from '@/lib/external-auth'
 import type { User } from '@prisma/client'
+
+/**
+ * Require internal service authentication via X-Internal-Service-Key header.
+ * Used by the LiveKit agent to call internal API endpoints.
+ * Delegates to validateInternalServiceKey() for timing-safe comparison.
+ */
+export function requireInternalAuth(
+  request: NextRequest
+): { error: null } | { error: Response } {
+  if (!validateInternalServiceKey(request)) {
+    return { error: unauthorized('Invalid or missing service key') }
+  }
+
+  return { error: null }
+}
 
 /**
  * Get current user from request header (x-user-id)

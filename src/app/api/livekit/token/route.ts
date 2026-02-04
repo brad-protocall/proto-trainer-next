@@ -1,56 +1,104 @@
-import { NextRequest, NextResponse } from "next/server";
-import { AccessToken } from "livekit-server-sdk";
+import { NextRequest } from 'next/server'
+import { AccessToken, RoomAgentDispatch, RoomConfiguration, TrackSource } from 'livekit-server-sdk'
+import { prisma } from '@/lib/prisma'
+import { apiSuccess, handleApiError, badRequest, forbidden } from '@/lib/api'
+import { requireAuth, canAccessResource } from '@/lib/auth'
+import { createLiveKitTokenSchema } from '@/lib/validators'
+import crypto from 'crypto'
 
 /**
- * Generate a LiveKit access token for a participant to join a room.
- * This is the server-side token generation that solves our auth problem.
+ * POST /api/livekit/token
  *
- * SPIKE: Simplified for testing. Production would validate user session.
+ * Generate a LiveKit access token for voice training.
+ * Validates user auth and assignment ownership, then creates a token
+ * with agent dispatch metadata so the LiveKit agent knows which
+ * scenario to load and which session to create.
  */
 export async function POST(request: NextRequest) {
   try {
-    const { roomName, participantName } = await request.json();
+    const authResult = await requireAuth(request)
+    if (authResult.error) return authResult.error
+    const user = authResult.user
 
-    if (!roomName || !participantName) {
-      return NextResponse.json(
-        { error: "roomName and participantName required" },
-        { status: 400 }
-      );
+    const body = await request.json()
+    const data = createLiveKitTokenSchema.parse(body)
+
+    const apiKey = process.env.LIVEKIT_API_KEY
+    const apiSecret = process.env.LIVEKIT_API_SECRET
+    const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL
+
+    if (!apiKey || !apiSecret || !livekitUrl) {
+      return badRequest('LiveKit not configured')
     }
 
-    const apiKey = process.env.LIVEKIT_API_KEY;
-    const apiSecret = process.env.LIVEKIT_API_SECRET;
+    // If assignmentId provided, verify ownership and get scenario
+    let scenarioId = data.scenarioId
+    if (data.assignmentId) {
+      const assignment = await prisma.assignment.findUnique({
+        where: { id: data.assignmentId },
+        select: {
+          counselorId: true,
+          scenarioId: true,
+          status: true,
+        },
+      })
 
-    if (!apiKey || !apiSecret) {
-      console.error("LiveKit credentials not configured");
-      return NextResponse.json(
-        { error: "LiveKit not configured" },
-        { status: 500 }
-      );
+      if (!assignment) {
+        return badRequest('Assignment not found')
+      }
+
+      if (!canAccessResource(user, assignment.counselorId)) {
+        return forbidden('Not your assignment')
+      }
+
+      scenarioId = assignment.scenarioId
     }
 
-    // Create access token
+    // Generate unique room name
+    const roomName = `training-${crypto.randomUUID().slice(0, 8)}`
+
+    // Build agent dispatch metadata
+    const metadata = JSON.stringify({
+      assignmentId: data.assignmentId,
+      scenarioId,
+      userId: user.id,
+    })
+
+    // Create access token with agent dispatch
     const at = new AccessToken(apiKey, apiSecret, {
-      identity: participantName,
-      ttl: "1h", // Token valid for 1 hour
-    });
+      identity: user.id,
+      name: user.displayName || user.externalId,
+      ttl: '1h',
+    })
 
-    // Grant permissions to join the room
     at.addGrant({
       roomJoin: true,
       room: roomName,
       canPublish: true,
+      canPublishSources: [TrackSource.MICROPHONE],
       canSubscribe: true,
-    });
+    })
 
-    const token = await at.toJwt();
+    // Configure room with agent dispatch
+    const roomConfig = new RoomConfiguration({
+      agents: [
+        new RoomAgentDispatch({
+          agentName: '',
+          metadata,
+        }),
+      ],
+    })
 
-    return NextResponse.json({ token });
+    at.roomConfig = roomConfig
+
+    const token = await at.toJwt()
+
+    return apiSuccess({
+      token,
+      serverUrl: livekitUrl,
+      roomName,
+    })
   } catch (error) {
-    console.error("Error generating LiveKit token:", error);
-    return NextResponse.json(
-      { error: "Failed to generate token" },
-      { status: 500 }
-    );
+    return handleApiError(error)
   }
 }

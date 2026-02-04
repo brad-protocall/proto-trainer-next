@@ -5,6 +5,7 @@ export type ApiErrorType =
   | "UNAUTHORIZED"
   | "FORBIDDEN"
   | "CONFLICT"
+  | "TOO_EARLY"
   | "INTERNAL_ERROR";
 
 export interface ApiError {
@@ -35,54 +36,6 @@ export type SessionStatus = "active" | "completed" | "abandoned";
 export type TranscriptRole = "user" | "assistant" | "system";
 export type ModelType = "phone" | "chat";
 export type SessionType = "assignment" | "free_practice";
-
-// WebSocket Types
-export type RealtimeMessageType =
-  | "session.created"
-  | "session.updated"
-  | "input_audio_buffer.speech_started"
-  | "input_audio_buffer.speech_stopped"
-  | "input_audio_buffer.committed"
-  | "conversation.item.created"
-  | "response.audio.delta"
-  | "response.audio.done"
-  | "response.audio_transcript.delta"
-  | "response.audio_transcript.done"
-  | "response.done"
-  | "error";
-
-export interface RealtimeMessage {
-  type: RealtimeMessageType;
-  event_id?: string;
-  session?: {
-    id: string;
-    model: string;
-    voice: string;
-  };
-  delta?: string;
-  transcript?: string;
-  item?: {
-    id: string;
-    type: string;
-    role: TranscriptRole;
-    content?: Array<{
-      type: string;
-      text?: string;
-      transcript?: string;
-    }>;
-  };
-  error?: {
-    type: string;
-    code: string;
-    message: string;
-  };
-}
-
-export interface RealtimeVoice {
-  id: string;
-  name: string;
-  description: string;
-}
 
 // Domain Interfaces (API response shapes - camelCase to match Prisma output)
 export interface User {

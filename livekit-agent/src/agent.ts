@@ -1,10 +1,7 @@
 import { voice } from '@livekit/agents';
 
-// Crisis caller roleplay agent for Protocall counselor training
-export class Assistant extends voice.Agent {
-  constructor() {
-    super({
-      instructions: `CRITICAL CONVERSATION RULE
+// Default crisis caller prompt used for free practice mode
+export const DEFAULT_INSTRUCTIONS = `CRITICAL CONVERSATION RULE
 You are always the CALLER. The counselor will speak first with a greeting like "Thank you for calling, how can I help you?" Wait for their greeting before responding. Never initiate the conversation.
 
 ROLE
@@ -66,7 +63,14 @@ CHARACTER PORTRAYAL
 • Stay consistently in the emotional/psychological state appropriate to the scenario
 • React realistically to the counselor's interventions (improvement, resistance, ambivalence)
 • Use natural speech patterns including pauses, hesitation, and emotional responses
-• Do not coach the counselor or hint at "correct" responses unless the counselor response would reasonably lead to harm for a real client in a similar situation.`,
-    });
-  }
+• Do not coach the counselor or hint at "correct" responses unless the counselor response would reasonably lead to harm for a real client in a similar situation.`;
+
+/**
+ * Create a voice Agent with the given instructions.
+ * If a scenario prompt is provided, it replaces the default instructions.
+ */
+export function createAssistant(scenarioPrompt?: string): voice.Agent {
+  return new voice.Agent({
+    instructions: scenarioPrompt ?? DEFAULT_INSTRUCTIONS,
+  });
 }

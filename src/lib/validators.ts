@@ -125,6 +125,12 @@ export const sendMessageSchema = z.object({
   content: z.string().min(1).max(10000),
 })
 
+// LiveKit token request validation
+export const createLiveKitTokenSchema = z.object({
+  assignmentId: z.string().uuid().optional(),
+  scenarioId: z.string().uuid().optional(),
+})
+
 // Inferred types
 export type CreateUserInput = z.infer<typeof createUserSchema>
 export type UpdateUserInput = z.infer<typeof updateUserSchema>

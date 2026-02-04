@@ -32,7 +32,7 @@ export function requireExternalApiKey(request: NextRequest): Response | null {
 }
 
 /**
- * Validate internal service calls (from ws-server).
+ * Validate internal service calls (from LiveKit agent).
  * Uses a separate internal API key for service-to-service auth.
  */
 export function validateInternalServiceKey(request: NextRequest): boolean {

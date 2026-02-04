@@ -1,8 +1,7 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { apiSuccess, handleApiError, forbidden } from '@/lib/api'
-import { requireAuth } from '@/lib/auth'
-import { validateInternalServiceKey } from '@/lib/external-auth'
+import { apiSuccess, handleApiError } from '@/lib/api'
+import { requireAuth, requireInternalAuth } from '@/lib/auth'
 import { z } from 'zod'
 
 /**
@@ -83,15 +82,14 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/recordings
- * Create a recording entry (called by ws-server after saving WAV file)
+ * Create a recording entry (called by LiveKit agent after saving WAV file)
  * Requires internal service authentication
  */
 export async function POST(request: NextRequest) {
   try {
-    // Validate internal service call (from ws-server)
-    if (!validateInternalServiceKey(request)) {
-      return forbidden('Internal service access required')
-    }
+    // Validate internal service call (from LiveKit agent)
+    const authResult = requireInternalAuth(request)
+    if (authResult.error) return authResult.error
 
     const body = await request.json()
     const data = createRecordingSchema.parse(body)
