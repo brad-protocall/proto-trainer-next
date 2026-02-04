@@ -4,11 +4,10 @@ import { apiSuccess, apiError, handleApiError } from '@/lib/api'
 import { requireSupervisor } from '@/lib/auth'
 import { createAccountSchema } from '@/lib/validators'
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    // Only supervisors can list accounts
-    const authResult = await requireSupervisor(request)
-    if (authResult.error) return authResult.error
+    // Account list is public (needed for supervisor dashboard bootstrap before auth is set)
+    // POST still requires supervisor auth
 
     const accounts = await prisma.account.findMany({
       orderBy: { name: 'asc' },

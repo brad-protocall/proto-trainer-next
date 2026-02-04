@@ -30,7 +30,8 @@ interface SessionResponse {
 }
 
 interface MessageResponse {
-  response: string;
+  userMessage: { id: string; content: string };
+  aiMessage: { id: string; content: string };
 }
 
 interface EvaluateApiResponse {
@@ -154,7 +155,7 @@ export function useChat({
         setMessages((prev) => {
           const assistantMessage: ChatMessage = {
             role: "assistant",
-            content: data.data.response,
+            content: data.data.aiMessage.content,
             timestamp: new Date(),
           };
           const updated = [...prev, assistantMessage];

@@ -15,9 +15,10 @@ export async function GET(request: NextRequest) {
   try {
     const role = request.nextUrl.searchParams.get('role')
 
-    // Allow public access for counselor list (needed for demo mode user switcher)
-    // Other queries require auth
-    if (role !== 'counselor') {
+    // Allow public access for user list when filtering by role
+    // (needed for demo mode user switcher and supervisor bootstrap)
+    // Unfiltered list still requires auth
+    if (!role) {
       const authResult = await requireAuth(request)
       if (authResult.error) return authResult.error
     }
