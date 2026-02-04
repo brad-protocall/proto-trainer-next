@@ -424,23 +424,21 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ## Resume Context (2026-02-03)
 
-### Current State: #38 Committed — Free Practice Evaluations Now Persist
+### Current State: #38 + #39 Done — Free Practice Fully Visible
 
-Free practice evaluations are now saved to the database instead of being discarded. The Evaluation model uses an exclusive arc pattern (`assignmentId` OR `sessionId`) with a DB-level CHECK constraint. Committed as `c15a984`, pushed to origin.
+Both free practice features are complete and pushed to origin:
+- **#38** (`c15a984`): Evaluation persistence — exclusive arc pattern on Evaluation model
+- **#39** (`5640615`): Dashboard visibility — GET /api/sessions + Free Practice History UI
 
-### Next Session: Build #39 (Dashboard Visibility) or Deploy + E2E Test
+### Next Session: Deploy LiveKit Agent or Build #40
 
-**Option A — Build #39 (Free Practice Dashboard Visibility):**
-- `GET /api/sessions` endpoint with userId filter + LIMIT 50
-- "Free Practice History" section in counselor dashboard (reuse existing modal patterns)
-- Plan: `plans/free-practice-recording-and-governance.md`
-
-**Option B — Deploy LiveKit Agent + E2E Test:**
+**Option A — Deploy LiveKit Agent + E2E Test (recommended first):**
 - `cd livekit-agent && lk agent deploy`
 - Start a voice session, verify agent connects, conversation works, evaluation generates and persists
 - LiveKit migration committed in `af5a049` but agent not yet deployed
+- This validates the entire #38 + #39 flow end-to-end with real voice sessions
 
-**Option C — Build #40 (Post-Session Analysis — Unified Governance):**
+**Option B — Build #40 (Post-Session Analysis — Unified Governance):**
 - Expand evaluator prompt with safety/consistency checks (0 new LLM calls)
 - SessionFlag model, `parseFlags()`, counselor feedback endpoint, supervisor flags badge
 - Plan: `plans/post-session-analysis-unified.md`
@@ -451,39 +449,40 @@ Free practice evaluations are now saved to the database instead of being discard
 | Issue | Title | Status | Depends On |
 |-------|-------|--------|------------|
 | #38 | Record and evaluate free practice sessions | **Done** (`c15a984`) | — |
-| #39 | Free practice dashboard visibility | Open | #38 (done) |
+| #39 | Free practice dashboard visibility | **Done** (`5640615`) | #38 (done) |
 | #40 | Post-session analysis (feedback, safety, consistency) | Open | #38 (done) |
 | ~~#41~~ | ~~Automatic transcript misuse scanning~~ | Closed (superseded by #40) | — |
 | ~~#42~~ | ~~Prompt-vs-transcript consistency checking~~ | Closed (superseded by #40) | — |
 
-### Session Summary (2026-02-03, Evening)
+### Session Summary (2026-02-03, Late Evening)
 
-**#38 Implementation + 7-Agent Code Review**
+**#39 Implementation + 6-Agent Code Review**
 
-Built the data layer for free practice evaluation persistence. Schema migration makes `Evaluation.assignmentId` nullable, adds `Evaluation.sessionId` unique FK. Ran 7-agent parallel review (Kieran TypeScript, Security Sentinel, Architecture Strategist, Data Integrity Guardian, Code Simplicity, Pattern Recognition, Performance Oracle).
+Built the dashboard visibility layer for free practice sessions. Added `GET /api/sessions` endpoint with server-side type filtering and `SessionListItem` type. Added "Free Practice History" section to counselor dashboard with shared feedback/transcript helpers.
 
-**Review found 8 issues, all fixed before commit:**
+Ran 6-agent parallel review (Kieran TypeScript, Security Sentinel, Architecture Strategist, Performance Oracle, Pattern Recognition, Code Simplicity).
 
-P1 Fixes (3):
-- Missing P2002 idempotency on assignment path → unified both transaction paths into one
-- No CHECK constraint for exclusive arc → added `CHECK (assignment_id IS NOT NULL OR session_id IS NOT NULL)`
-- ON DELETE SET NULL creates orphan path → changed to `onDelete: Restrict`
+**Review found 12 issues (8 fixed, 4 deferred as P3):**
 
-P2 Fixes (3):
-- Multiple `new Date()` in transaction → single `const now = new Date()`
-- Pre-existing bug in counselor-dashboard.tsx:156 → was passing evaluation object instead of markdown string
-- `scenario` field missing from Evaluation TypeScript type → added
+P1 Fixes (2):
+- `grade: session.evaluation.strengths` mapped wrong data to UI badge → now displays `overallScore%`
+- `FreePracticeSession` inline type → moved to `SessionListItem` in `src/types/index.ts`
 
-P3 (informational, not fixed):
-- Raw Prisma object leaks from GET /api/sessions/[id] (acceptable for prototype)
-- Zero performance impact confirmed by Performance Oracle
+P2 Fixes (6):
+- Client-side filter `!s.assignmentId` + LIMIT 50 = data loss → server-side `type=free_practice` filter with `assignmentId: null`
+- Status accepts any string → `SessionStatusSchema` enum validation
+- Duplicate `handleViewSessionFeedback`/`handleViewSessionTranscript` → extracted `fetchAndShowFeedback` + `fetchAndShowTranscript` shared helpers
+- Loading state flash on mount → gate on `!currentUser`
+- `Record<string, unknown>` → `Prisma.SessionWhereInput` typed where clause
+- `loadingDetail` collision between assignment/session transcript buttons → separate `loadingSessionDetail` state
 
-**Plans created this session:**
-- `plans/free-practice-recording-and-governance.md` — #38 + #39 (reviewed, simplified)
-- `plans/post-session-analysis-unified.md` — #40 (unified from 3 separate plans, reviewed)
-- `plans/post-session-feedback-and-flags.md` — superseded by unified plan
-- `plans/transcript-misuse-scanning.md` — superseded by unified plan
-- `plans/prompt-transcript-consistency-checking.md` — superseded by unified plan
+P3 Deferred (4, acceptable for prototype):
+- No pagination params in `sessionQuerySchema`
+- Loose string types where enums exist in some places
+- Duplicate free practice button construction
+- Undocumented implicit `status: 'completed'` default
+
+**Security review confirmed:** Authorization solid — counselors auto-scoped, supervisors can query any, OWASP all-pass, no N+1.
 
 ### Key Architecture Decisions
 
@@ -492,6 +491,17 @@ P3 (informational, not fixed):
 - DB CHECK constraint enforces at least one non-null
 - `onDelete: Restrict` on session FK prevents orphans
 - P2002 catch handles concurrent evaluate requests on both paths
+
+**Session List API (`GET /api/sessions`):**
+- `type` param: `free_practice` (default) | `assigned` | `all`
+- Free practice: `WHERE userId = ? AND assignmentId IS NULL`
+- Assigned: `WHERE assignment.counselorId = ?`
+- All: `OR` of both paths
+- `SessionListItem` type in `src/types/index.ts` for API contract
+
+**Shared Dashboard Helpers:**
+- `fetchAndShowFeedback(entityId, evaluationId)` — used by both assignment and session feedback
+- `fetchAndShowTranscript(sessionId, loadingKey?)` — separate loading state for session vs assignment
 
 **Unified Governance (Plan for #40):**
 - Expand evaluator prompt with safety/consistency flags (0 additional LLM calls)
@@ -512,6 +522,7 @@ P3 (informational, not fixed):
 
 ### Previous Sessions
 
+- **2026-02-03 (Late Evening)**: #39 implementation + 6-agent review, all P1/P2 fixed, committed `5640615`
 - **2026-02-03 (Evening)**: #38 implementation + 7-agent review, all fixes committed `c15a984`
 - **2026-02-03 (Morning)**: 7-agent code review of LiveKit migration, all findings fixed, committed `af5a049`
 - **2026-02-02 (Evening)**: LiveKit full migration (Phase A backend + Phase B frontend)
@@ -532,7 +543,7 @@ npm run dev               # Next.js on :3003
 
 ### Git Status
 
-- Latest commit: `c15a984` (feat: persist free practice evaluations)
-- Previous: `af5a049` (LiveKit migration + review fixes)
+- Latest commit: `5640615` (feat: add free practice dashboard visibility #39)
+- Previous: `c15a984` (feat: persist free practice evaluations #38)
 - Branch: main
 - Working tree: plans + docs untracked
