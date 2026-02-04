@@ -424,44 +424,80 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ## Resume Context (2026-02-03)
 
-### Current State: LiveKit Migration Committed — Ready to Deploy
+### Current State: #38 Committed — Free Practice Evaluations Now Persist
 
-Voice training fully migrated from custom `ws-server/` WebSocket relay to LiveKit Cloud. Code reviewed by 7 parallel agents, all findings (P1/P2/P3) addressed, committed as `af5a049`.
+Free practice evaluations are now saved to the database instead of being discarded. The Evaluation model uses an exclusive arc pattern (`assignmentId` OR `sessionId`) with a DB-level CHECK constraint. Committed as `c15a984`, pushed to origin.
 
-### Next Session: Deploy Agent + End-to-End Test
+### Next Session: Build #39 (Dashboard Visibility) or Deploy + E2E Test
 
-1. **Deploy agent**: `cd livekit-agent && lk agent deploy`
-2. **End-to-end test**: Start a voice session from the counselor dashboard, verify agent connects, conversation works, evaluation generates
-3. **Address any runtime issues** found during testing
+**Option A — Build #39 (Free Practice Dashboard Visibility):**
+- `GET /api/sessions` endpoint with userId filter + LIMIT 50
+- "Free Practice History" section in counselor dashboard (reuse existing modal patterns)
+- Plan: `plans/free-practice-recording-and-governance.md`
 
-### Session Summary (2026-02-03)
+**Option B — Deploy LiveKit Agent + E2E Test:**
+- `cd livekit-agent && lk agent deploy`
+- Start a voice session, verify agent connects, conversation works, evaluation generates and persists
+- LiveKit migration committed in `af5a049` but agent not yet deployed
 
-**7-Agent Code Review + Fixes**
+**Option C — Build #40 (Post-Session Analysis — Unified Governance):**
+- Expand evaluator prompt with safety/consistency checks (0 new LLM calls)
+- SessionFlag model, `parseFlags()`, counselor feedback endpoint, supervisor flags badge
+- Plan: `plans/post-session-analysis-unified.md`
+- Depends on #38 (done)
 
-Ran multi-agent review (Security Sentinel, Architecture Strategist, Performance Oracle, Kieran TypeScript, Code Simplicity, Pattern Recognition, Data Integrity) on the full LiveKit migration diff (28 files, +791/-3,387 lines). Found 14 issues across 3 priority levels.
+### GitHub Issues
 
-**P1 Fixes (3 - Critical):**
-- Timing-unsafe key comparison → consolidated `requireInternalAuth()` to delegate to `validateInternalServiceKey()` (timing-safe)
-- Scenario prompts never loaded by agent → created `GET /api/internal/scenarios/[id]` with service key auth
-- Duplicate internal auth implementations → consolidated into single pattern
+| Issue | Title | Status | Depends On |
+|-------|-------|--------|------------|
+| #38 | Record and evaluate free practice sessions | **Done** (`c15a984`) | — |
+| #39 | Free practice dashboard visibility | Open | #38 (done) |
+| #40 | Post-session analysis (feedback, safety, consistency) | Open | #38 (done) |
+| ~~#41~~ | ~~Automatic transcript misuse scanning~~ | Closed (superseded by #40) | — |
+| ~~#42~~ | ~~Prompt-vs-transcript consistency checking~~ | Closed (superseded by #40) | — |
 
-**P2 Fixes (6 - Important):**
-- Unsafe `as` casts in agent → Zod response schemas (`ScenarioResponseSchema`, `SessionResponseSchema`, `TranscriptResponseSchema`)
-- No idempotency on transcripts → delete-before-insert pattern
-- Sequential transcript creates → `createMany()` bulk insert
-- Sequential agent startup → `Promise.all()` for parallel fetch + session creation
-- Missing ownership check → `assignment.counselorId !== userId` guard in internal sessions endpoint
-- 409 ambiguity → changed "transcripts not ready" to HTTP 425 (Too Early), added `TOO_EARLY` to `ApiErrorType`
+### Session Summary (2026-02-03, Evening)
 
-**P3 Fixes (3 - Nice-to-Have):**
-- Duplicate header JSX → extracted `VoiceTrainingHeader` component
-- Dead `@types/ws` dependency → removed from devDependencies
-- Broad publish permissions → restricted to `TrackSource.MICROPHONE`
+**#38 Implementation + 7-Agent Code Review**
 
-**Compound Documentation Created:**
-- `docs/solutions/integration-issues/livekit-migration-code-review-2026-02-03.md`
-- `docs/solutions/prevention-strategies/cross-process-integration-patterns.md`
-- `docs/solutions/REVIEW_SESSION_SUMMARY.md`
+Built the data layer for free practice evaluation persistence. Schema migration makes `Evaluation.assignmentId` nullable, adds `Evaluation.sessionId` unique FK. Ran 7-agent parallel review (Kieran TypeScript, Security Sentinel, Architecture Strategist, Data Integrity Guardian, Code Simplicity, Pattern Recognition, Performance Oracle).
+
+**Review found 8 issues, all fixed before commit:**
+
+P1 Fixes (3):
+- Missing P2002 idempotency on assignment path → unified both transaction paths into one
+- No CHECK constraint for exclusive arc → added `CHECK (assignment_id IS NOT NULL OR session_id IS NOT NULL)`
+- ON DELETE SET NULL creates orphan path → changed to `onDelete: Restrict`
+
+P2 Fixes (3):
+- Multiple `new Date()` in transaction → single `const now = new Date()`
+- Pre-existing bug in counselor-dashboard.tsx:156 → was passing evaluation object instead of markdown string
+- `scenario` field missing from Evaluation TypeScript type → added
+
+P3 (informational, not fixed):
+- Raw Prisma object leaks from GET /api/sessions/[id] (acceptable for prototype)
+- Zero performance impact confirmed by Performance Oracle
+
+**Plans created this session:**
+- `plans/free-practice-recording-and-governance.md` — #38 + #39 (reviewed, simplified)
+- `plans/post-session-analysis-unified.md` — #40 (unified from 3 separate plans, reviewed)
+- `plans/post-session-feedback-and-flags.md` — superseded by unified plan
+- `plans/transcript-misuse-scanning.md` — superseded by unified plan
+- `plans/prompt-transcript-consistency-checking.md` — superseded by unified plan
+
+### Key Architecture Decisions
+
+**Exclusive Arc on Evaluation:**
+- `assignmentId` (nullable unique) OR `sessionId` (nullable unique)
+- DB CHECK constraint enforces at least one non-null
+- `onDelete: Restrict` on session FK prevents orphans
+- P2002 catch handles concurrent evaluate requests on both paths
+
+**Unified Governance (Plan for #40):**
+- Expand evaluator prompt with safety/consistency flags (0 additional LLM calls)
+- Parse flags from evaluation markdown, save in same transaction
+- 2 new endpoints only: `POST /sessions/[id]/flag`, `GET /api/flags`
+- SessionFlag model: 8 fields with `metadata: Json?`
 
 ### LiveKit Reference
 
@@ -476,7 +512,8 @@ Ran multi-agent review (Security Sentinel, Architecture Strategist, Performance 
 
 ### Previous Sessions
 
-- **2026-02-03**: 7-agent code review of LiveKit migration, all findings fixed, committed `af5a049`
+- **2026-02-03 (Evening)**: #38 implementation + 7-agent review, all fixes committed `c15a984`
+- **2026-02-03 (Morning)**: 7-agent code review of LiveKit migration, all findings fixed, committed `af5a049`
 - **2026-02-02 (Evening)**: LiveKit full migration (Phase A backend + Phase B frontend)
 - **2026-02-02 (Afternoon)**: LiveKit spike - VERDICT: GO
 - **2026-02-01 (Evening)**: User testing bug fixes - demo mode dropdown, counselor list auth
@@ -495,7 +532,7 @@ npm run dev               # Next.js on :3003
 
 ### Git Status
 
-- Latest commit: `76e8166` (compound docs + resume context)
+- Latest commit: `c15a984` (feat: persist free practice evaluations)
 - Previous: `af5a049` (LiveKit migration + review fixes)
 - Branch: main
-- Working tree: clean
+- Working tree: plans + docs untracked
