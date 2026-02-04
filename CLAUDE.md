@@ -495,6 +495,7 @@ npm run dev               # Next.js on :3003
 
 ### Git Status
 
-- Latest commit: `af5a049` (LiveKit migration + review fixes)
+- Latest commit: `76e8166` (compound docs + resume context)
+- Previous: `af5a049` (LiveKit migration + review fixes)
 - Branch: main
-- Untracked: compound documentation in `docs/solutions/`
+- Working tree: clean
