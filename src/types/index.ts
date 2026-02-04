@@ -221,6 +221,28 @@ export interface EvaluationResponse {
   numericScore: number;
 }
 
+// Session list item (from GET /api/sessions)
+export interface SessionListItem {
+  id: string;
+  assignmentId: string | null;
+  userId: string | null;
+  modelType: ModelType;
+  status: SessionStatus;
+  startedAt: string;
+  endedAt: string | null;
+  turnCount: number;
+  scenario: {
+    id: string;
+    title: string;
+    mode: ScenarioMode;
+    category: ScenarioCategory | null;
+  } | null;
+  evaluation: {
+    id: string;
+    overallScore: number;
+  } | null;
+}
+
 // Session Response Types
 export interface SessionResponse {
   id: string;

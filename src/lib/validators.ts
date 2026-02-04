@@ -104,6 +104,16 @@ export const assignmentQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(100),
 })
 
+// Session query validation
+const SessionStatusSchema = z.enum(['active', 'completed', 'abandoned'])
+const SessionTypeFilterSchema = z.enum(['free_practice', 'assigned', 'all'])
+
+export const sessionQuerySchema = z.object({
+  userId: z.string().uuid().optional(),
+  status: SessionStatusSchema.optional(),
+  type: SessionTypeFilterSchema.optional().default('free_practice'),
+})
+
 // Session validation - discriminated union for assignment vs free practice
 const ModelTypeSchema = z.enum(['phone', 'chat'])
 

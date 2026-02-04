@@ -1,10 +1,99 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { apiSuccess, handleApiError, notFound, conflict, forbidden } from '@/lib/api'
-import { createSessionSchema } from '@/lib/validators'
+import { Prisma } from '@prisma/client'
+import { apiSuccess, apiError, handleApiError, notFound, conflict, forbidden } from '@/lib/api'
+import { createSessionSchema, sessionQuerySchema } from '@/lib/validators'
 import { generateInitialGreeting } from '@/lib/openai'
 import { requireAuth, canAccessResource } from '@/lib/auth'
 import type { User } from '@prisma/client'
+
+/**
+ * GET /api/sessions
+ * List sessions for a user, defaults to completed free practice sessions
+ *
+ * Query params:
+ *   userId - optional for supervisors, forced to own ID for counselors
+ *   status - optional, defaults to 'completed'
+ *   type   - 'free_practice' (default) | 'assigned' | 'all'
+ */
+export async function GET(request: NextRequest) {
+  try {
+    const authResult = await requireAuth(request)
+    if (authResult.error) return authResult.error
+    const user = authResult.user
+
+    const searchParams = Object.fromEntries(request.nextUrl.searchParams)
+    const queryResult = sessionQuerySchema.safeParse(searchParams)
+
+    if (!queryResult.success) {
+      return apiError(
+        { type: 'VALIDATION_ERROR', message: 'Validation failed', details: queryResult.error.flatten().fieldErrors as Record<string, unknown> },
+        400
+      )
+    }
+
+    const { userId, status, type } = queryResult.data
+
+    // Determine target user: counselors are auto-scoped to own sessions
+    const targetUserId = user.role === 'counselor' ? user.id : (userId ?? user.id)
+
+    // Build where clause with proper Prisma typing
+    const where: Prisma.SessionWhereInput = {
+      status: status ?? 'completed',
+    }
+
+    // Filter by session type (ownership path)
+    if (type === 'assigned') {
+      where.assignment = { counselorId: targetUserId }
+    } else if (type === 'all') {
+      where.OR = [
+        { userId: targetUserId },
+        { assignment: { counselorId: targetUserId } },
+      ]
+    } else {
+      // Default: free_practice — sessions owned directly by user with no assignment
+      where.userId = targetUserId
+      where.assignmentId = null
+    }
+
+    const sessions = await prisma.session.findMany({
+      where,
+      include: {
+        scenario: {
+          select: { id: true, title: true, mode: true, category: true },
+        },
+        evaluation: {
+          select: { id: true, overallScore: true },
+        },
+        _count: { select: { transcript: true } },
+      },
+      orderBy: { startedAt: 'desc' },
+      take: 50,
+    })
+
+    const response = sessions.map(session => ({
+      id: session.id,
+      assignmentId: session.assignmentId,
+      userId: session.userId,
+      modelType: session.modelType,
+      status: session.status,
+      startedAt: session.startedAt,
+      endedAt: session.endedAt,
+      turnCount: session._count.transcript,
+      scenario: session.scenario ?? null,
+      evaluation: session.evaluation
+        ? {
+            id: session.evaluation.id,
+            overallScore: session.evaluation.overallScore,
+          }
+        : null,
+    }))
+
+    return apiSuccess(response)
+  } catch (error) {
+    return handleApiError(error)
+  }
+}
 
 /**
  * POST /api/sessions

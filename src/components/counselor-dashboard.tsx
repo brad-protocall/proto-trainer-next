@@ -6,11 +6,11 @@ import {
   User,
   EvaluationResult,
   ApiResponse,
+  SessionListItem,
 } from "@/types";
 import { createAuthFetch } from "@/lib/fetch";
 import { formatDate, getDaysUntilDue, getStatusColor, getStatusIcon } from "@/lib/format";
 import EvaluationResults from "./evaluation-results";
-
 
 interface CounselorDashboardProps {
   onStartTraining: (assignment: Assignment, userId?: string) => void;
@@ -42,6 +42,9 @@ export default function CounselorDashboard({
   } | null>(null);
   const [playingRecording, setPlayingRecording] = useState<string | null>(null);
   const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
+  const [freePracticeSessions, setFreePracticeSessions] = useState<SessionListItem[]>([]);
+  const [loadingFreePractice, setLoadingFreePractice] = useState(true);
+  const [loadingSessionDetail, setLoadingSessionDetail] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Create authenticated fetch bound to current user
@@ -119,6 +122,80 @@ export default function CounselorDashboard({
     loadAssignments();
   }, [loadAssignments]);
 
+  // Load free practice sessions (completed, server-side filtered to free practice only)
+  const loadFreePracticeSessions = useCallback(async () => {
+    if (!currentUser) return;
+    setLoadingFreePractice(true);
+    try {
+      const response = await authFetch(`/api/sessions?status=completed`);
+      const data: ApiResponse<SessionListItem[]> = await response.json();
+      if (!data.ok) throw new Error(data.error.message);
+      setFreePracticeSessions(data.data);
+    } catch (err) {
+      console.error("Failed to load free practice sessions:", err);
+    } finally {
+      setLoadingFreePractice(false);
+    }
+  }, [currentUser, authFetch]);
+
+  useEffect(() => {
+    loadFreePracticeSessions();
+  }, [loadFreePracticeSessions]);
+
+  // Shared helper: fetch and display evaluation feedback by ID
+  const fetchAndShowFeedback = async (entityId: string, evaluationId: string) => {
+    setLoadingFeedback(entityId);
+    setError(null);
+    try {
+      const response = await authFetch(`/api/evaluations/${evaluationId}`);
+      const data = await response.json();
+      if (!data.ok) throw new Error(data.error?.message || "Failed to load feedback");
+      setEvaluation({
+        evaluation: data.data.feedbackJson || data.data.rawResponse || "No evaluation content available",
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load feedback");
+    } finally {
+      setLoadingFeedback(null);
+    }
+  };
+
+  // Shared helper: fetch and display transcript by session ID
+  const fetchAndShowTranscript = async (sessionId: string, loadingKey?: string) => {
+    if (loadingKey) {
+      setLoadingSessionDetail(loadingKey);
+    } else {
+      setLoadingDetail("transcript");
+    }
+    setError(null);
+    try {
+      const response = await authFetch(`/api/sessions/${sessionId}`);
+      const data = await response.json();
+      if (!data.ok) throw new Error(data.error?.message || "Failed to load transcript");
+      const turns = Array.isArray(data.data.transcript) ? data.data.transcript : [];
+      const transcriptText = turns.length > 0
+        ? turns
+            .map((t: { role: string; content: string }) =>
+              `${t.role === "user" ? "Counselor" : "Caller"}: ${t.content}`
+            )
+            .join("\n\n")
+        : "No transcript available";
+      setDetailModal({
+        type: "transcript",
+        title: "Conversation Transcript",
+        content: transcriptText,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load transcript");
+    } finally {
+      if (loadingKey) {
+        setLoadingSessionDetail(null);
+      } else {
+        setLoadingDetail(null);
+      }
+    }
+  };
+
   const handleStartTraining = async (assignment: Assignment) => {
     setStartingId(assignment.id);
     setOpenDropdown(null);
@@ -169,24 +246,7 @@ export default function CounselorDashboard({
       setError("No evaluation found for this assignment");
       return;
     }
-    const evaluationId = assignment.evaluationId;
-    setLoadingFeedback(assignment.id);
-    setError(null);
-    try {
-      // Fetch the full evaluation
-      const response = await authFetch(`/api/evaluations/${evaluationId}`);
-      const data = await response.json();
-      if (!data.ok) throw new Error(data.error?.message || "Failed to load feedback");
-
-      // feedbackJson contains the full markdown evaluation
-      setEvaluation({
-        evaluation: data.data.feedbackJson || data.data.rawResponse || "No evaluation content available",
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load feedback");
-    } finally {
-      setLoadingFeedback(null);
-    }
+    await fetchAndShowFeedback(assignment.id, assignment.evaluationId);
   };
 
   const handleViewScenario = async (assignment: Assignment) => {
@@ -214,37 +274,7 @@ export default function CounselorDashboard({
       setError("No session found for this assignment");
       return;
     }
-    const sessionId = assignment.sessionId;
-    setLoadingDetail("transcript");
-    setError(null);
-    try {
-      const response = await authFetch(`/api/sessions/${sessionId}`);
-      const data = await response.json();
-      if (!data.ok) throw new Error(data.error?.message || "Failed to load transcript");
-
-      // API returns 'transcript' not 'transcript_turns'
-      const turns = Array.isArray(data.data.transcript)
-        ? data.data.transcript
-        : [];
-      const transcriptText =
-        turns.length > 0
-          ? turns
-              .map(
-                (t: { role: string; content: string }) =>
-                  `${t.role === "user" ? "Counselor" : "Caller"}: ${t.content}`
-              )
-              .join("\n\n")
-          : "No transcript available";
-      setDetailModal({
-        type: "transcript",
-        title: "Conversation Transcript",
-        content: transcriptText,
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load transcript");
-    } finally {
-      setLoadingDetail(null);
-    }
+    await fetchAndShowTranscript(assignment.sessionId);
   };
 
   const handlePlayRecording = async (assignment: Assignment) => {
@@ -466,6 +496,95 @@ export default function CounselorDashboard({
           </button>
         </div>
       </div>
+
+      {/* Free Practice History */}
+      {!currentUser || loadingFreePractice ? (
+        <p className="text-gray-400 text-sm mt-6">Loading practice history...</p>
+      ) : freePracticeSessions.length > 0 ? (
+        <div className="mt-6">
+          <h3 className="text-lg font-marfa font-bold text-gray-300 mb-3">
+            Free Practice History
+          </h3>
+          <div className="space-y-2">
+            {freePracticeSessions.map((session) => {
+              const scenarioTitle = session.scenario?.title || "Open Practice";
+              const duration = session.endedAt
+                ? Math.round(
+                    (new Date(session.endedAt).getTime() -
+                      new Date(session.startedAt).getTime()) /
+                      60000
+                  )
+                : null;
+              const dateStr = new Date(session.startedAt).toLocaleDateString(
+                "en-US",
+                { month: "short", day: "numeric", year: "numeric" }
+              );
+
+              return (
+                <div
+                  key={session.id}
+                  className="bg-brand-navy border border-gray-700 rounded-lg p-4 flex items-center justify-between gap-4"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-lg flex-shrink-0">
+                      {session.modelType === "phone" ? "🎙️" : "💬"}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-white font-marfa font-medium truncate">
+                          {scenarioTitle}
+                        </span>
+                        {session.evaluation && (
+                          <span className="px-2 py-0.5 rounded text-xs font-marfa bg-green-500/20 text-green-300 flex-shrink-0">
+                            {session.evaluation.overallScore}%
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-gray-500 text-xs mt-0.5">
+                        {dateStr}
+                        {session.modelType === "phone" ? " · Voice" : " · Chat"}
+                        {duration !== null && ` · ${duration}m`}
+                        {session.turnCount > 0 && ` · ${session.turnCount} turns`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    {session.evaluation && (
+                      <button
+                        onClick={() => fetchAndShowFeedback(session.id, session.evaluation!.id)}
+                        disabled={loadingFeedback === session.id}
+                        className="bg-green-600 hover:bg-green-700 text-white
+                                   font-marfa font-bold py-1.5 px-3 rounded text-sm
+                                   disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {loadingFeedback === session.id ? "..." : "Feedback"}
+                      </button>
+                    )}
+                    {session.turnCount > 0 && (
+                      <button
+                        onClick={() => fetchAndShowTranscript(session.id, session.id)}
+                        disabled={loadingSessionDetail === session.id}
+                        className="bg-gray-600 hover:bg-gray-500 text-white
+                                   font-marfa font-bold py-1.5 px-3 rounded text-sm
+                                   disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {loadingSessionDetail === session.id ? "..." : "Transcript"}
+                      </button>
+                    )}
+                    {!session.evaluation && session.turnCount === 0 && (
+                      <span className="text-gray-500 text-xs py-1.5">No evaluation</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <p className="text-gray-500 text-sm mt-6">
+          No free practice sessions yet. Start one above!
+        </p>
+      )}
 
       {/* Divider */}
       <div className="border-t border-gray-600 my-6" />
