@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, handleApiError, notFound, conflict, forbidden } from '@/lib/api'
 import { generateEvaluation } from '@/lib/openai'
@@ -36,6 +37,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             evaluation: true,
           },
         },
+        scenario: {
+          include: {
+            account: true,
+          },
+        },
+        evaluation: true,
       },
     })
 
@@ -50,9 +57,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return forbidden('Cannot evaluate another user\'s session')
     }
 
-    // Check if evaluation already exists (only for assignment-based sessions)
-    if (session.assignment?.evaluation) {
-      return conflict('Evaluation already exists for this assignment')
+    // Check if evaluation already exists (assignment-based or session-based)
+    if (session.assignment?.evaluation || session.evaluation) {
+      return conflict('Evaluation already exists for this session')
     }
 
     // Get transcript for the latest attempt only
@@ -81,7 +88,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }))
 
     // Get scenario info - either from assignment or directly from session
-    const scenario = session.assignment?.scenario
+    const scenario = session.assignment?.scenario ?? session.scenario
     const scenarioTitle = scenario?.title ?? 'Free Practice Session'
     const scenarioDescription = scenario?.description ?? null
     const scenarioEvaluatorContext = scenario?.evaluatorContextPath ?? null // TODO: Load from file if needed
@@ -96,38 +103,39 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       vectorStoreId,
     })
 
-    // Save evaluation and update session/assignment in a transaction
-    // For free practice sessions (no assignmentId), we only update the session
-    if (session.assignmentId) {
-      const [evaluation] = await prisma.$transaction([
-        // Create evaluation - store full markdown in feedbackJson
-        prisma.evaluation.create({
+    // Save evaluation and update session/assignment in a single transaction.
+    // Uses P2002 (unique constraint violation) catch for idempotency under concurrency.
+    const now = new Date()
+
+    try {
+      const evaluation = await prisma.$transaction(async (tx) => {
+        const eval_ = await tx.evaluation.create({
           data: {
-            assignmentId: session.assignmentId,
+            ...(session.assignmentId
+              ? { assignmentId: session.assignmentId }
+              : { sessionId: id }),
             overallScore: evaluationResult.numericScore,
             feedbackJson: evaluationResult.evaluation,
             strengths: evaluationResult.grade ?? '',
             areasToImprove: '',
             rawResponse: evaluationResult.evaluation,
           },
-        }),
-        // Update session status
-        prisma.session.update({
+        })
+
+        await tx.session.update({
           where: { id },
-          data: {
-            status: 'completed',
-            endedAt: new Date(),
-          },
-        }),
-        // Update assignment status
-        prisma.assignment.update({
-          where: { id: session.assignmentId },
-          data: {
-            status: 'completed',
-            completedAt: new Date(),
-          },
-        }),
-      ])
+          data: { status: 'completed', endedAt: now },
+        })
+
+        if (session.assignmentId) {
+          await tx.assignment.update({
+            where: { id: session.assignmentId },
+            data: { status: 'completed', completedAt: now },
+          })
+        }
+
+        return eval_
+      })
 
       return apiSuccess({
         evaluation: {
@@ -139,32 +147,34 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         session: {
           id: session.id,
           status: 'completed',
-          endedAt: new Date(),
+          endedAt: now.toISOString(),
         },
       })
+    } catch (error) {
+      // P2002: Unique constraint violation — concurrent request already created the evaluation.
+      // Transaction rolled back; the other request's commit left the session in "completed" state.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const existing = session.assignmentId
+          ? await prisma.evaluation.findUnique({ where: { assignmentId: session.assignmentId } })
+          : await prisma.evaluation.findUnique({ where: { sessionId: id } })
+        if (existing) {
+          return apiSuccess({
+            evaluation: {
+              id: existing.id,
+              evaluation: existing.feedbackJson,
+              grade: existing.strengths,
+              numericScore: existing.overallScore,
+            },
+            session: {
+              id: session.id,
+              status: 'completed',
+              endedAt: now.toISOString(),
+            },
+          })
+        }
+      }
+      throw error
     }
-
-    // Free practice session - just update session status, return evaluation result without saving
-    await prisma.session.update({
-      where: { id },
-      data: {
-        status: 'completed',
-        endedAt: new Date(),
-      },
-    })
-
-    return apiSuccess({
-      evaluation: {
-        evaluation: evaluationResult.evaluation,
-        grade: evaluationResult.grade,
-        numericScore: evaluationResult.numericScore,
-      },
-      session: {
-        id: session.id,
-        status: 'completed',
-        endedAt: new Date(),
-      },
-    })
   } catch (error) {
     return handleApiError(error)
   }

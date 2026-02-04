@@ -34,6 +34,18 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             },
           },
         },
+        session: {
+          select: {
+            id: true,
+            userId: true,
+            scenario: {
+              select: {
+                id: true,
+                title: true,
+              },
+            },
+          },
+        },
       },
     })
 
@@ -41,21 +53,26 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return notFound('Evaluation not found')
     }
 
-    // Check authorization - only the counselor or supervisors can view
-    if (!canAccessResource(user, evaluation.assignment.counselorId)) {
+    // Check authorization - only the counselor/session owner or supervisors can view
+    const ownerId = evaluation.assignment?.counselorId ?? evaluation.session?.userId
+    if (!ownerId || !canAccessResource(user, ownerId)) {
       return forbidden('Access denied')
     }
+
+    // Get scenario from assignment or session
+    const scenario = evaluation.assignment?.scenario ?? evaluation.session?.scenario ?? null
 
     return apiSuccess({
       id: evaluation.id,
       assignmentId: evaluation.assignmentId,
+      sessionId: evaluation.sessionId,
       overallScore: evaluation.overallScore,
       feedbackJson: evaluation.feedbackJson,
       strengths: evaluation.strengths,
       areasToImprove: evaluation.areasToImprove,
       rawResponse: evaluation.rawResponse,
       createdAt: evaluation.createdAt.toISOString(),
-      scenario: evaluation.assignment.scenario,
+      scenario,
     })
   } catch (error) {
     return handleApiError(error)

@@ -137,13 +137,15 @@ export interface TranscriptTurn {
 
 export interface Evaluation {
   id: string;
-  assignmentId: string;
+  assignmentId: string | null;
+  sessionId: string | null;
   overallScore: number;
   feedbackJson: string;
   strengths: string;
   areasToImprove: string;
   rawResponse: string | null;
   createdAt: string;
+  scenario?: { id: string; title: string } | null;
 }
 
 export interface Recording {
@@ -231,4 +233,18 @@ export interface SessionResponse {
   endedAt: string | null;
   transcript?: TranscriptTurn[];
   recording?: Recording;
+  evaluation?: {
+    id: string;
+    overallScore: number;
+    feedbackJson: string;
+    strengths: string;
+    areasToImprove: string;
+  } | null;
+  scenario?: {
+    id: string;
+    title: string;
+    description: string | null;
+    mode: ScenarioMode;
+    category: ScenarioCategory | null;
+  } | null;
 }

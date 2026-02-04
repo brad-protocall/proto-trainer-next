@@ -154,8 +154,7 @@ export default function CounselorDashboard({
       const data = await response.json();
       if (!data.ok) throw new Error(data.error?.message || "Failed to get feedback");
       setEvaluation({
-        evaluation: data.data.evaluation,
-        transcript_turns: data.data.transcript_turns,
+        evaluation: data.data.evaluation.evaluation,
       });
       await loadAssignments();
     } catch (err) {

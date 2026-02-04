@@ -109,6 +109,7 @@ model Session {
   scenario   Scenario?        @relation("ScenarioSessions", fields: [scenarioId], references: [id])
   transcript TranscriptTurn[]
   recording  Recording?
+  evaluation Evaluation?
 
   @@index([assignmentId])
   @@index([userId])
@@ -134,7 +135,8 @@ model TranscriptTurn {
 
 model Evaluation {
   id             String   @id @default(uuid())
-  assignmentId   String   @unique @map("assignment_id")
+  assignmentId   String?  @unique @map("assignment_id")
+  sessionId      String?  @unique @map("session_id")
   overallScore   Float    @map("overall_score")
   feedbackJson   String   @map("feedback_json")
   strengths      String
@@ -142,7 +144,8 @@ model Evaluation {
   rawResponse    String?  @map("raw_response")
   createdAt      DateTime @default(now()) @map("created_at")
 
-  assignment Assignment @relation(fields: [assignmentId], references: [id])
+  assignment Assignment? @relation(fields: [assignmentId], references: [id])
+  session    Session?    @relation(fields: [sessionId], references: [id], onDelete: Restrict)
 
   @@map("evaluations")
 }

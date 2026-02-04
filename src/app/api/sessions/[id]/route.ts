@@ -30,6 +30,24 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         transcript: {
           orderBy: { turnOrder: 'asc' },
         },
+        evaluation: {
+          select: {
+            id: true,
+            overallScore: true,
+            feedbackJson: true,
+            strengths: true,
+            areasToImprove: true,
+          },
+        },
+        scenario: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            mode: true,
+            category: true,
+          },
+        },
         assignment: {
           include: {
             scenario: {
