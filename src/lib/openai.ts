@@ -4,9 +4,19 @@ import type { TranscriptTurn, EvaluationResponse, EvaluationFlag, FlagSeverity, 
 import { SessionFlagTypeValues, FlagSeverityValues } from '@/lib/validators'
 import { loadPrompt, getEvaluatorPromptFile, getChextSimulatorPromptFile } from './prompts'
 
-// Initialize OpenAI client
-export const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+// Lazy-initialize OpenAI client (avoids crash during Next.js build when env var is absent)
+let _openai: OpenAI | null = null
+export function getOpenAI(): OpenAI {
+  if (!_openai) {
+    _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  }
+  return _openai
+}
+/** @deprecated Use getOpenAI() — kept for backward compatibility */
+export const openai = new Proxy({} as OpenAI, {
+  get(_, prop) {
+    return (getOpenAI() as unknown as Record<string | symbol, unknown>)[prop]
+  },
 })
 
 /**
