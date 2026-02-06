@@ -110,6 +110,7 @@ model Session {
   transcript TranscriptTurn[]
   recording  Recording?
   evaluation Evaluation?
+  flags      SessionFlag[]
 
   @@index([assignmentId])
   @@index([userId])
@@ -135,13 +136,13 @@ model TranscriptTurn {
 
 model Evaluation {
   id             String   @id @default(uuid())
-  assignmentId   String?  @unique @map("assignment_id")
-  sessionId      String?  @unique @map("session_id")
+  assignmentId   String?  @unique @map("assignment_id")  // Exclusive arc: set for assignment evals
+  sessionId      String?  @unique @map("session_id")     // Exclusive arc: set for free practice evals
   overallScore   Float    @map("overall_score")
-  feedbackJson   String   @map("feedback_json")
-  strengths      String
-  areasToImprove String   @map("areas_to_improve")
-  rawResponse    String?  @map("raw_response")
+  feedbackJson   String   @map("feedback_json")          // NOTE: Stores markdown, not JSON (legacy name)
+  strengths      String                                   // NOTE: Stores grade letter e.g. "A", "B" (legacy name)
+  areasToImprove String   @map("areas_to_improve")       // NOTE: Currently unused, always empty string
+  rawResponse    String?  @map("raw_response")            // Full LLM response before flag stripping
   createdAt      DateTime @default(now()) @map("created_at")
 
   assignment Assignment? @relation(fields: [assignmentId], references: [id])
@@ -161,4 +162,21 @@ model Recording {
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@map("recordings")
+}
+
+model SessionFlag {
+  id        String   @id @default(uuid())
+  sessionId String   @map("session_id")
+  type      String   // SessionFlagType enum (validated via Zod)
+  severity  String   @default("info") // FlagSeverity: info, warning, critical
+  details   String   // Human-readable description
+  metadata  Json?    // Structured data for automated findings
+  status    String   @default("pending") // FlagStatus: pending, reviewed, dismissed
+  createdAt DateTime @default(now()) @map("created_at")
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([status, severity])
+  @@map("session_flags")
 }

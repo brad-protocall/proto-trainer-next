@@ -9,6 +9,7 @@ import {
   ScenarioCategory,
   ScenarioMode,
   ApiResponse,
+  FlagListItem,
 } from "@/types";
 import { createAuthFetch } from "@/lib/fetch";
 import { formatDate, getStatusColor } from "@/lib/format";
@@ -58,8 +59,29 @@ interface AssignmentFormData {
   supervisor_notes: string;
 }
 
+const SEVERITY_STYLES: Record<string, { bg: string; text: string; label: string }> = {
+  critical: { bg: "bg-red-500/20", text: "text-red-300", label: "Critical" },
+  warning: { bg: "bg-yellow-500/20", text: "text-yellow-300", label: "Warning" },
+  info: { bg: "bg-blue-500/20", text: "text-blue-300", label: "Info" },
+};
+
+const FLAG_TYPE_LABELS: Record<string, string> = {
+  user_feedback: "User Feedback",
+  ai_guidance_concern: "AI Guidance Concern",
+  jailbreak: "Jailbreak Attempt",
+  inappropriate: "Inappropriate Content",
+  off_topic: "Off Topic",
+  pii_sharing: "PII Sharing",
+  system_gaming: "System Gaming",
+  role_confusion: "Role Confusion",
+  prompt_leakage: "Prompt Leakage",
+  character_break: "Character Break",
+  behavior_omission: "Behavior Omission",
+  unauthorized_elements: "Unauthorized Elements",
+};
+
 export default function SupervisorDashboard() {
-  const [activeTab, setActiveTab] = useState<"scenarios" | "assignments">("scenarios");
+  const [activeTab, setActiveTab] = useState<"scenarios" | "assignments" | "flags">("scenarios");
 
   // Scenarios state
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
@@ -119,6 +141,11 @@ export default function SupervisorDashboard() {
     message?: string;
   } | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState(false);
+
+  // Flags state
+  const [flags, setFlags] = useState<FlagListItem[]>([]);
+  const [flagsLoading, setFlagsLoading] = useState(false);
+  const [pendingFlagCount, setPendingFlagCount] = useState(0);
 
   // Global scenarios cache for assignment dropdown
   const [globalScenariosCache, setGlobalScenariosCache] = useState<Scenario[]>([]);
@@ -228,6 +255,22 @@ export default function SupervisorDashboard() {
     }
   }, [assignmentStatusFilter, currentUser, authFetch]);
 
+  const loadFlags = useCallback(async () => {
+    if (!currentUser) return;
+    setFlagsLoading(true);
+    try {
+      const response = await authFetch("/api/flags?status=pending");
+      const data: ApiResponse<FlagListItem[]> = await response.json();
+      if (!data.ok) throw new Error(data.error.message);
+      setFlags(data.data);
+      setPendingFlagCount(data.data.length);
+    } catch (err) {
+      console.error("Failed to load flags", err);
+    } finally {
+      setFlagsLoading(false);
+    }
+  }, [currentUser, authFetch]);
+
   // Load supervisor user on mount
   useEffect(() => {
     const loadSupervisorUser = async () => {
@@ -255,7 +298,17 @@ export default function SupervisorDashboard() {
     if (activeTab === "assignments") {
       loadAssignments();
     }
-  }, [activeTab, loadAssignments]);
+    if (activeTab === "flags") {
+      loadFlags();
+    }
+  }, [activeTab, loadAssignments, loadFlags]);
+
+  // Load pending flag count on mount (for badge)
+  useEffect(() => {
+    if (currentUser) {
+      loadFlags();
+    }
+  }, [currentUser, loadFlags]);
 
   // Load global scenarios for assignment dropdown
   useEffect(() => {
@@ -585,6 +638,22 @@ export default function SupervisorDashboard() {
         >
           Assignments
         </button>
+        <button
+          onClick={() => setActiveTab("flags")}
+          className={`px-4 py-2 font-marfa font-medium transition-colors flex items-center gap-2
+                     ${
+                       activeTab === "flags"
+                         ? "text-brand-orange border-b-2 border-brand-orange"
+                         : "text-gray-400 hover:text-white"
+                     }`}
+        >
+          Flags
+          {pendingFlagCount > 0 && (
+            <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+              {pendingFlagCount}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Scenarios Tab */}
@@ -809,6 +878,55 @@ export default function SupervisorDashboard() {
                   </div>
                 )
               )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Flags Tab */}
+      {activeTab === "flags" && (
+        <div>
+          {flagsLoading ? (
+            <p className="text-gray-400">Loading flags...</p>
+          ) : flags.length === 0 ? (
+            <p className="text-gray-400">No pending flags. All clear!</p>
+          ) : (
+            <div className="space-y-3">
+              {flags.map((flag) => {
+                const severity = SEVERITY_STYLES[flag.severity] || SEVERITY_STYLES.info;
+                return (
+                  <div
+                    key={flag.id}
+                    className="bg-brand-navy border border-gray-700 rounded-lg p-4"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-grow">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`text-xs px-2 py-0.5 rounded ${severity.bg} ${severity.text}`}>
+                            {severity.label}
+                          </span>
+                          <span className="text-xs px-2 py-0.5 rounded bg-gray-600 text-gray-300">
+                            {FLAG_TYPE_LABELS[flag.type] || flag.type}
+                          </span>
+                        </div>
+                        <p className="text-white text-sm font-marfa mt-1">{flag.details}</p>
+                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
+                          <span>
+                            Scenario: {flag.session?.scenario?.title || "Free Practice"}
+                          </span>
+                          <span>
+                            Counselor: {flag.session?.user?.displayName || "Unknown"}
+                          </span>
+                          <span>
+                            {flag.session?.modelType === "phone" ? "Voice" : "Chat"}
+                          </span>
+                          <span>{formatDate(flag.createdAt)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
