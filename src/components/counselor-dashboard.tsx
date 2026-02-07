@@ -277,13 +277,8 @@ export default function CounselorDashboard({
     await fetchAndShowTranscript(assignment.sessionId);
   };
 
-  const handlePlayRecording = async (assignment: Assignment) => {
-    if (!assignment.recordingId) {
-      setError("No recording found for this assignment");
-      return;
-    }
-    const recordingId = assignment.recordingId;
-    setPlayingRecording(assignment.id);
+  const handlePlayRecording = async (recordingId: string, trackingId: string) => {
+    setPlayingRecording(trackingId);
     setError(null);
     try {
       // Fetch recording with auth header and create blob URL for playback
@@ -549,6 +544,18 @@ export default function CounselorDashboard({
                     </div>
                   </div>
                   <div className="flex gap-2 flex-shrink-0">
+                    {/* Play button for voice sessions with recordings */}
+                    {session.recordingId && (
+                      <button
+                        onClick={() => handlePlayRecording(session.recordingId!, session.id)}
+                        disabled={playingRecording === session.id}
+                        className="bg-purple-600 hover:bg-purple-700 text-white
+                                   font-marfa font-bold py-1.5 px-3 rounded text-sm
+                                   disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {playingRecording === session.id ? "..." : "Play"}
+                      </button>
+                    )}
                     {session.evaluation && (
                       <button
                         onClick={() => fetchAndShowFeedback(session.id, session.evaluation!.id)}
@@ -760,7 +767,7 @@ export default function CounselorDashboard({
                         {/* Play button - only show if recording exists */}
                         {assignment.recordingId && (
                           <button
-                            onClick={() => handlePlayRecording(assignment)}
+                            onClick={() => handlePlayRecording(assignment.recordingId!, assignment.id)}
                             disabled={playingRecording === assignment.id}
                             className="bg-purple-600 hover:bg-purple-700 text-white
                                        font-marfa font-bold py-2 px-3 rounded text-sm

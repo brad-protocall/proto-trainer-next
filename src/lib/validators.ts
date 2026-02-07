@@ -148,6 +148,7 @@ export const SessionFlagTypeValues = [
   // Counselor-reported
   'user_feedback',
   'ai_guidance_concern',
+  'voice_technical_issue',
   // Safety (auto-detected)
   'jailbreak',
   'inappropriate',
@@ -174,7 +175,7 @@ export type FlagStatus = z.infer<typeof FlagStatusSchema>
 
 // Counselor feedback submission
 export const createFlagSchema = z.object({
-  type: z.enum(['user_feedback', 'ai_guidance_concern']),
+  type: z.enum(['user_feedback', 'ai_guidance_concern', 'voice_technical_issue']),
   details: z.string().min(1).max(1000),
 })
 

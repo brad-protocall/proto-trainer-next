@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { apiSuccess, handleApiError, notFound, forbidden } from '@/lib/api'
 import { requireAuth, canAccessResource } from '@/lib/auth'
 import { createFlagSchema } from '@/lib/validators'
+import { notifyFlag } from '@/lib/notifications'
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -46,8 +47,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return forbidden('Cannot submit feedback for another user\'s session')
     }
 
-    // Auto-escalation: ai_guidance_concern is always critical
-    const severity = parsed.type === 'ai_guidance_concern' ? 'critical' : 'info'
+    // Auto-escalation by type
+    const severity = parsed.type === 'ai_guidance_concern' ? 'critical'
+      : parsed.type === 'voice_technical_issue' ? 'warning'
+      : 'info'
 
     const flag = await prisma.sessionFlag.create({
       data: {
@@ -58,6 +61,24 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         status: 'pending',
       },
     })
+
+    // Console log + email notification (non-blocking)
+    const counselorName = user.displayName || user.externalId
+    console.log(`\n🚩 SESSION FLAG CREATED`)
+    console.log(`   Type: ${flag.type} | Severity: ${flag.severity}`)
+    console.log(`   Counselor: ${counselorName}`)
+    console.log(`   Session: ${id}`)
+    console.log(`   Details: ${flag.details}\n`)
+
+    // Send email notification (fire-and-forget, never blocks response)
+    notifyFlag({
+      flagId: flag.id,
+      type: flag.type,
+      severity: flag.severity,
+      details: flag.details,
+      sessionId: id,
+      counselorName,
+    }).catch(err => console.error('Flag notification failed:', err))
 
     return apiSuccess({
       id: flag.id,

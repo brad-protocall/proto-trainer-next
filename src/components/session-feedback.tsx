@@ -8,9 +8,11 @@ interface SessionFeedbackProps {
   userId: string;
   /** "dark" for dark background (chat view), "light" for white background (voice modal) */
   variant?: "dark" | "light";
+  /** Session mode — shows voice-specific feedback options when "phone" */
+  mode?: "phone" | "chat";
 }
 
-const FEEDBACK_OPTIONS = [
+const COMMON_FEEDBACK_OPTIONS = [
   {
     type: "user_feedback" as const,
     label: "The conversation wasn't helpful",
@@ -24,11 +26,22 @@ const FEEDBACK_OPTIONS = [
   },
 ];
 
+const VOICE_FEEDBACK_OPTION = {
+  type: "voice_technical_issue" as const,
+  label: "Voice agent had technical issues",
+  defaultDetails: "Voice agent had technical issues (disconnection, audio quality, unresponsive)",
+  isCritical: false,
+};
+
 export default function SessionFeedback({
   sessionId,
   userId,
   variant = "dark",
+  mode,
 }: SessionFeedbackProps) {
+  const feedbackOptions = mode === "phone"
+    ? [...COMMON_FEEDBACK_OPTIONS, VOICE_FEEDBACK_OPTION]
+    : COMMON_FEEDBACK_OPTIONS;
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [details, setDetails] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -98,7 +111,7 @@ export default function SessionFeedback({
       </p>
 
       <div className="flex flex-wrap gap-2 mb-3">
-        {FEEDBACK_OPTIONS.map((option) => (
+        {feedbackOptions.map((option) => (
           <button
             key={option.type}
             onClick={() => handleSelect(option.type, option.defaultDetails)}

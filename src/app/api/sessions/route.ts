@@ -65,6 +65,9 @@ export async function GET(request: NextRequest) {
         evaluation: {
           select: { id: true, overallScore: true },
         },
+        recording: {
+          select: { id: true },
+        },
         _count: { select: { transcript: true } },
       },
       orderBy: { startedAt: 'desc' },
@@ -87,6 +90,7 @@ export async function GET(request: NextRequest) {
             overallScore: session.evaluation.overallScore,
           }
         : null,
+      recordingId: session.recording?.id ?? null,
     }))
 
     return apiSuccess(response)

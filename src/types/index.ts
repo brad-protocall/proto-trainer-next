@@ -278,6 +278,7 @@ export interface SessionListItem {
   startedAt: string;
   endedAt: string | null;
   turnCount: number;
+  recordingId: string | null;
   scenario: {
     id: string;
     title: string;

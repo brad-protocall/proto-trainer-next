@@ -369,7 +369,7 @@ export default function VoiceTrainingView({
             </div>
 
             {sessionId && (
-              <SessionFeedback sessionId={sessionId} userId={userId} variant="light" />
+              <SessionFeedback sessionId={sessionId} userId={userId} variant="light" mode="phone" />
             )}
 
             <div className="mt-6 flex justify-end">
