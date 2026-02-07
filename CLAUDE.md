@@ -422,27 +422,108 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ---
 
-## Resume Context (2026-02-03)
+## Resume Context (2026-02-06)
 
-### Current State: #38 + #39 Done — Free Practice Fully Visible
+### Current State: Voice Working, Recording Parity Next
 
-Both free practice features are complete and pushed to origin:
-- **#38** (`c15a984`): Evaluation persistence — exclusive arc pattern on Evaluation model
-- **#39** (`5640615`): Dashboard visibility — GET /api/sessions + Free Practice History UI
+**Branch:** `feat/40-post-session-analysis`
+**PR:** https://github.com/brad-protocall/proto-trainer-next/pull/43
+**Status:** Voice working on Pi (agent redeployed), PTG users provisioned, recording parity not yet started
 
-### Next Session: Deploy LiveKit Agent or Build #40
+### Commits on Branch
 
-**Option A — Deploy LiveKit Agent + E2E Test (recommended first):**
-- `cd livekit-agent && lk agent deploy`
-- Start a voice session, verify agent connects, conversation works, evaluation generates and persists
-- LiveKit migration committed in `af5a049` but agent not yet deployed
-- This validates the entire #38 + #39 flow end-to-end with real voice sessions
+1. `e4763bf` — feat: add post-session analysis with feedback, safety, and consistency checks (#40)
+2. `7162445` — chore: add session_flags migration for Pi deployment
+3. `d69f267` — fix: lazy-init OpenAI client and exclude livekit-agent from tsconfig
 
-**Option B — Build #40 (Post-Session Analysis — Unified Governance):**
-- Expand evaluator prompt with safety/consistency checks (0 new LLM calls)
-- SessionFlag model, `parseFlags()`, counselor feedback endpoint, supervisor flags badge
-- Plan: `plans/post-session-analysis-unified.md`
-- Depends on #38 (done)
+### Pi Voice Fix Session (2026-02-06 Evening)
+
+**Problem:** Voice sessions on Pi showed "Disconnected" and "Start Session" did nothing.
+
+**Root cause (multi-layered):**
+1. **Wrong LiveKit URL**: Pi had `wss://proto-trainer-next-kf6mbd6s.livekit.cloud` (non-existent project) instead of `wss://proto-trainer-next-amw48y2e.livekit.cloud`
+2. **Database password mismatch**: During .env editing, DATABASE_URL password got changed. Had to reset PostgreSQL password with `sudo -u postgres psql -c "ALTER USER proto WITH PASSWORD 'Protocall';"`
+3. **NEXT_PUBLIC_ vars require rebuild**: `NEXT_PUBLIC_LIVEKIT_URL` is baked into the Next.js build at compile time. Changing .env + restarting is NOT enough — must run `npm run build` on Pi.
+
+**Fixes applied on Pi:**
+- `.env` updated: correct LiveKit URL (`amw48y2e`), key, and secret (matching local dev)
+- `.env` updated: `DATABASE_URL` password set to `Protocall`
+- PostgreSQL password reset to `Protocall` via `ALTER USER`
+- systemd override added: `/etc/systemd/system/proto-trainer-next.service.d/override.conf` with `Environment="DATABASE_URL=postgresql://proto:Protocall@127.0.0.1:5432/proto_trainer"`
+- App rebuilt on Pi (`npm run build`)
+
+**Current Pi .env LiveKit values:**
+```
+LIVEKIT_API_KEY=APIMk52datYHbZh
+LIVEKIT_API_SECRET=P7eMxLjyb6PeeDuRlKeXFjMJhRM8IujV5uV1GnkaKwdC
+NEXT_PUBLIC_LIVEKIT_URL=wss://proto-trainer-next-amw48y2e.livekit.cloud
+```
+
+**LiveKit Cloud:** Only one project exists (`proto-trainer-next-amw48y2e`). Two API keys on the account — `API2npGgDiGXpZd` ("proto-trainer-dev") and `APIMk52datYHbZh` (unnamed). Both currently use `amw48y2e`. The `kf6mbd6s` URL origin is unknown (possibly deleted project).
+
+### Voice Fixed (2026-02-06 Late Evening)
+
+Voice was still failing after Pi .env fix + rebuild. Agent wasn't dispatching (stale container). Fix: `cd livekit-agent && lk agent deploy` from Mac. Voice confirmed working — agent dispatches, session created, transcripts flowing.
+
+Also provisioned PTG users (Brad Pendergraft, John Patterson, Sarah Martinez, Tom Wilson, Phil Evans) on Pi via direct SQL INSERT. Added Brad Pendergraft to `prisma/seed.ts`.
+
+### Then: Free Practice Recording Playback (Parity Fix)
+
+**Problem discovered during E2E:** Assigned voice sessions show a purple "Play" button for recordings, but free practice voice sessions do not — even though recordings ARE saved in the database by the LiveKit agent.
+
+**Root cause:** 3 gaps:
+1. `GET /api/sessions` doesn't include `recording` in Prisma query
+2. `SessionListItem` type has no `recordingId` field
+3. Counselor dashboard free practice section has no Play button for voice sessions
+
+**Implementation plan (3 files, no new code written yet):**
+
+| File | Change |
+|------|--------|
+| `src/app/api/sessions/route.ts` | Add `recording: { select: { id: true } }` to query, add `recordingId` to response mapping |
+| `src/types/index.ts` | Add `recordingId: string \| null` to `SessionListItem` |
+| `src/components/counselor-dashboard.tsx` | Refactor `handlePlayRecording` to accept `(recordingId, trackingId)` instead of `Assignment`, add Play button to free practice voice cards |
+
+**Key:** Reuse existing `handlePlayRecording` logic and `/api/recordings/[id]/download` endpoint — no new infrastructure needed.
+
+### Remaining TODO
+
+1. ~~**Test voice on Pi**~~ ✅ Fixed via agent redeploy
+2. **Implement recording parity fix** (3 files above)
+3. **Commit and push** new changes (seed.ts update + solution docs)
+4. **Redeploy to Pi** (rsync + build)
+5. ~~**Phase 5: Compound**~~ ✅ Documented in `docs/solutions/`
+
+### P2 Items Deferred (10 total, fix before production)
+
+1. No `reviewedBy` / `updatedAt` on SessionFlag (audit trail)
+2. No rate limiting on flag endpoint (per-session cap)
+3. No rate limiting on evaluate endpoint (LLM cost protection)
+4. Composite index could include `createdAt` for query performance
+5. Scenario metadata injection risk (evaluatorContext could manipulate grading)
+6. No raw evaluation logging (audit trail for flag parsing)
+7. P2002 catch doesn't re-validate auth after concurrent race
+8. No UUID validation on `id` URL params (invalid IDs cause 500 instead of 400)
+9. Unhandled JSON parse error in flag route (500 instead of 400)
+10. `parseFlags()` validation now skips invalid LLM output silently — could log warnings
+
+### Pi Deployment Gotchas (2026-02-06)
+
+1. **Correct directory**: `~/apps/proto-trainer-next` (NOT `~/proto-trainer-next`)
+2. **Must rebuild on Pi**: rsync from macOS includes `.next/` with macOS Prisma binaries — must run `npx prisma generate && npm run build` on Pi
+3. **Dev deps needed for build**: `npm install` (not `--production`) — Next.js build needs `@types/papaparse`, `eslint`, etc.
+4. **OpenAI client**: Lazy-initialized via Proxy to avoid crash during build without API key
+5. **livekit-agent excluded from tsconfig**: Has its own eslint config that breaks build without its own devDeps
+6. **`.env` not rsynced**: Must already exist on Pi with DATABASE_URL, OPENAI_API_KEY, etc.
+7. **Prisma baselining**: If P3005 "schema not empty" error, baseline existing migrations with `prisma migrate resolve --applied` before `migrate deploy`
+8. **sudo in SSH one-liners fails**: "Interactive authentication required" — must SSH interactively for `sudo systemctl restart`
+9. **NEXT_PUBLIC_ vars require rebuild**: `NEXT_PUBLIC_*` env vars are baked into the Next.js build at compile time. Changing `.env` + restart is NOT enough — must run `npm run build` on Pi. Regular env vars (DATABASE_URL, OPENAI_API_KEY, etc.) only need a restart.
+10. **Pi database password is `Protocall`**: NOT `proto_dev_2026` (which is the local dev password). Pi's `.env` has `DATABASE_URL="postgresql://proto:Protocall@..."`. There's also a systemd override at `/etc/systemd/system/proto-trainer-next.service.d/override.conf` that sets this.
+11. **Don't edit Pi `.env` with values from local**: Pi and local have DIFFERENT database passwords. Be careful with nano — only edit the specific lines you intend to change.
+12. **Pi LiveKit URL**: `wss://proto-trainer-next-amw48y2e.livekit.cloud` — the `kf6mbd6s` URL that was previously there is invalid/non-existent.
+13. **Seed drift**: Adding users to `prisma/seed.ts` doesn't automatically add them to Pi. Must either re-run `npx prisma db seed` on Pi or INSERT directly via `sudo -u postgres psql -d proto_trainer`. Use `ON CONFLICT DO NOTHING` for idempotency.
+14. **LiveKit agent stale container**: If voice shows "Waiting for agent..." but ngrok/Pi/secrets are all fine, the agent container may be stale. Fix: `cd livekit-agent && lk agent deploy`. See `docs/solutions/runtime-errors/livekit-agent-stale-container-dispatch-failure.md`.
+15. **`lk` CLI is on Mac only**: The LiveKit CLI is installed on your Mac, not on Pi. All `lk agent *` commands must run from Mac terminal.
 
 ### GitHub Issues
 
@@ -450,39 +531,27 @@ Both free practice features are complete and pushed to origin:
 |-------|-------|--------|------------|
 | #38 | Record and evaluate free practice sessions | **Done** (`c15a984`) | — |
 | #39 | Free practice dashboard visibility | **Done** (`5640615`) | #38 (done) |
-| #40 | Post-session analysis (feedback, safety, consistency) | Open | #38 (done) |
-| ~~#41~~ | ~~Automatic transcript misuse scanning~~ | Closed (superseded by #40) | — |
-| ~~#42~~ | ~~Prompt-vs-transcript consistency checking~~ | Closed (superseded by #40) | — |
+| #40 | Post-session analysis (feedback, safety, consistency) | **PR #43 open**, deployed to Pi, E2E passed | #38 (done) |
 
-### Session Summary (2026-02-03, Late Evening)
+### Previous Sessions
 
-**#39 Implementation + 6-Agent Code Review**
-
-Built the dashboard visibility layer for free practice sessions. Added `GET /api/sessions` endpoint with server-side type filtering and `SessionListItem` type. Added "Free Practice History" section to counselor dashboard with shared feedback/transcript helpers.
-
-Ran 6-agent parallel review (Kieran TypeScript, Security Sentinel, Architecture Strategist, Performance Oracle, Pattern Recognition, Code Simplicity).
-
-**Review found 12 issues (8 fixed, 4 deferred as P3):**
-
-P1 Fixes (2):
-- `grade: session.evaluation.strengths` mapped wrong data to UI badge → now displays `overallScore%`
-- `FreePracticeSession` inline type → moved to `SessionListItem` in `src/types/index.ts`
-
-P2 Fixes (6):
-- Client-side filter `!s.assignmentId` + LIMIT 50 = data loss → server-side `type=free_practice` filter with `assignmentId: null`
-- Status accepts any string → `SessionStatusSchema` enum validation
-- Duplicate `handleViewSessionFeedback`/`handleViewSessionTranscript` → extracted `fetchAndShowFeedback` + `fetchAndShowTranscript` shared helpers
-- Loading state flash on mount → gate on `!currentUser`
-- `Record<string, unknown>` → `Prisma.SessionWhereInput` typed where clause
-- `loadingDetail` collision between assignment/session transcript buttons → separate `loadingSessionDetail` state
-
-P3 Deferred (4, acceptable for prototype):
-- No pagination params in `sessionQuerySchema`
-- Loose string types where enums exist in some places
-- Duplicate free practice button construction
-- Undocumented implicit `status: 'completed'` default
-
-**Security review confirmed:** Authorization solid — counselors auto-scoped, supervisors can query any, OWASP all-pass, no N+1.
+- **2026-02-06 (Late Evening)**: Voice still failing after rebuild — agent stale container, fixed with `lk agent deploy`. Provisioned PTG users on Pi (5 users via SQL INSERT). Added Brad Pendergraft to seed.ts. Compound docs written.
+- **2026-02-06 (Evening)**: Pi voice fix — wrong LiveKit URL (`kf6mbd6s` → `amw48y2e`), database password mismatch during .env edit (reset to `Protocall`), learned NEXT_PUBLIC_ vars need rebuild not just restart. App rebuilt on Pi.
+- **2026-02-05 (Late Evening)**: Pi deploy completed (P3005 baseline fix), E2E tests all passed, discovered recording parity gap for free practice voice sessions
+- **2026-02-05 (Afternoon)**: Chunk 4 review (2 P1 fixes), PR #43 created, Pi deployment (discovered wrong directory, OpenAI lazy-init fix, tsconfig exclusion)
+- **2026-02-05 (Earlier)**: Chunked code review of #40 — chunks 1-3 reviewed, 11 P1 fixes applied
+- **2026-02-04 (Late Evening)**: Fixed LiveKit secrets issue — comma-separated values corrupted URL, re-set with separate `--secrets` flags, voice now working
+- **2026-02-04 (Evening)**: E2E testing, 2 bug fixes (`77b4c87`), Pi deployment, LiveKit agent deployment
+- **2026-02-03 (Late Evening)**: #39 implementation + 6-agent review, all P1/P2 fixed, committed `5640615`
+- **2026-02-03 (Evening)**: #38 implementation + 7-agent review, all fixes committed `c15a984`
+- **2026-02-03 (Morning)**: 7-agent code review of LiveKit migration, all findings fixed, committed `af5a049`
+- **2026-02-02 (Evening)**: LiveKit full migration (Phase A backend + Phase B frontend)
+- **2026-02-02 (Afternoon)**: LiveKit spike - VERDICT: GO
+- **2026-02-01 (Evening)**: User testing bug fixes - demo mode dropdown, counselor list auth
+- **2026-01-31 (Evening)**: Security hardening sprint, multi-agent code review (18/25)
+- **2026-01-31 (Morning)**: Pre-handoff cleanup - PR #37 merged
+- **2026-01-30**: Sales training scenario experiment
+- **2026-01-29**: Fixed Pre-Chat Survey bug, demo mode, category filtering
 
 ### Key Architecture Decisions
 
@@ -503,11 +572,14 @@ P3 Deferred (4, acceptable for prototype):
 - `fetchAndShowFeedback(entityId, evaluationId)` — used by both assignment and session feedback
 - `fetchAndShowTranscript(sessionId, loadingKey?)` — separate loading state for session vs assignment
 
-**Unified Governance (Plan for #40):**
-- Expand evaluator prompt with safety/consistency flags (0 additional LLM calls)
-- Parse flags from evaluation markdown, save in same transaction
-- 2 new endpoints only: `POST /sessions/[id]/flag`, `GET /api/flags`
-- SessionFlag model: 8 fields with `metadata: Json?`
+**Unified Governance (#40 — Implemented):**
+- Evaluator prompt expanded with 5 safety + 5 consistency checks (0 additional LLM calls)
+- `parseFlags()` extracts flags from `## Flags` section, `stripFlagsSection()` removes it from counselor-facing text
+- Flags saved in same transaction as evaluation (`sessionFlag.createMany` inside `$transaction`)
+- `POST /sessions/[id]/flag` — counselor feedback with auto-escalation (`ai_guidance_concern` → `critical`)
+- `GET /api/flags` — supervisor review (pending flags, severity-ordered, includes session context)
+- `SessionFeedback` shared component with dark/light variants (used by both chat and voice views)
+- Supervisor dashboard: "Flags" tab with red badge count
 
 ### LiveKit Reference
 
@@ -519,19 +591,71 @@ P3 Deferred (4, acceptable for prototype):
 | CLI | `lk` (installed via brew) |
 | Agent logs | `lk agent logs` |
 | Redeploy agent | `cd livekit-agent && lk agent deploy` |
+| Agent secrets | `lk agent secrets` |
+| Update secrets | `lk agent update-secrets --secrets "KEY=value"` |
 
-### Previous Sessions
+### LiveKit Secrets Gotchas (2026-02-04)
 
-- **2026-02-03 (Late Evening)**: #39 implementation + 6-agent review, all P1/P2 fixed, committed `5640615`
-- **2026-02-03 (Evening)**: #38 implementation + 7-agent review, all fixes committed `c15a984`
-- **2026-02-03 (Morning)**: 7-agent code review of LiveKit migration, all findings fixed, committed `af5a049`
-- **2026-02-02 (Evening)**: LiveKit full migration (Phase A backend + Phase B frontend)
-- **2026-02-02 (Afternoon)**: LiveKit spike - VERDICT: GO
-- **2026-02-01 (Evening)**: User testing bug fixes - demo mode dropdown, counselor list auth
-- **2026-01-31 (Evening)**: Security hardening sprint, multi-agent code review (18/25)
-- **2026-01-31 (Morning)**: Pre-handoff cleanup - PR #37 merged
-- **2026-01-30**: Sales training scenario experiment
-- **2026-01-29**: Fixed Pre-Chat Survey bug, demo mode, category filtering
+**Problem**: Voice sessions failing with `ENOTFOUND` error showing malformed hostname like `proto-trainer.ngrok.io,internal_service_key=ptg-internal-key-2026`.
+
+**Root Cause**: LiveKit CLI `--secrets` flag uses commas to separate multiple KEY=VALUE pairs. If you pass:
+```bash
+# WRONG - comma interpreted as separator, corrupts the URL value
+lk agent update-secrets --secrets "NEXT_APP_URL=https://example.com,INTERNAL_SERVICE_KEY=secret"
+```
+
+The CLI parses this as `NEXT_APP_URL=https://example.com` followed by garbage.
+
+**Correct Pattern**: Use separate `--secrets` flags for each secret:
+```bash
+# CORRECT - each secret gets its own flag
+lk agent update-secrets \
+  --secrets "NEXT_APP_URL=https://proto-trainer.ngrok.io" \
+  --secrets "INTERNAL_SERVICE_KEY=ptg-internal-key-2026" \
+  --secrets "OPENAI_API_KEY=sk-..."
+```
+
+**Warning about `--overwrite`**: This flag **removes ALL existing secrets** and replaces with only what you specify. If you forget to include `OPENAI_API_KEY`, the agent will fail silently (no API key = no LLM responses).
+
+**Current Required Secrets** (minimum for voice to work):
+- `NEXT_APP_URL` — Where agent calls back to (e.g., `https://proto-trainer.ngrok.io`)
+- `INTERNAL_SERVICE_KEY` — Must match Pi's `INTERNAL_SERVICE_KEY` env var
+- `OPENAI_API_KEY` — For OpenAI Realtime API
+
+### Voice Session Debugging (Reference)
+
+**If voice sessions fail in future, check in this order:**
+
+```
+Voice "Waiting for agent..."
+├── 1. Check Pi logs for agent callbacks:
+│   ssh brad@pai-hub.local 'journalctl -u proto-trainer-next --since "10 min ago" | grep internal'
+│
+├── If NO log entries → Agent dispatch problem
+│   ├── lk agent logs          (check agent status — run from Mac)
+│   └── cd livekit-agent && lk agent deploy   (redeploy fixes stale container)
+│
+├── If YES log entries with errors → API problem
+│   ├── P2003 foreign key → User doesn't exist in Pi DB (see gotcha #13)
+│   ├── 401/403 → INTERNAL_SERVICE_KEY mismatch
+│   └── 400 → Invalid request metadata
+│
+├── 2. Check ngrok is running:
+│   curl -s -o /dev/null -w "%{http_code}" https://proto-trainer.ngrok.io/api/internal/sessions
+│   (405 = working, 000 = ngrok not running)
+│
+├── 3. Check agent secrets: lk agent secrets (from Mac)
+│   Need: NEXT_APP_URL, INTERNAL_SERVICE_KEY, OPENAI_API_KEY
+│
+└── 4. Check Pi service: ssh brad@pai-hub.local 'journalctl -u proto-trainer-next -n 50'
+```
+
+**Common failure modes:**
+- "Waiting for agent..." with no Pi logs → stale agent container, redeploy (see gotcha #14)
+- Malformed hostname in error → secrets set incorrectly (see "LiveKit Secrets Gotchas" above)
+- "job is unresponsive" → missing `OPENAI_API_KEY`
+- Session creation failed → `INTERNAL_SERVICE_KEY` mismatch or API unreachable
+- P2003 foreign key → user not in Pi database (see `docs/solutions/database-issues/pi-user-provisioning-seed-drift.md`)
 
 ### Quick Start
 
@@ -539,11 +663,16 @@ P3 Deferred (4, acceptable for prototype):
 npm run dev               # Next.js on :3003
 # Voice training uses LiveKit Cloud (no local server needed)
 # To redeploy agent: cd livekit-agent && lk agent deploy
+# Check agent secrets: lk agent secrets
 ```
 
 ### Git Status
 
-- Latest commit: `5640615` (feat: add free practice dashboard visibility #39)
-- Previous: `c15a984` (feat: persist free practice evaluations #38)
-- Branch: main
-- Working tree: plans + docs untracked
+- Latest commit: `d69f267` (fix: lazy-init OpenAI client and exclude livekit-agent from tsconfig)
+- Branch: `feat/40-post-session-analysis`
+- PR: #43 (https://github.com/brad-protocall/proto-trainer-next/pull/43)
+- All 13 P1 fixes committed across 3 commits
+- Pi .env fixed (LiveKit URL + DB password), app rebuilt on Pi
+- **No new code commits this session** — all fixes were Pi config/env changes
+- Voice test needed after rebuild
+- Recording parity fix planned (3 files, not yet implemented)
