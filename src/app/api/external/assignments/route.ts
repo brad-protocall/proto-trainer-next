@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { z } from 'zod'
 import prisma from '@/lib/prisma'
 import { apiSuccess, apiError, handleApiError, notFound } from '@/lib/api'
-import { requireExternalApiKey, EXTERNAL_SYSTEM_USER_ID, EXTERNAL_ACCOUNT_ID } from '@/lib/external-auth'
+import { requireExternalApiKey, getOrCreateExternalUser, EXTERNAL_SYSTEM_USER_ID, EXTERNAL_ACCOUNT_ID } from '@/lib/external-auth'
 
 // Request body schema for POST
 const CreateAssignmentSchema = z.object({
@@ -50,14 +50,8 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Look up user by external ID
-    const user = await prisma.user.findUnique({
-      where: { externalId: externalUserId },
-    })
-
-    if (!user) {
-      return notFound('User not found')
-    }
+    // Find or create user by external ID
+    const user = await getOrCreateExternalUser(externalUserId)
 
     // Get assignments for this user
     const assignments = await prisma.assignment.findMany({
@@ -110,14 +104,8 @@ export async function POST(request: NextRequest) {
 
     const { user_id: externalUserId, scenario_id: scenarioId, due_date: dueDate } = parsed.data
 
-    // Look up user by external ID - DO NOT auto-create
-    const user = await prisma.user.findUnique({
-      where: { externalId: externalUserId },
-    })
-
-    if (!user) {
-      return notFound('User not found. Ensure user exists before creating assignments.')
-    }
+    // Find or create user by external ID
+    const user = await getOrCreateExternalUser(externalUserId)
 
     // Verify scenario exists
     const scenario = await prisma.scenario.findUnique({
