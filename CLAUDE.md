@@ -422,77 +422,59 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ---
 
-## Resume Context (2026-02-06)
+## Resume Context (2026-02-07 Late Evening)
 
-### Current State: Voice Working, Recording Parity Next
+### Current State: Committed + Pushed — Pi Needs Rsync of Disconnect Fix
 
 **Branch:** `feat/40-post-session-analysis`
 **PR:** https://github.com/brad-protocall/proto-trainer-next/pull/43
-**Status:** Voice working on Pi (agent redeployed), PTG users provisioned, recording parity not yet started
+**Status:** All code committed and pushed to GitHub. Pi has older code (missing disconnect fix + INTERNAL_SERVICE_KEY was re-added manually).
 
-### Commits on Branch
+### Commits on Branch (all pushed)
 
 1. `e4763bf` — feat: add post-session analysis with feedback, safety, and consistency checks (#40)
 2. `7162445` — chore: add session_flags migration for Pi deployment
 3. `d69f267` — fix: lazy-init OpenAI client and exclude livekit-agent from tsconfig
+4. `1dd7b2f` — feat: auto-provision external users on first API call
+5. `1d238bb` — chore: add PTG users to seed and document voice/deployment lessons
+6. `825ebc9` — feat: add voice feedback option, flag notifications, and recording parity
+7. `ed07f27` — fix: any voice disconnect triggers evaluation (prevents orphaned sessions)
 
-### Pi Voice Fix Session (2026-02-06 Evening)
+### Critical Bugs to Fix Next
 
-**Problem:** Voice sessions on Pi showed "Disconnected" and "Start Session" did nothing.
+#### 1. Voice Recordings Not Created (CRITICAL)
+**Problem**: LiveKit agent does NOT create recordings. The old WebSocket implementation did, but recording logic was never ported to the LiveKit agent. `POST /api/recordings` endpoint exists but nothing calls it.
+**Impact**: No Play button on completed voice sessions (button is conditionally hidden when `recordingId` is null — `counselor-dashboard.tsx:768`).
+**Fix needed**: Either add recording capture to the LiveKit agent (save WAV, call POST /api/recordings) or use LiveKit's Egress service. Also: Play button should always show for voice sessions (disabled if no recording), not be hidden entirely.
 
-**Root cause (multi-layered):**
-1. **Wrong LiveKit URL**: Pi had `wss://proto-trainer-next-kf6mbd6s.livekit.cloud` (non-existent project) instead of `wss://proto-trainer-next-amw48y2e.livekit.cloud`
-2. **Database password mismatch**: During .env editing, DATABASE_URL password got changed. Had to reset PostgreSQL password with `sudo -u postgres psql -c "ALTER USER proto WITH PASSWORD 'Protocall';"`
-3. **NEXT_PUBLIC_ vars require rebuild**: `NEXT_PUBLIC_LIVEKIT_URL` is baked into the Next.js build at compile time. Changing .env + restarting is NOT enough — must run `npm run build` on Pi.
+#### 2. Transcript Timing / Feedback Flow (CRITICAL)
+**Problem**: Transcripts aren't available when the user expects them. After ending a voice session, the user sees "Transcripts not yet available" — the LiveKit agent persists transcripts on shutdown, but there's a race condition between the agent's shutdown (which persists transcripts) and the frontend's evaluation request (which needs transcripts to generate feedback). The user should be able to see the transcript while waiting for feedback.
+**Root cause**: The agent's `addShutdownCallback` fires on disconnect, but the frontend also immediately triggers evaluation. The evaluation may start before transcripts are persisted.
 
-**Fixes applied on Pi:**
-- `.env` updated: correct LiveKit URL (`amw48y2e`), key, and secret (matching local dev)
-- `.env` updated: `DATABASE_URL` password set to `Protocall`
-- PostgreSQL password reset to `Protocall` via `ALTER USER`
-- systemd override added: `/etc/systemd/system/proto-trainer-next.service.d/override.conf` with `Environment="DATABASE_URL=postgresql://proto:Protocall@127.0.0.1:5432/proto_trainer"`
-- App rebuilt on Pi (`npm run build`)
+#### 3. External API Missing Evaluator Context Field (Future Session)
+**Problem**: `POST /api/external/scenarios` doesn't accept `evaluatorContext`. When the Personalized Training Guide creates scenarios via the external API, it can only send the scenario prompt but not evaluator-specific grading context.
+**Impact**: PTG-generated scenarios get generic evaluation instead of scenario-specific grading criteria.
+**Action**: Will be corrected in a future session. PTG team is generating code to add `evaluatorContext` support to the external scenarios endpoint.
 
-**Current Pi .env LiveKit values:**
-```
-LIVEKIT_API_KEY=APIMk52datYHbZh
-LIVEKIT_API_SECRET=P7eMxLjyb6PeeDuRlKeXFjMJhRM8IujV5uV1GnkaKwdC
-NEXT_PUBLIC_LIVEKIT_URL=wss://proto-trainer-next-amw48y2e.livekit.cloud
-```
+### Remaining TODO (Pick Up Here)
 
-**LiveKit Cloud:** Only one project exists (`proto-trainer-next-amw48y2e`). Two API keys on the account — `API2npGgDiGXpZd` ("proto-trainer-dev") and `APIMk52datYHbZh` (unnamed). Both currently use `amw48y2e`. The `kf6mbd6s` URL origin is unknown (possibly deleted project).
+1. **Fix voice recording bug** — See Critical Bug #1 above. Decide: agent-side recording or LiveKit Egress?
+2. **Fix transcript timing** — See Critical Bug #2 above. May need to delay evaluation until transcripts are confirmed persisted.
+3. **Rsync disconnect fix to Pi** — Pi still has old code without `ed07f27`. Next rsync MUST exclude `.env` (use `--exclude='.env'`).
+4. **Rebuild on Pi** — After rsync: `npm install && npx prisma generate && npm run build && sudo systemctl restart proto-trainer-next`
+5. **Accept evaluator context API change** — When PTG team sends the code, review and integrate.
+6. **Merge PR #43** — After critical bugs are fixed and tested on Pi
 
-### Voice Fixed (2026-02-06 Late Evening)
+### Ngrok Auth Gotcha (NEW — 2026-02-07)
 
-Voice was still failing after Pi .env fix + rebuild. Agent wasn't dispatching (stale container). Fix: `cd livekit-agent && lk agent deploy` from Mac. Voice confirmed working — agent dispatches, session created, transcripts flowing.
+**Problem**: Voice sessions showing "Session creation failed" — LiveKit agent callbacks not reaching Pi.
+**Root Cause**: ngrok had OAuth authentication enabled (`idp.ngrok.com/oauth2` redirect on all requests). The LiveKit agent makes plain HTTP callbacks and can't authenticate with ngrok's OAuth.
+**Fix**: Restart ngrok without `--oauth` flag. Simple: `ngrok http --url=proto-trainer.ngrok.io http://pai-hub.local:3003`
+**Detection**: `curl -s -o /dev/null -w "%{http_code}" https://proto-trainer.ngrok.io/api/internal/sessions` returns 302 → ngrok auth blocking. Should return 405 (Method Not Allowed) when working.
 
-Also provisioned PTG users (Brad Pendergraft, John Patterson, Sarah Martinez, Tom Wilson, Phil Evans) on Pi via direct SQL INSERT. Added Brad Pendergraft to `prisma/seed.ts`.
+### Latency (Resolved — 2026-02-07)
 
-### Then: Free Practice Recording Playback (Parity Fix)
-
-**Problem discovered during E2E:** Assigned voice sessions show a purple "Play" button for recordings, but free practice voice sessions do not — even though recordings ARE saved in the database by the LiveKit agent.
-
-**Root cause:** 3 gaps:
-1. `GET /api/sessions` doesn't include `recording` in Prisma query
-2. `SessionListItem` type has no `recordingId` field
-3. Counselor dashboard free practice section has no Play button for voice sessions
-
-**Implementation plan (3 files, no new code written yet):**
-
-| File | Change |
-|------|--------|
-| `src/app/api/sessions/route.ts` | Add `recording: { select: { id: true } }` to query, add `recordingId` to response mapping |
-| `src/types/index.ts` | Add `recordingId: string \| null` to `SessionListItem` |
-| `src/components/counselor-dashboard.tsx` | Refactor `handlePlayRecording` to accept `(recordingId, trackingId)` instead of `Assignment`, add Play button to free practice voice cards |
-
-**Key:** Reuse existing `handlePlayRecording` logic and `/api/recordings/[id]/download` endpoint — no new infrastructure needed.
-
-### Remaining TODO
-
-1. ~~**Test voice on Pi**~~ ✅ Fixed via agent redeploy
-2. **Implement recording parity fix** (3 files above)
-3. **Commit and push** new changes (seed.ts update + solution docs)
-4. **Redeploy to Pi** (rsync + build)
-5. ~~**Phase 5: Compound**~~ ✅ Documented in `docs/solutions/`
+Previously noticed higher latency, but testing tonight showed normal response times. Likely was transient (ngrok/network conditions or OpenAI API load). No action needed unless it recurs.
 
 ### P2 Items Deferred (10 total, fix before production)
 
@@ -524,6 +506,9 @@ Also provisioned PTG users (Brad Pendergraft, John Patterson, Sarah Martinez, To
 13. **Seed drift**: Adding users to `prisma/seed.ts` doesn't automatically add them to Pi. Must either re-run `npx prisma db seed` on Pi or INSERT directly via `sudo -u postgres psql -d proto_trainer`. Use `ON CONFLICT DO NOTHING` for idempotency.
 14. **LiveKit agent stale container**: If voice shows "Waiting for agent..." but ngrok/Pi/secrets are all fine, the agent container may be stale. Fix: `cd livekit-agent && lk agent deploy`. See `docs/solutions/runtime-errors/livekit-agent-stale-container-dispatch-failure.md`.
 15. **`lk` CLI is on Mac only**: The LiveKit CLI is installed on your Mac, not on Pi. All `lk agent *` commands must run from Mac terminal.
+16. **ngrok OAuth blocks LiveKit agent**: If ngrok has `--oauth` enabled, all requests get 302 redirected to `idp.ngrok.com/oauth2`. The LiveKit agent can't authenticate, so callbacks fail silently. Detection: `curl -s -o /dev/null -w "%{http_code}" https://proto-trainer.ngrok.io/api/internal/sessions` — should return 405, not 302. Fix: restart ngrok without `--oauth`.
+17. **rsync sends local `.env` to Pi**: The rsync command sends `.env` which has LOCAL database credentials. Pi's DATABASE_URL uses password `Protocall`. Always verify after rsync: `cat ~/apps/proto-trainer-next/.env | grep DATABASE_URL`.
+18. **ALWAYS exclude `.env` from rsync**: Use `--exclude='.env'` in rsync command. This has caused issues TWICE (2026-02-06 and 2026-02-07) — overwriting Pi's DATABASE_URL password and deleting INTERNAL_SERVICE_KEY. The Pi `.env` must be managed separately from local.
 
 ### GitHub Issues
 
@@ -535,6 +520,9 @@ Also provisioned PTG users (Brad Pendergraft, John Patterson, Sarah Martinez, To
 
 ### Previous Sessions
 
+- **2026-02-07 (Late Evening)**: Pi deployment tested — fixed .env overwrite (DATABASE_URL password + missing INTERNAL_SERVICE_KEY), rebuilt on Pi, voice working. Discovered 3 critical bugs: (1) no voice recordings since LiveKit migration, (2) transcript timing race condition, (3) external API missing evaluatorContext field. Committed disconnect fix (`ed07f27`), pushed all to GitHub. PTG-generated scenario worked via external API.
+- **2026-02-07 (Evening)**: Fixed voice disconnect flow — any disconnect now triggers evaluation (prevents orphaned sessions). Moved "End Session & Get Feedback" button above LiveKit controls. Discovered ngrok OAuth was blocking agent callbacks (302 redirect). Rsynced to Pi but NOT yet built/restarted. Latency investigation noted.
+- **2026-02-07 (Afternoon)**: Added voice technical issue feedback option, flag console log + email notifications (nodemailer), free practice recording parity fix. All committed locally (`825ebc9`), not yet pushed.
 - **2026-02-06 (Late Evening)**: Voice still failing after rebuild — agent stale container, fixed with `lk agent deploy`. Provisioned PTG users on Pi (5 users via SQL INSERT). Added Brad Pendergraft to seed.ts. Compound docs written.
 - **2026-02-06 (Evening)**: Pi voice fix — wrong LiveKit URL (`kf6mbd6s` → `amw48y2e`), database password mismatch during .env edit (reset to `Protocall`), learned NEXT_PUBLIC_ vars need rebuild not just restart. App rebuilt on Pi.
 - **2026-02-05 (Late Evening)**: Pi deploy completed (P3005 baseline fix), E2E tests all passed, discovered recording parity gap for free practice voice sessions
@@ -576,9 +564,10 @@ Also provisioned PTG users (Brad Pendergraft, John Patterson, Sarah Martinez, To
 - Evaluator prompt expanded with 5 safety + 5 consistency checks (0 additional LLM calls)
 - `parseFlags()` extracts flags from `## Flags` section, `stripFlagsSection()` removes it from counselor-facing text
 - Flags saved in same transaction as evaluation (`sessionFlag.createMany` inside `$transaction`)
-- `POST /sessions/[id]/flag` — counselor feedback with auto-escalation (`ai_guidance_concern` → `critical`)
+- `POST /sessions/[id]/flag` — counselor feedback with auto-escalation (`ai_guidance_concern` → `critical`, `voice_technical_issue` → `warning`)
 - `GET /api/flags` — supervisor review (pending flags, severity-ordered, includes session context)
-- `SessionFeedback` shared component with dark/light variants (used by both chat and voice views)
+- `SessionFeedback` shared component with dark/light variants + `mode` prop (voice sessions get "Voice agent had technical issues" option)
+- Console log (`🚩`) on every flag creation; email notification via `src/lib/notifications.ts` (nodemailer, fire-and-forget)
 - Supervisor dashboard: "Flags" tab with red badge count
 
 ### LiveKit Reference
@@ -655,6 +644,7 @@ Voice "Waiting for agent..."
 - Malformed hostname in error → secrets set incorrectly (see "LiveKit Secrets Gotchas" above)
 - "job is unresponsive" → missing `OPENAI_API_KEY`
 - Session creation failed → `INTERNAL_SERVICE_KEY` mismatch or API unreachable
+- Session creation failed + no Pi logs → ngrok OAuth blocking (see gotcha #16). Check: `curl` returns 302 instead of 405
 - P2003 foreign key → user not in Pi database (see `docs/solutions/database-issues/pi-user-provisioning-seed-drift.md`)
 
 ### Quick Start
@@ -668,11 +658,10 @@ npm run dev               # Next.js on :3003
 
 ### Git Status
 
-- Latest commit: `d69f267` (fix: lazy-init OpenAI client and exclude livekit-agent from tsconfig)
+- Latest commit: `ed07f27` (fix: any voice disconnect triggers evaluation)
 - Branch: `feat/40-post-session-analysis`
 - PR: #43 (https://github.com/brad-protocall/proto-trainer-next/pull/43)
-- All 13 P1 fixes committed across 3 commits
-- Pi .env fixed (LiveKit URL + DB password), app rebuilt on Pi
-- **No new code commits this session** — all fixes were Pi config/env changes
-- Voice test needed after rebuild
-- Recording parity fix planned (3 files, not yet implemented)
+- **All commits pushed to origin**
+- Pi has `825ebc9` code (missing disconnect fix `ed07f27`) — needs rsync (with `--exclude='.env'`!) + rebuild
+- Pi `.env` was fixed this session: DATABASE_URL password restored, INTERNAL_SERVICE_KEY re-added
+- ngrok OAuth removed — must stay off for LiveKit agent callbacks
