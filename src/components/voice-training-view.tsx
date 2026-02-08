@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -145,8 +145,6 @@ function VoiceSessionUI({
     }
   }, [agentAttributes, sessionId, onSessionId, onError]);
 
-  const isAgentActive = agentState === "listening" || agentState === "thinking" || agentState === "speaking";
-
   return (
     <>
       {/* Connection Status Bar */}
@@ -196,28 +194,29 @@ function VoiceSessionUI({
             <p className="text-gray-400 font-marfa text-sm">
               {isFreePractice ? "Free Practice" : scenarioTitle}
             </p>
-
-            {/* LiveKit mic controls */}
-            <VoiceAssistantControlBar />
           </div>
         )}
       </div>
 
-      {/* Controls */}
-      <div className="p-4 border-t border-gray-700">
+      {/* Controls — End Session button is primary, mic toggle is secondary */}
+      <div className="p-4 border-t border-gray-700 space-y-3">
         {isConnected && !evaluating && (
           <button
             onClick={onGetFeedback}
-            disabled={!isAgentActive && agentState !== "idle"}
-            className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-lg
-                       font-marfa font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-brand-orange hover:bg-brand-orange-hover text-white py-3 rounded-lg
+                       font-marfa font-medium text-lg"
           >
-            Get Feedback
+            End Session &amp; Get Feedback
           </button>
         )}
         {evaluating && (
           <div className="text-center py-3">
             <span className="text-gray-400 font-marfa animate-pulse">Generating evaluation...</span>
+          </div>
+        )}
+        {isConnected && !evaluating && (
+          <div className="flex justify-center opacity-70">
+            <VoiceAssistantControlBar />
           </div>
         )}
       </div>
@@ -274,6 +273,7 @@ export default function VoiceTrainingView({
   const [evaluating, setEvaluating] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("disconnected");
   const [error, setError] = useState<string | null>(null);
+  const evaluationTriggered = useRef(false);
 
   const scenarioId = assignment?.scenarioId;
   const scenarioTitle = assignment?.scenarioTitle || "Untitled";
@@ -289,6 +289,7 @@ export default function VoiceTrainingView({
     setSessionId(null);
     setEvaluation(null);
     setConnectionStatus("connecting");
+    evaluationTriggered.current = false;
 
     try {
       const response = await fetch("/api/livekit/token", {
@@ -321,20 +322,17 @@ export default function VoiceTrainingView({
     }
   }, [userId, scenarioId, assignment]);
 
-  const handleDisconnect = useCallback(() => {
+  // Clear LiveKit connection state (does NOT trigger evaluation)
+  const clearConnection = useCallback(() => {
     setToken(null);
     setServerUrl(null);
     setConnectionStatus("disconnected");
   }, []);
 
-  // Disconnect first (triggers agent shutdown + transcript persistence), then evaluate
-  const handleGetFeedback = useCallback(async () => {
-    if (!sessionId) {
-      setError("Agent has not created a session yet. Please try again.");
-      return;
-    }
-
-    handleDisconnect();
+  // Auto-evaluate: any disconnect path triggers evaluation if we have a session
+  const triggerEvaluation = useCallback(async () => {
+    if (!sessionId || evaluationTriggered.current) return;
+    evaluationTriggered.current = true;
     setEvaluating(true);
 
     try {
@@ -345,11 +343,28 @@ export default function VoiceTrainingView({
     } finally {
       setEvaluating(false);
     }
-  }, [sessionId, userId, handleDisconnect]);
+  }, [sessionId, userId]);
+
+  // Called when LiveKit room disconnects (user clicked LiveKit disconnect, network drop, etc.)
+  const handleRoomDisconnected = useCallback(() => {
+    clearConnection();
+    triggerEvaluation();
+  }, [clearConnection, triggerEvaluation]);
+
+  // "End Session & Get Feedback" button — explicit user action
+  const handleGetFeedback = useCallback(() => {
+    clearConnection();
+    triggerEvaluation();
+  }, [clearConnection, triggerEvaluation]);
 
   const handleExit = () => {
-    handleDisconnect();
-    onComplete();
+    clearConnection();
+    // If session exists, evaluate in background so it shows up in history
+    if (sessionId && !evaluationTriggered.current) {
+      triggerEvaluation();
+    } else {
+      onComplete();
+    }
   };
 
   // Post-session evaluation modal (shown after disconnect + evaluation)
@@ -451,7 +466,7 @@ export default function VoiceTrainingView({
         connect={true}
         audio={true}
         video={false}
-        onDisconnected={handleDisconnect}
+        onDisconnected={handleRoomDisconnected}
         className="flex flex-col flex-1"
       >
         <VoiceSessionUI
