@@ -4,6 +4,8 @@ import prisma from '@/lib/prisma'
 import { apiSuccess, apiError, handleApiError } from '@/lib/api'
 import { ScenarioCategorySchema } from '@/lib/validators'
 import { requireExternalApiKey, EXTERNAL_SYSTEM_USER_ID, EXTERNAL_ACCOUNT_ID } from '@/lib/external-auth'
+import { writeFile, mkdir } from 'fs/promises'
+import path from 'path'
 
 // Request body schema for POST (snake_case for external API)
 const CreateScenarioSchema = z.object({
@@ -17,6 +19,7 @@ const CreateScenarioSchema = z.object({
   estimated_time: z.number().int().min(5).max(120).default(15),
   is_one_time: z.boolean().default(false),
   relevant_policy_sections: z.string().max(500).optional(),
+  evaluator_context: z.string().max(5000).optional(),
 })
 
 /**
@@ -138,6 +141,7 @@ export async function POST(request: NextRequest) {
       estimated_time,
       is_one_time,
       relevant_policy_sections,
+      evaluator_context,
     } = parsed.data
 
     // Create the scenario
@@ -169,6 +173,19 @@ export async function POST(request: NextRequest) {
         isOneTime: true,
       },
     })
+
+    // Save evaluator context as file if provided
+    if (evaluator_context) {
+      const contextDir = path.join(process.cwd(), 'uploads', 'evaluator_context', scenario.id)
+      await mkdir(contextDir, { recursive: true })
+      const contextPath = path.join(contextDir, 'context.txt')
+      await writeFile(contextPath, evaluator_context, 'utf-8')
+
+      await prisma.scenario.update({
+        where: { id: scenario.id },
+        data: { evaluatorContextPath: contextPath }
+      })
+    }
 
     return apiSuccess({ scenario: toExternalScenario(scenario) }, 201)
   } catch (error) {
