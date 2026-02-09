@@ -223,6 +223,11 @@ When `NEXT_PUBLIC_DEMO_MODE=false` (production):
 # Development
 npm run dev              # Start Next.js on port 3003
 
+# Pi Deployment (run from Mac)
+npm run deploy:pi        # Dry run — preview what would sync
+npm run deploy:pi:go     # Actually sync files (always excludes .env)
+npm run deploy:pi:full   # Sync + build + restart service on Pi
+
 # LiveKit Agent
 npm run agent:deploy     # Deploy voice agent to LiveKit Cloud
 
@@ -422,13 +427,13 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ---
 
-## Resume Context (2026-02-07 Late Evening)
+## Resume Context (2026-02-08 Afternoon)
 
-### Current State: Committed + Pushed — Pi Needs Rsync of Disconnect Fix
+### Current State: Two Bug Fixes Done, NOT YET COMMITTED
 
 **Branch:** `feat/40-post-session-analysis`
 **PR:** https://github.com/brad-protocall/proto-trainer-next/pull/43
-**Status:** All code committed and pushed to GitHub. Pi has older code (missing disconnect fix + INTERNAL_SERVICE_KEY was re-added manually).
+**Status:** Two fixes done locally (deploy script + transcript timing), not yet committed or pushed. Pi still has older code.
 
 ### Commits on Branch (all pushed)
 
@@ -439,31 +444,46 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 5. `1d238bb` — chore: add PTG users to seed and document voice/deployment lessons
 6. `825ebc9` — feat: add voice feedback option, flag notifications, and recording parity
 7. `ed07f27` — fix: any voice disconnect triggers evaluation (prevents orphaned sessions)
+8. `aff0374` — docs: update resume context with Pi deployment results and 3 critical bugs
+9. `f2d2bb9` — feat: accept evaluator_context in external scenarios API
 
-### Critical Bugs to Fix Next
+### Uncommitted Local Changes (2026-02-08)
 
-#### 1. Voice Recordings Not Created (CRITICAL)
+#### A. Safe Pi Deploy Script (DONE)
+- **`scripts/deploy-pi.sh`** — rsync wrapper that ALWAYS excludes `.env`
+- Dry run by default (`--go` to sync, `--full` to sync+build+restart)
+- Post-sync verification checks Pi's DATABASE_URL is intact
+- npm scripts: `deploy:pi`, `deploy:pi:go`, `deploy:pi:full`
+- **Needs `chmod +x scripts/deploy-pi.sh`** (was denied permission — npm scripts use `bash` directly so they work without it)
+
+#### B. Transcript Timing Race Condition Fix (DONE)
+- **`src/components/voice-training-view.tsx`** — fixed race between agent transcript persist and frontend evaluation request
+- Added 3s initial delay before first evaluation attempt (gives agent time to persist)
+- Increased retries from 5 to 8 (19s max total, up from 10s)
+- Added phase-aware loading messages: "Saving session..." → "Generating feedback..."
+- `onPhase` callback from `requestEvaluationWithRetry` → `evalPhase` state → UI
+- Better failure message mentioning transcripts and session history
+- `tsc --noEmit` and `npm run lint` both pass clean
+
+### Critical Bugs Status
+
+#### 1. Voice Recordings Not Created (CRITICAL — NOT FIXED)
 **Problem**: LiveKit agent does NOT create recordings. The old WebSocket implementation did, but recording logic was never ported to the LiveKit agent. `POST /api/recordings` endpoint exists but nothing calls it.
 **Impact**: No Play button on completed voice sessions (button is conditionally hidden when `recordingId` is null — `counselor-dashboard.tsx:768`).
 **Fix needed**: Either add recording capture to the LiveKit agent (save WAV, call POST /api/recordings) or use LiveKit's Egress service. Also: Play button should always show for voice sessions (disabled if no recording), not be hidden entirely.
 
-#### 2. Transcript Timing / Feedback Flow (CRITICAL)
-**Problem**: Transcripts aren't available when the user expects them. After ending a voice session, the user sees "Transcripts not yet available" — the LiveKit agent persists transcripts on shutdown, but there's a race condition between the agent's shutdown (which persists transcripts) and the frontend's evaluation request (which needs transcripts to generate feedback). The user should be able to see the transcript while waiting for feedback.
-**Root cause**: The agent's `addShutdownCallback` fires on disconnect, but the frontend also immediately triggers evaluation. The evaluation may start before transcripts are persisted.
+#### 2. Transcript Timing / Feedback Flow (FIXED — uncommitted)
+**Fix**: 3s initial delay + 8 retries (19s max) + phase-aware loading messages in `voice-training-view.tsx`. See "Uncommitted Local Changes" section B above.
 
-#### 3. External API Missing Evaluator Context Field (Future Session)
-**Problem**: `POST /api/external/scenarios` doesn't accept `evaluatorContext`. When the Personalized Training Guide creates scenarios via the external API, it can only send the scenario prompt but not evaluator-specific grading context.
-**Impact**: PTG-generated scenarios get generic evaluation instead of scenario-specific grading criteria.
-**Action**: Will be corrected in a future session. PTG team is generating code to add `evaluatorContext` support to the external scenarios endpoint.
+#### 3. External API Missing Evaluator Context Field (FIXED — committed `f2d2bb9`)
+**Fix**: `POST /api/external/scenarios` now accepts `evaluator_context` (string, max 5000 chars, optional). Saves to `uploads/evaluator_context/{id}/context.txt` and updates scenario's `evaluatorContextPath`. Full PPTA → Proto-Trainer → evaluation pipeline now works.
 
 ### Remaining TODO (Pick Up Here)
 
-1. **Fix voice recording bug** — See Critical Bug #1 above. Decide: agent-side recording or LiveKit Egress?
-2. **Fix transcript timing** — See Critical Bug #2 above. May need to delay evaluation until transcripts are confirmed persisted.
-3. **Rsync disconnect fix to Pi** — Pi still has old code without `ed07f27`. Next rsync MUST exclude `.env` (use `--exclude='.env'`).
-4. **Rebuild on Pi** — After rsync: `npm install && npx prisma generate && npm run build && sudo systemctl restart proto-trainer-next`
-5. **Accept evaluator context API change** — When PTG team sends the code, review and integrate.
-6. **Merge PR #43** — After critical bugs are fixed and tested on Pi
+1. **Commit local changes** — Deploy script + transcript timing fix need to be committed
+2. **Fix voice recording bug** — See Critical Bug #1 above. Decide: agent-side recording or LiveKit Egress?
+3. **Deploy to Pi** — Use new `npm run deploy:pi:full` script. Pi still has code from before `ed07f27`.
+4. **Merge PR #43** — After critical bugs are fixed and tested on Pi
 
 ### Ngrok Auth Gotcha (NEW — 2026-02-07)
 
@@ -507,8 +527,8 @@ Previously noticed higher latency, but testing tonight showed normal response ti
 14. **LiveKit agent stale container**: If voice shows "Waiting for agent..." but ngrok/Pi/secrets are all fine, the agent container may be stale. Fix: `cd livekit-agent && lk agent deploy`. See `docs/solutions/runtime-errors/livekit-agent-stale-container-dispatch-failure.md`.
 15. **`lk` CLI is on Mac only**: The LiveKit CLI is installed on your Mac, not on Pi. All `lk agent *` commands must run from Mac terminal.
 16. **ngrok OAuth blocks LiveKit agent**: If ngrok has `--oauth` enabled, all requests get 302 redirected to `idp.ngrok.com/oauth2`. The LiveKit agent can't authenticate, so callbacks fail silently. Detection: `curl -s -o /dev/null -w "%{http_code}" https://proto-trainer.ngrok.io/api/internal/sessions` — should return 405, not 302. Fix: restart ngrok without `--oauth`.
-17. **rsync sends local `.env` to Pi**: The rsync command sends `.env` which has LOCAL database credentials. Pi's DATABASE_URL uses password `Protocall`. Always verify after rsync: `cat ~/apps/proto-trainer-next/.env | grep DATABASE_URL`.
-18. **ALWAYS exclude `.env` from rsync**: Use `--exclude='.env'` in rsync command. This has caused issues TWICE (2026-02-06 and 2026-02-07) — overwriting Pi's DATABASE_URL password and deleting INTERNAL_SERVICE_KEY. The Pi `.env` must be managed separately from local.
+17. **rsync sends local `.env` to Pi**: SOLVED — use `npm run deploy:pi:full` instead of raw rsync. The deploy script (`scripts/deploy-pi.sh`) always excludes `.env` and verifies Pi credentials after sync. This caused outages TWICE before the script was created (2026-02-06 and 2026-02-07).
+18. **NEVER use raw rsync to deploy**: Always use `npm run deploy:pi` / `deploy:pi:go` / `deploy:pi:full`. The script excludes `.env`, `node_modules/`, `.next/`, and other platform-specific files. See `scripts/deploy-pi.sh` for the full exclude list.
 
 ### GitHub Issues
 
@@ -520,6 +540,7 @@ Previously noticed higher latency, but testing tonight showed normal response ti
 
 ### Previous Sessions
 
+- **2026-02-08 (Afternoon)**: Created safe Pi deploy script (`scripts/deploy-pi.sh`) — rsync wrapper that always excludes `.env`, dry run by default, post-sync verification. Fixed transcript timing race condition — 3s initial delay before first eval attempt, 8 retries (19s max), phase-aware loading messages ("Saving session..." → "Generating feedback..."). Interim work: evaluator_context support added to external scenarios API (`f2d2bb9`). Both fixes pass `tsc --noEmit` and `npm run lint` clean. NOT YET COMMITTED.
 - **2026-02-07 (Late Evening)**: Pi deployment tested — fixed .env overwrite (DATABASE_URL password + missing INTERNAL_SERVICE_KEY), rebuilt on Pi, voice working. Discovered 3 critical bugs: (1) no voice recordings since LiveKit migration, (2) transcript timing race condition, (3) external API missing evaluatorContext field. Committed disconnect fix (`ed07f27`), pushed all to GitHub. PTG-generated scenario worked via external API.
 - **2026-02-07 (Evening)**: Fixed voice disconnect flow — any disconnect now triggers evaluation (prevents orphaned sessions). Moved "End Session & Get Feedback" button above LiveKit controls. Discovered ngrok OAuth was blocking agent callbacks (302 redirect). Rsynced to Pi but NOT yet built/restarted. Latency investigation noted.
 - **2026-02-07 (Afternoon)**: Added voice technical issue feedback option, flag console log + email notifications (nodemailer), free practice recording parity fix. All committed locally (`825ebc9`), not yet pushed.
@@ -658,10 +679,10 @@ npm run dev               # Next.js on :3003
 
 ### Git Status
 
-- Latest commit: `ed07f27` (fix: any voice disconnect triggers evaluation)
+- Latest pushed commit: `f2d2bb9` (feat: accept evaluator_context in external scenarios API)
+- **Uncommitted local changes**: `scripts/deploy-pi.sh`, `package.json` (deploy scripts), `src/components/voice-training-view.tsx` (transcript timing fix), `CLAUDE.md` (this update)
 - Branch: `feat/40-post-session-analysis`
 - PR: #43 (https://github.com/brad-protocall/proto-trainer-next/pull/43)
-- **All commits pushed to origin**
-- Pi has `825ebc9` code (missing disconnect fix `ed07f27`) — needs rsync (with `--exclude='.env'`!) + rebuild
-- Pi `.env` was fixed this session: DATABASE_URL password restored, INTERNAL_SERVICE_KEY re-added
+- Pi has `825ebc9` code — use `npm run deploy:pi:full` to deploy (new safe script)
+- Pi `.env` was fixed last session: DATABASE_URL password restored, INTERNAL_SERVICE_KEY re-added
 - ngrok OAuth removed — must stay off for LiveKit agent callbacks
