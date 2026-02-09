@@ -15,7 +15,10 @@
     "db:migrate": "npx prisma migrate dev",
     "db:studio": "npx prisma studio",
     "db:seed": "npx tsx prisma/seed.ts",
-    "agent:deploy": "cd livekit-agent && lk agent deploy"
+    "agent:deploy": "cd livekit-agent && lk agent deploy",
+    "deploy:pi": "bash scripts/deploy-pi.sh",
+    "deploy:pi:go": "bash scripts/deploy-pi.sh --go",
+    "deploy:pi:full": "bash scripts/deploy-pi.sh --go --full"
   },
   "dependencies": {
     "@livekit/components-react": "^2.9.19",
