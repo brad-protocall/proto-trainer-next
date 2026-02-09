@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { notFound, forbidden, handleApiError } from '@/lib/api'
+import { badRequest, notFound, forbidden, handleApiError } from '@/lib/api'
 import { requireAuth, canAccessResource } from '@/lib/auth'
 import { createReadStream, statSync } from 'fs'
 import path from 'path'
@@ -20,6 +20,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const user = authResult.user
 
     const { id } = await params
+
+    // Validate id is a UUID (prevents Content-Disposition header injection)
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      return badRequest('Invalid recording ID format')
+    }
 
     // Find recording
     const recording = await prisma.recording.findUnique({
@@ -47,7 +52,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get file path with security validation
-    const allowedBaseDir = path.resolve(process.cwd(), 'recordings')
+    const allowedBaseDir = path.resolve(process.cwd(), 'uploads', 'recordings')
     const rawPath = path.join(process.cwd(), recording.filePath)
     const filePath = path.resolve(rawPath)
 
@@ -55,6 +60,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     if (!filePath.startsWith(allowedBaseDir + path.sep) && filePath !== allowedBaseDir) {
       return forbidden('Access to this file path is not allowed')
     }
+
+    // Detect content type from file extension
+    const isWebm = filePath.endsWith('.webm')
+    const contentType = isWebm ? 'audio/webm' : 'audio/wav'
+    const fileExt = isWebm ? 'webm' : 'wav'
 
     // Check if file exists and get stats
     let stat
@@ -71,9 +81,22 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-')
       const start = parseInt(parts[0], 10)
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1
+      const rawEnd = parts[1] ? parseInt(parts[1], 10) : fileSize - 1
 
-      if (start >= fileSize) {
+      // Validate parsed values
+      if (isNaN(start) || isNaN(rawEnd) || start < 0) {
+        return new Response('Range not satisfiable', {
+          status: 416,
+          headers: {
+            'Content-Range': `bytes */${fileSize}`,
+          },
+        })
+      }
+
+      // Clamp end to file bounds
+      const end = Math.min(rawEnd, fileSize - 1)
+
+      if (start >= fileSize || start > end) {
         return new Response('Range not satisfiable', {
           status: 416,
           headers: {
@@ -100,8 +123,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           'Content-Range': `bytes ${start}-${end}/${fileSize}`,
           'Accept-Ranges': 'bytes',
           'Content-Length': String(chunkSize),
-          'Content-Type': 'audio/wav',
-          'Content-Disposition': `attachment; filename="${id}.wav"`,
+          'Content-Type': contentType,
+          'Content-Disposition': `attachment; filename="${id}.${fileExt}"`,
         },
       })
     }
@@ -121,8 +144,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       headers: {
         'Accept-Ranges': 'bytes',
         'Content-Length': String(fileSize),
-        'Content-Type': 'audio/wav',
-        'Content-Disposition': `attachment; filename="${id}.wav"`,
+        'Content-Type': contentType,
+        'Content-Disposition': `attachment; filename="${id}.${fileExt}"`,
       },
     })
   } catch (error) {

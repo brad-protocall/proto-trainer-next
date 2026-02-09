@@ -11,11 +11,13 @@ import {
   BarVisualizer,
   VoiceAssistantControlBar,
   useConnectionState,
+  useLocalParticipant,
 } from "@livekit/components-react";
 import "@livekit/components-styles";
 import type { ConnectionState } from "livekit-client";
 import type { Assignment, ConnectionStatus, EvaluationResult } from "@/types";
 import SessionFeedback from "./session-feedback";
+import { useAudioRecorder } from "@/hooks/use-audio-recorder";
 
 // Shared constants matching the agent's AGENT_ATTRS
 const AGENT_ATTRS = {
@@ -129,6 +131,7 @@ function VoiceSessionUI({
   onSessionId,
   onError,
   onGetFeedback,
+  onStopRecording,
 }: {
   sessionId: string | null;
   evaluation: EvaluationResult | null;
@@ -140,11 +143,29 @@ function VoiceSessionUI({
   onSessionId: (id: string) => void;
   onError: (msg: string) => void;
   onGetFeedback: () => void;
+  onStopRecording: (fn: () => Promise<Blob | null>) => void;
 }) {
   const { state: agentState, audioTrack, agentAttributes } = useVoiceAssistant();
+  const { microphoneTrack } = useLocalParticipant();
   const lkConnectionState = useConnectionState();
   const connectionStatus = toConnectionStatus(lkConnectionState);
   const isConnected = connectionStatus === "connected";
+
+  // Extract MediaStreamTracks for recording
+  const localMSTrack = microphoneTrack?.track?.mediaStreamTrack ?? null;
+  const remoteMSTrack = audioTrack?.publication?.track?.mediaStreamTrack ?? null;
+
+  // Recording: starts when both tracks available, stops via stopRecording
+  const { stopRecording } = useAudioRecorder({
+    localTrack: localMSTrack,
+    remoteTrack: remoteMSTrack,
+    enabled: isConnected,
+  });
+
+  // Pass stopRecording to parent so it can stop before clearing connection
+  useEffect(() => {
+    onStopRecording(stopRecording);
+  }, [stopRecording, onStopRecording]);
 
   // Read session ID from agent participant attributes
   useEffect(() => {
@@ -291,6 +312,7 @@ export default function VoiceTrainingView({
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("disconnected");
   const [error, setError] = useState<string | null>(null);
   const evaluationTriggered = useRef(false);
+  const stopRecordingRef = useRef<(() => Promise<Blob | null>) | null>(null);
 
   const scenarioId = assignment?.scenarioId;
   const scenarioTitle = assignment?.scenarioTitle || "Untitled";
@@ -346,6 +368,33 @@ export default function VoiceTrainingView({
     setConnectionStatus("disconnected");
   }, []);
 
+  // Fire-and-forget recording upload. Runs during the 3s "saving" delay.
+  const uploadRecording = useCallback(
+    (blob: Blob, sid: string) => {
+      const formData = new FormData();
+      formData.append("file", blob, `${sid}.webm`);
+      formData.append("sessionId", sid);
+      fetch("/api/recordings/upload", {
+        method: "POST",
+        headers: { "x-user-id": userId },
+        body: formData,
+      }).catch((err) => console.warn("[Recording] Upload failed:", err));
+    },
+    [userId]
+  );
+
+  // Stop recording and fire-and-forget upload before clearing connection
+  const stopAndUploadRecording = useCallback(async () => {
+    try {
+      const blob = await stopRecordingRef.current?.();
+      if (blob && sessionId) {
+        uploadRecording(blob, sessionId);
+      }
+    } catch (err) {
+      console.warn("[Recording] Stop failed:", err);
+    }
+  }, [sessionId, uploadRecording]);
+
   // Auto-evaluate: any disconnect path triggers evaluation if we have a session
   const triggerEvaluation = useCallback(async () => {
     if (!sessionId || evaluationTriggered.current) return;
@@ -364,16 +413,18 @@ export default function VoiceTrainingView({
   }, [sessionId, userId]);
 
   // Called when LiveKit room disconnects (user clicked LiveKit disconnect, network drop, etc.)
-  const handleRoomDisconnected = useCallback(() => {
+  const handleRoomDisconnected = useCallback(async () => {
+    await stopAndUploadRecording();
     clearConnection();
     triggerEvaluation();
-  }, [clearConnection, triggerEvaluation]);
+  }, [stopAndUploadRecording, clearConnection, triggerEvaluation]);
 
   // "End Session & Get Feedback" button — explicit user action
-  const handleGetFeedback = useCallback(() => {
+  const handleGetFeedback = useCallback(async () => {
+    await stopAndUploadRecording();
     clearConnection();
     triggerEvaluation();
-  }, [clearConnection, triggerEvaluation]);
+  }, [stopAndUploadRecording, clearConnection, triggerEvaluation]);
 
   const handleExit = () => {
     clearConnection();
@@ -500,6 +551,7 @@ export default function VoiceTrainingView({
           onSessionId={setSessionId}
           onError={setError}
           onGetFeedback={handleGetFeedback}
+          onStopRecording={(fn) => { stopRecordingRef.current = fn; }}
         />
       </LiveKitRoom>
     </div>
