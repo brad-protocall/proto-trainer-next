@@ -67,8 +67,9 @@ function ConnectionStatusIndicator({ status }: { status: ConnectionStatus }) {
 
 /**
  * Evaluation retry logic: transcripts may still be persisting after disconnect.
- * Waits 3s initially (agent needs time to persist), then retries up to 8 times
- * with 2s delay on 425 (Too Early) responses. Total max wait: ~19s.
+ * Waits 5s initially (agent needs time to detect disconnect and start persisting),
+ * then retries up to 15 times with 3s delay on 425 (Too Early) responses.
+ * Total max wait: ~50s. Agent transcript persistence can take 20-30s for longer sessions.
  *
  * onPhase callback lets the UI show "Saving session..." vs "Generating feedback..."
  */
@@ -77,9 +78,9 @@ async function requestEvaluationWithRetry(
   userId: string,
   onPhase?: (phase: "saving" | "evaluating") => void,
 ): Promise<EvaluationResult> {
-  const initialDelayMs = 3000;
-  const maxRetries = 8;
-  const retryDelayMs = 2000;
+  const initialDelayMs = 5000;
+  const maxRetries = 15;
+  const retryDelayMs = 3000;
 
   // Wait for agent to persist transcripts before first attempt
   onPhase?.("saving");
@@ -114,7 +115,7 @@ async function requestEvaluationWithRetry(
     }
   }
 
-  throw new Error("Evaluation failed after retries — transcripts may not have saved. Please check your session history.");
+  throw new Error("Feedback is still being prepared. Go back to the dashboard and select 'Feedback' from the session menu.");
 }
 
 /**
@@ -497,6 +498,29 @@ export default function VoiceTrainingView({
               </p>
             </div>
           </div>
+        ) : error && sessionId ? (
+          /* Evaluation failed — show actionable message instead of "Start Session" */
+          <>
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center max-w-md px-4">
+                <p className="text-yellow-400 font-marfa text-lg mb-2">
+                  {error}
+                </p>
+                <p className="text-gray-500 font-marfa text-sm">
+                  Your session was saved. Feedback will be available from the dashboard shortly.
+                </p>
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-700">
+              <button
+                onClick={onComplete}
+                className="w-full bg-brand-orange hover:bg-brand-orange-hover text-white
+                           py-3 rounded-lg font-marfa font-medium"
+              >
+                Back to Dashboard
+              </button>
+            </div>
+          </>
         ) : (
           <>
             {/* Connect prompt */}
