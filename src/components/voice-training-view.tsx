@@ -65,14 +65,24 @@ function ConnectionStatusIndicator({ status }: { status: ConnectionStatus }) {
 
 /**
  * Evaluation retry logic: transcripts may still be persisting after disconnect.
- * Retries up to 5 times with 2s delay on 425 (Too Early) responses.
+ * Waits 3s initially (agent needs time to persist), then retries up to 8 times
+ * with 2s delay on 425 (Too Early) responses. Total max wait: ~19s.
+ *
+ * onPhase callback lets the UI show "Saving session..." vs "Generating feedback..."
  */
 async function requestEvaluationWithRetry(
   sessionId: string,
   userId: string,
+  onPhase?: (phase: "saving" | "evaluating") => void,
 ): Promise<EvaluationResult> {
-  const maxRetries = 5;
+  const initialDelayMs = 3000;
+  const maxRetries = 8;
   const retryDelayMs = 2000;
+
+  // Wait for agent to persist transcripts before first attempt
+  onPhase?.("saving");
+  await new Promise((resolve) => setTimeout(resolve, initialDelayMs));
+  onPhase?.("evaluating");
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     const response = await fetch(
@@ -85,7 +95,9 @@ async function requestEvaluationWithRetry(
 
     // 425 = transcripts not yet persisted, wait and retry
     if (response.status === 425 && attempt < maxRetries - 1) {
+      onPhase?.("saving");
       await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      onPhase?.("evaluating");
       continue;
     }
 
@@ -100,7 +112,7 @@ async function requestEvaluationWithRetry(
     }
   }
 
-  throw new Error("Evaluation failed after retries");
+  throw new Error("Evaluation failed after retries — transcripts may not have saved. Please check your session history.");
 }
 
 /**
@@ -110,6 +122,7 @@ function VoiceSessionUI({
   sessionId,
   evaluation,
   evaluating,
+  evalPhase,
   error,
   isFreePractice,
   scenarioTitle,
@@ -120,6 +133,7 @@ function VoiceSessionUI({
   sessionId: string | null;
   evaluation: EvaluationResult | null;
   evaluating: boolean;
+  evalPhase: "saving" | "evaluating";
   error: string | null;
   isFreePractice: boolean;
   scenarioTitle: string;
@@ -211,7 +225,9 @@ function VoiceSessionUI({
         )}
         {evaluating && (
           <div className="text-center py-3">
-            <span className="text-gray-400 font-marfa animate-pulse">Generating evaluation...</span>
+            <span className="text-gray-400 font-marfa animate-pulse">
+              {evalPhase === "saving" ? "Saving session..." : "Generating feedback..."}
+            </span>
           </div>
         )}
         {isConnected && !evaluating && (
@@ -271,6 +287,7 @@ export default function VoiceTrainingView({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
   const [evaluating, setEvaluating] = useState(false);
+  const [evalPhase, setEvalPhase] = useState<"saving" | "evaluating">("saving");
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("disconnected");
   const [error, setError] = useState<string | null>(null);
   const evaluationTriggered = useRef(false);
@@ -334,9 +351,10 @@ export default function VoiceTrainingView({
     if (!sessionId || evaluationTriggered.current) return;
     evaluationTriggered.current = true;
     setEvaluating(true);
+    setEvalPhase("saving");
 
     try {
-      const result = await requestEvaluationWithRetry(sessionId, userId);
+      const result = await requestEvaluationWithRetry(sessionId, userId, setEvalPhase);
       setEvaluation(result);
     } catch (evalError) {
       setError(evalError instanceof Error ? evalError.message : "Evaluation failed");
@@ -419,10 +437,12 @@ export default function VoiceTrainingView({
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
               <p className="text-gray-400 font-marfa animate-pulse text-lg">
-                Generating evaluation...
+                {evalPhase === "saving" ? "Saving session..." : "Generating feedback..."}
               </p>
               <p className="text-gray-500 font-marfa text-sm mt-2">
-                This may take a few moments
+                {evalPhase === "saving"
+                  ? "Finishing up your conversation"
+                  : "This may take a few moments"}
               </p>
             </div>
           </div>
@@ -473,6 +493,7 @@ export default function VoiceTrainingView({
           sessionId={sessionId}
           evaluation={evaluation}
           evaluating={evaluating}
+          evalPhase={evalPhase}
           error={error}
           isFreePractice={isFreePractice}
           scenarioTitle={scenarioTitle}
