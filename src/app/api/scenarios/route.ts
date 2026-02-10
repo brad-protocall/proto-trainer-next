@@ -3,6 +3,8 @@ import prisma from '@/lib/prisma'
 import { apiSuccess, apiError, handleApiError, notFound } from '@/lib/api'
 import { createScenarioSchema, scenarioQuerySchema } from '@/lib/validators'
 import { requireAuth, requireSupervisor } from '@/lib/auth'
+import { writeFile, mkdir } from 'fs/promises'
+import path from 'path'
 
 /**
  * GET /api/scenarios
@@ -119,6 +121,19 @@ export async function POST(request: NextRequest) {
         account: { select: { name: true } },
       },
     })
+
+    // Save evaluator context as file if provided
+    if (result.data.evaluatorContext) {
+      const contextDir = path.join(process.cwd(), 'uploads', 'evaluator_context', scenario.id)
+      await mkdir(contextDir, { recursive: true })
+      const contextPath = path.join(contextDir, 'context.txt')
+      await writeFile(contextPath, result.data.evaluatorContext, 'utf-8')
+
+      await prisma.scenario.update({
+        where: { id: scenario.id },
+        data: { evaluatorContextPath: contextPath }
+      })
+    }
 
     return apiSuccess(scenario, 201)
   } catch (error) {
