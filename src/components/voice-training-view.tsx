@@ -67,27 +67,30 @@ function ConnectionStatusIndicator({ status }: { status: ConnectionStatus }) {
 
 /**
  * Evaluation retry logic: transcripts may still be persisting after disconnect.
- * Waits 5s initially (agent needs time to detect disconnect and start persisting),
- * then retries up to 15 times with 3s delay on 425 (Too Early) responses.
- * Total max wait: ~50s. Agent transcript persistence can take 20-30s for longer sessions.
+ * Polls every 1.5s (fast) for transcripts, then waits for LLM evaluation.
+ * Total max wait: ~50s. Agent transcript persistence can take 20-30s.
  *
- * onPhase callback lets the UI show "Saving session..." vs "Generating feedback..."
+ * onPhase callback lets the UI show progress with elapsed time.
  */
 async function requestEvaluationWithRetry(
   sessionId: string,
   userId: string,
-  onPhase?: (phase: "saving" | "evaluating") => void,
+  onPhase?: (phase: "saving" | "evaluating", elapsedSec?: number) => void,
 ): Promise<EvaluationResult> {
-  const initialDelayMs = 5000;
-  const maxRetries = 15;
-  const retryDelayMs = 3000;
+  const initialDelayMs = 3000;
+  const maxRetries = 30;
+  const retryDelayMs = 1500;
+  const startTime = Date.now();
 
-  // Wait for agent to persist transcripts before first attempt
-  onPhase?.("saving");
+  const elapsed = () => Math.round((Date.now() - startTime) / 1000);
+
+  // Brief initial wait for agent to detect disconnect
+  onPhase?.("saving", 0);
   await new Promise((resolve) => setTimeout(resolve, initialDelayMs));
-  onPhase?.("evaluating");
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
+    onPhase?.("saving", elapsed());
+
     const response = await fetch(
       `/api/sessions/${sessionId}/evaluate`,
       {
@@ -98,9 +101,7 @@ async function requestEvaluationWithRetry(
 
     // 425 = transcripts not yet persisted, wait and retry
     if (response.status === 425 && attempt < maxRetries - 1) {
-      onPhase?.("saving");
       await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
-      onPhase?.("evaluating");
       continue;
     }
 
@@ -109,6 +110,8 @@ async function requestEvaluationWithRetry(
       throw new Error(errorData?.error?.message || "Evaluation request failed");
     }
 
+    // Transcripts found — now generating feedback (LLM call, ~10-15s)
+    onPhase?.("evaluating", elapsed());
     const data = await response.json();
     if (data.ok && data.data) {
       return { evaluation: data.data.evaluation?.evaluation ?? data.data.evaluation };
@@ -252,6 +255,7 @@ function VoiceSessionUI({
             </span>
           </div>
         )}
+
         {isConnected && !evaluating && (
           <div className="flex justify-center opacity-70">
             <VoiceAssistantControlBar />
@@ -310,9 +314,11 @@ export default function VoiceTrainingView({
   const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
   const [evaluating, setEvaluating] = useState(false);
   const [evalPhase, setEvalPhase] = useState<"saving" | "evaluating">("saving");
+  const [evalElapsed, setEvalElapsed] = useState(0);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("disconnected");
   const [error, setError] = useState<string | null>(null);
   const evaluationTriggered = useRef(false);
+  const connectionAttemptRef = useRef(0);
   const stopRecordingRef = useRef<(() => Promise<Blob | null>) | null>(null);
 
   const scenarioId = assignment?.scenarioId;
@@ -325,6 +331,7 @@ export default function VoiceTrainingView({
       return;
     }
 
+    connectionAttemptRef.current += 1;
     setError(null);
     setSessionId(null);
     setEvaluation(null);
@@ -402,9 +409,13 @@ export default function VoiceTrainingView({
     evaluationTriggered.current = true;
     setEvaluating(true);
     setEvalPhase("saving");
+    setEvalElapsed(0);
 
     try {
-      const result = await requestEvaluationWithRetry(sessionId, userId, setEvalPhase);
+      const result = await requestEvaluationWithRetry(sessionId, userId, (phase, elapsed) => {
+        setEvalPhase(phase);
+        if (elapsed !== undefined) setEvalElapsed(elapsed);
+      });
       setEvaluation(result);
     } catch (evalError) {
       setError(evalError instanceof Error ? evalError.message : "Evaluation failed");
@@ -414,11 +425,21 @@ export default function VoiceTrainingView({
   }, [sessionId, userId]);
 
   // Called when LiveKit room disconnects (user clicked LiveKit disconnect, network drop, etc.)
+  // If we never got a session ID (agent didn't join), auto-retry up to 3 times.
   const handleRoomDisconnected = useCallback(async () => {
+    if (!sessionId && connectionAttemptRef.current < 3) {
+      console.log(`[Voice] Agent didn't join, auto-retrying (attempt ${connectionAttemptRef.current + 1}/3)...`);
+      clearConnection();
+      // Brief delay before retry
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      handleConnect();
+      return;
+    }
+
     await stopAndUploadRecording();
     clearConnection();
     triggerEvaluation();
-  }, [stopAndUploadRecording, clearConnection, triggerEvaluation]);
+  }, [sessionId, stopAndUploadRecording, clearConnection, triggerEvaluation, handleConnect]);
 
   // "End Session & Get Feedback" button — explicit user action
   const handleGetFeedback = useCallback(async () => {
@@ -493,9 +514,14 @@ export default function VoiceTrainingView({
               </p>
               <p className="text-gray-500 font-marfa text-sm mt-2">
                 {evalPhase === "saving"
-                  ? "Finishing up your conversation"
+                  ? "Waiting for voice agent to finish processing"
                   : "This may take a few moments"}
               </p>
+              {evalElapsed > 5 && (
+                <p className="text-gray-600 font-marfa text-xs mt-3">
+                  {evalElapsed}s elapsed
+                </p>
+              )}
             </div>
           </div>
         ) : error && sessionId ? (
