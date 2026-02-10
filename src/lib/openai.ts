@@ -1,11 +1,22 @@
 import OpenAI from 'openai'
 import fs from 'fs'
-import type { TranscriptTurn, EvaluationResponse } from '@/types'
+import type { TranscriptTurn, EvaluationResponse, EvaluationFlag, FlagSeverity, SessionFlagType } from '@/types'
+import { SessionFlagTypeValues, FlagSeverityValues } from '@/lib/validators'
 import { loadPrompt, getEvaluatorPromptFile, getChextSimulatorPromptFile } from './prompts'
 
-// Initialize OpenAI client
-export const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+// Lazy-initialize OpenAI client (avoids crash during Next.js build when env var is absent)
+let _openai: OpenAI | null = null
+export function getOpenAI(): OpenAI {
+  if (!_openai) {
+    _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  }
+  return _openai
+}
+/** @deprecated Use getOpenAI() — kept for backward compatibility */
+export const openai = new Proxy({} as OpenAI, {
+  get(_, prop) {
+    return (getOpenAI() as unknown as Record<string | symbol, unknown>)[prop]
+  },
 })
 
 /**
@@ -76,55 +87,6 @@ export async function getChatCompletion(options: {
   })
 
   return response.choices[0].message.content ?? ''
-}
-
-// Helper for evaluation
-export async function getEvaluation(
-  transcript: string,
-  scenarioContext?: string,
-  options?: {
-    model?: string
-    promptId?: string
-  }
-) {
-  const model = options?.model ?? process.env.EVALUATOR_MODEL ?? 'gpt-4.1'
-
-  // Build the evaluation prompt
-  const systemPrompt = `You are an expert evaluator of crisis counselor training sessions.
-Analyze the transcript and provide:
-1. A detailed evaluation of the counselor's performance
-2. Specific strengths and areas for improvement
-3. An overall letter grade (A, B, C, D, or F)
-
-${scenarioContext ? `Scenario Context:\n${scenarioContext}\n` : ''}
-
-Format your response as follows:
-## Evaluation
-[Your detailed evaluation here]
-
-## Grade: [Letter Grade]`
-
-  const response = await openai.chat.completions.create({
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: `Transcript:\n${transcript}` },
-    ],
-    temperature: 0.3,
-    max_tokens: 2000,
-  })
-
-  const content = response.choices[0].message.content ?? ''
-
-  // Extract grade from response
-  const gradeMatch = content.match(/## Grade:\s*([A-F][+-]?)/i)
-  const grade = gradeMatch ? gradeMatch[1].toUpperCase() : null
-
-  return {
-    evaluation: content,
-    grade,
-    model,
-  }
 }
 
 // Helper for chat simulation (caller roleplay)
@@ -206,12 +168,67 @@ function gradeToScore(grade: string | null): number {
 }
 
 /**
- * Extract letter grade from markdown evaluation
+ * Extract letter grade from markdown evaluation.
+ * Uses the LAST match to avoid picking up injected grades from transcript content.
  */
 function extractGrade(evaluation: string): string | null {
-  // Look for "## Grade: X" pattern
-  const match = evaluation.match(/##\s*Grade:\s*([A-F][+-]?)/i)
-  return match ? match[1].toUpperCase() : null
+  const matches = [...evaluation.matchAll(/##\s*Grade:\s*([A-F][+-]?)/gi)]
+  if (matches.length === 0) return null
+  return matches[matches.length - 1][1].toUpperCase()
+}
+
+// Shared regex for the ## Flags section — used by both parseFlags and stripFlagsSection
+const FLAGS_SECTION_RE = /##\s+Flags\s*\n([\s\S]*?)(?=\n##\s|$)/
+
+/**
+ * Parse flags from evaluation markdown.
+ * Looks for "## Flags" section and extracts "- [SEVERITY] CATEGORY: description" lines.
+ * Returns empty array if no Flags section or parsing fails.
+ */
+export function parseFlags(evaluationMarkdown: string): EvaluationFlag[] {
+  const flagsSectionMatch = evaluationMarkdown.match(FLAGS_SECTION_RE)
+  if (!flagsSectionMatch) return []
+
+  const flagLines = flagsSectionMatch[1].trim().split('\n')
+  const flags: EvaluationFlag[] = []
+
+  for (const line of flagLines) {
+    // Allow optional whitespace before colon (LLM formatting tolerance)
+    const match = line.match(/^-\s*\[(CRITICAL|WARNING|INFO)\]\s*(\w+)\s*:\s*(.+)$/i)
+    if (!match) continue
+
+    const severity = match[1].toLowerCase()
+    const category = match[2].toLowerCase()
+
+    // Validate against known enums — skip invalid LLM output
+    if (!FlagSeverityValues.includes(severity as FlagSeverity)) continue
+    if (!SessionFlagTypeValues.includes(category as SessionFlagType)) continue
+
+    flags.push({
+      severity: severity as FlagSeverity,
+      category: category as SessionFlagType,
+      description: match[3].trim(),
+    })
+  }
+
+  return flags
+}
+
+/**
+ * Strip the "## Flags" section from evaluation markdown so it doesn't show to counselors.
+ */
+function stripFlagsSection(evaluation: string): string {
+  return evaluation.replace(FLAGS_SECTION_RE, '').trim()
+}
+
+/**
+ * Process raw LLM evaluation output: parse flags, strip flags section, extract grade.
+ */
+function processRawEvaluation(rawEvaluation: string): EvaluationResponse {
+  const flags = parseFlags(rawEvaluation)
+  const evaluation = stripFlagsSection(rawEvaluation)
+  const grade = extractGrade(evaluation)
+  return { evaluation, grade, numericScore: gradeToScore(grade), flags }
 }
 
 // Helper for generating evaluation (for session evaluate route)
@@ -262,14 +279,7 @@ export async function generateEvaluation(options: {
       temperature: 0.3,
     })
 
-    const evaluation = response.output_text ?? ''
-    const grade = extractGrade(evaluation)
-
-    return {
-      evaluation,
-      grade,
-      numericScore: gradeToScore(grade),
-    }
+    return processRawEvaluation(response.output_text ?? '')
   }
 
   // Standard chat completion when no vector store
@@ -283,12 +293,5 @@ export async function generateEvaluation(options: {
     max_tokens: 3000,
   })
 
-  const evaluation = response.choices[0].message.content ?? ''
-  const grade = extractGrade(evaluation)
-
-  return {
-    evaluation,
-    grade,
-    numericScore: gradeToScore(grade),
-  }
+  return processRawEvaluation(response.choices[0].message.content ?? '')
 }

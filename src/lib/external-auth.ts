@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { timingSafeEqual, createHash } from 'crypto'
 import { apiError } from '@/lib/api'
+import prisma from '@/lib/prisma'
 
 /**
  * Timing-safe API key comparison to prevent timing attacks.
@@ -59,3 +60,20 @@ export function validateInternalServiceKey(request: NextRequest): boolean {
 // Constants for external API system identity
 export const EXTERNAL_SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000099'
 export const EXTERNAL_ACCOUNT_ID = '00000000-0000-0000-0000-000000000020'
+
+/**
+ * Find or create a user by external ID.
+ * Uses Prisma upsert — atomic via the @unique constraint on externalId.
+ */
+export async function getOrCreateExternalUser(externalId: string) {
+  const displayName = externalId
+    .split('-')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
+
+  return prisma.user.upsert({
+    where: { externalId },
+    update: {},
+    create: { externalId, displayName, role: 'counselor' },
+  })
+}

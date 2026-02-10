@@ -15,7 +15,10 @@
     "db:migrate": "npx prisma migrate dev",
     "db:studio": "npx prisma studio",
     "db:seed": "npx tsx prisma/seed.ts",
-    "agent:deploy": "cd livekit-agent && lk agent deploy"
+    "agent:deploy": "cd livekit-agent && lk agent deploy",
+    "deploy:pi": "bash scripts/deploy-pi.sh",
+    "deploy:pi:go": "bash scripts/deploy-pi.sh --go",
+    "deploy:pi:full": "bash scripts/deploy-pi.sh --go --full"
   },
   "dependencies": {
     "@livekit/components-react": "^2.9.19",
@@ -25,6 +28,7 @@
     "livekit-client": "^2.17.0",
     "livekit-server-sdk": "^2.15.0",
     "next": "^15.1.5",
+    "nodemailer": "^8.0.1",
     "openai": "^4.77.4",
     "papaparse": "^5.5.3",
     "react": "^19.0.0",
@@ -36,6 +40,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
+    "@types/nodemailer": "^7.0.9",
     "@types/papaparse": "^5.5.2",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",

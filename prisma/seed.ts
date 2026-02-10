@@ -89,6 +89,27 @@ async function main() {
     },
   ]
 
+  // Personalized Training Guide learners (externalId must match counselor folder names)
+  const ptgLearners = [
+    { externalId: 'brad-pendergraft', displayName: 'Brad Pendergraft' },
+    { externalId: 'john-patterson', displayName: 'John Patterson' },
+    { externalId: 'sarah-martinez', displayName: 'Sarah Martinez' },
+    { externalId: 'tom-wilson', displayName: 'Tom Wilson' },
+    { externalId: 'phil-evans', displayName: 'Phil Evans' },
+  ]
+
+  for (const learner of ptgLearners) {
+    const user = await prisma.user.upsert({
+      where: { externalId: learner.externalId },
+      update: {},
+      create: {
+        ...learner,
+        role: 'counselor',
+      },
+    })
+    console.log(`PTG Learner: ${user.displayName}`)
+  }
+
   for (const counselor of counselors) {
     const user = await prisma.user.upsert({
       where: { id: counselor.id },

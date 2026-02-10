@@ -53,7 +53,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // For assignment-based sessions, check ownership via assignment
     // For free practice sessions, check via userId
     const ownerId = session.assignment?.counselorId ?? session.userId
-    if (!ownerId || !canAccessResource(user, ownerId)) {
+    if (!ownerId) {
+      return notFound('Session not found')
+    }
+    if (!canAccessResource(user, ownerId)) {
       return forbidden('Cannot evaluate another user\'s session')
     }
 
@@ -105,8 +108,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Save evaluation and update session/assignment in a single transaction.
     // Uses P2002 (unique constraint violation) catch for idempotency under concurrency.
+    // Timestamp captured AFTER LLM call so endedAt reflects actual completion time.
     const now = new Date()
-
     try {
       const evaluation = await prisma.$transaction(async (tx) => {
         const eval_ = await tx.evaluation.create({
@@ -131,6 +134,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           await tx.assignment.update({
             where: { id: session.assignmentId },
             data: { status: 'completed', completedAt: now },
+          })
+        }
+
+        // Save any flags detected during evaluation (same transaction = atomic)
+        if (evaluationResult.flags.length > 0) {
+          await tx.sessionFlag.createMany({
+            data: evaluationResult.flags.map(flag => ({
+              sessionId: id,
+              type: flag.category,
+              severity: flag.severity,
+              details: flag.description,
+            })),
           })
         }
 

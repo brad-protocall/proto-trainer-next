@@ -211,6 +211,51 @@ export interface BulkAssignmentResponse {
   assignments?: AssignmentResponse[];
 }
 
+// Flag enums — single source of truth is validators.ts (Zod-derived)
+import type { SessionFlagType, FlagSeverity, FlagStatus } from '@/lib/validators';
+export type { SessionFlagType, FlagSeverity, FlagStatus };
+
+export interface SessionFlag {
+  id: string;
+  sessionId: string;
+  type: SessionFlagType;
+  severity: FlagSeverity;
+  details: string;
+  metadata: Record<string, unknown> | null;
+  status: FlagStatus;
+  createdAt: string;
+}
+
+export interface EvaluationFlag {
+  severity: FlagSeverity;
+  category: SessionFlagType;
+  description: string;
+}
+
+// Supervisor flag list item (from GET /api/flags)
+export interface FlagListItem {
+  id: string;
+  sessionId: string;
+  type: SessionFlagType;
+  severity: FlagSeverity;
+  details: string;
+  status: FlagStatus;
+  createdAt: string;
+  session: {
+    id: string;
+    modelType: ModelType;
+    startedAt: string;
+    scenario: {
+      id: string;
+      title: string;
+    } | null;
+    user: {
+      id: string;
+      displayName: string | null;
+    } | null;
+  };
+}
+
 // OpenAI Evaluation Response
 export interface EvaluationResponse {
   /** Full markdown evaluation with all sections */
@@ -219,6 +264,8 @@ export interface EvaluationResponse {
   grade: string | null;
   /** Numeric score derived from grade (A=95, B=85, C=75, D=65, F=50) */
   numericScore: number;
+  /** Flags parsed from evaluation markdown (empty if no issues) */
+  flags: EvaluationFlag[];
 }
 
 // Session list item (from GET /api/sessions)
@@ -231,6 +278,7 @@ export interface SessionListItem {
   startedAt: string;
   endedAt: string | null;
   turnCount: number;
+  recordingId: string | null;
   scenario: {
     id: string;
     title: string;

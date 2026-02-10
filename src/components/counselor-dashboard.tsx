@@ -277,13 +277,8 @@ export default function CounselorDashboard({
     await fetchAndShowTranscript(assignment.sessionId);
   };
 
-  const handlePlayRecording = async (assignment: Assignment) => {
-    if (!assignment.recordingId) {
-      setError("No recording found for this assignment");
-      return;
-    }
-    const recordingId = assignment.recordingId;
-    setPlayingRecording(assignment.id);
+  const handlePlayRecording = async (recordingId: string, trackingId: string) => {
+    setPlayingRecording(trackingId);
     setError(null);
     try {
       // Fetch recording with auth header and create blob URL for playback
@@ -294,6 +289,10 @@ export default function CounselorDashboard({
       }
       const blob = await response.blob();
       const blobUrl = URL.createObjectURL(blob);
+
+      // Whitelist known audio types from blob (set by server Content-Type)
+      const knownTypes = ["audio/wav", "audio/webm", "audio/ogg"];
+      const audioType = knownTypes.includes(blob.type) ? blob.type : "audio/wav";
 
       // Open audio in new tab with blob URL
       const audioWindow = window.open("", "_blank");
@@ -306,7 +305,7 @@ export default function CounselorDashboard({
           <head><title>Recording Playback</title></head>
           <body style="display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#1a1a2e;">
             <audio id="audio" controls autoplay style="width:80%;max-width:600px;">
-              <source src="${blobUrl}" type="audio/wav">
+              <source src="${blobUrl}" type="${audioType}">
               Your browser does not support audio playback.
             </audio>
             <script>
@@ -549,6 +548,19 @@ export default function CounselorDashboard({
                     </div>
                   </div>
                   <div className="flex gap-2 flex-shrink-0">
+                    {/* Play button for all voice sessions (disabled when no recording) */}
+                    {session.modelType === "phone" && (
+                      <button
+                        onClick={() => handlePlayRecording(session.recordingId!, session.id)}
+                        disabled={!session.recordingId || playingRecording === session.id}
+                        title={session.recordingId ? "Play recording" : "No recording available"}
+                        className="bg-purple-600 hover:bg-purple-700 text-white
+                                   font-marfa font-bold py-1.5 px-3 rounded text-sm
+                                   disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {playingRecording === session.id ? "..." : "Play"}
+                      </button>
+                    )}
                     {session.evaluation && (
                       <button
                         onClick={() => fetchAndShowFeedback(session.id, session.evaluation!.id)}
@@ -757,11 +769,12 @@ export default function CounselorDashboard({
                     )}
                     {isCompleted && (
                       <div className="flex flex-nowrap gap-2 flex-shrink-0">
-                        {/* Play button - only show if recording exists */}
-                        {assignment.recordingId && (
+                        {/* Play button for all voice assignments (disabled when no recording) */}
+                        {assignment.scenarioMode === "phone" && (
                           <button
-                            onClick={() => handlePlayRecording(assignment)}
-                            disabled={playingRecording === assignment.id}
+                            onClick={() => handlePlayRecording(assignment.recordingId!, assignment.id)}
+                            disabled={!assignment.recordingId || playingRecording === assignment.id}
+                            title={assignment.recordingId ? "Play recording" : "No recording available"}
                             className="bg-purple-600 hover:bg-purple-700 text-white
                                        font-marfa font-bold py-2 px-3 rounded text-sm
                                        disabled:opacity-50 disabled:cursor-not-allowed"

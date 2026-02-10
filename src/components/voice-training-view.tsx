@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -11,10 +11,13 @@ import {
   BarVisualizer,
   VoiceAssistantControlBar,
   useConnectionState,
+  useLocalParticipant,
 } from "@livekit/components-react";
 import "@livekit/components-styles";
 import type { ConnectionState } from "livekit-client";
 import type { Assignment, ConnectionStatus, EvaluationResult } from "@/types";
+import SessionFeedback from "./session-feedback";
+import { useAudioRecorder } from "@/hooks/use-audio-recorder";
 
 // Shared constants matching the agent's AGENT_ATTRS
 const AGENT_ATTRS = {
@@ -44,15 +47,24 @@ function toConnectionStatus(state: ConnectionState): ConnectionStatus {
   }
 }
 
-function ConnectionStatusIndicator({ status }: { status: ConnectionStatus }) {
-  const statusConfig = {
-    disconnected: { color: "bg-gray-500", text: "Disconnected" },
-    connecting: { color: "bg-yellow-500 animate-pulse", text: "Connecting..." },
-    connected: { color: "bg-green-500", text: "Connected" },
-    error: { color: "bg-red-500", text: "Error" },
-  };
+function ConnectionStatusIndicator({ status, agentState }: { status: ConnectionStatus; agentState?: string }) {
+  // When agentState is provided, refine "connected" to show agent readiness
+  const isAgentReady = agentState === "listening" || agentState === "speaking" || agentState === "thinking";
 
-  const config = statusConfig[status];
+  let config;
+  if (status === "connected" && agentState !== undefined && !isAgentReady) {
+    config = { color: "bg-yellow-500 animate-pulse", text: "Preparing simulator..." };
+  } else if (status === "connected" && isAgentReady) {
+    config = { color: "bg-green-500", text: "Ready" };
+  } else {
+    const statusConfig = {
+      disconnected: { color: "bg-gray-500", text: "Disconnected" },
+      connecting: { color: "bg-yellow-500 animate-pulse", text: "Connecting..." },
+      connected: { color: "bg-green-500", text: "Connected" },
+      error: { color: "bg-red-500", text: "Error" },
+    };
+    config = statusConfig[status];
+  }
 
   return (
     <div className="flex items-center gap-2">
@@ -64,16 +76,30 @@ function ConnectionStatusIndicator({ status }: { status: ConnectionStatus }) {
 
 /**
  * Evaluation retry logic: transcripts may still be persisting after disconnect.
- * Retries up to 5 times with 2s delay on 425 (Too Early) responses.
+ * Polls every 1.5s (fast) for transcripts, then waits for LLM evaluation.
+ * Total max wait: ~50s. Agent transcript persistence can take 20-30s.
+ *
+ * onPhase callback lets the UI show progress with elapsed time.
  */
 async function requestEvaluationWithRetry(
   sessionId: string,
   userId: string,
+  onPhase?: (phase: "saving" | "evaluating", elapsedSec?: number) => void,
 ): Promise<EvaluationResult> {
-  const maxRetries = 5;
-  const retryDelayMs = 2000;
+  const initialDelayMs = 3000;
+  const maxRetries = 30;
+  const retryDelayMs = 1500;
+  const startTime = Date.now();
+
+  const elapsed = () => Math.round((Date.now() - startTime) / 1000);
+
+  // Brief initial wait for agent to detect disconnect
+  onPhase?.("saving", 0);
+  await new Promise((resolve) => setTimeout(resolve, initialDelayMs));
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
+    onPhase?.("saving", elapsed());
+
     const response = await fetch(
       `/api/sessions/${sessionId}/evaluate`,
       {
@@ -93,47 +119,66 @@ async function requestEvaluationWithRetry(
       throw new Error(errorData?.error?.message || "Evaluation request failed");
     }
 
+    // Transcripts found — now generating feedback (LLM call, ~10-15s)
+    onPhase?.("evaluating", elapsed());
     const data = await response.json();
     if (data.ok && data.data) {
       return { evaluation: data.data.evaluation?.evaluation ?? data.data.evaluation };
     }
   }
 
-  throw new Error("Evaluation failed after retries");
+  throw new Error("Feedback is still being prepared. Go back to the dashboard and select 'Feedback' from the session menu.");
 }
 
 /**
  * Inner component rendered inside <LiveKitRoom> to access LiveKit hooks.
  */
 function VoiceSessionUI({
-  userId,
   sessionId,
   evaluation,
+  evaluating,
+  evalPhase,
   error,
   isFreePractice,
   scenarioTitle,
   onSessionId,
   onError,
-  onEvaluation,
-  onDisconnect,
-  onComplete,
+  onGetFeedback,
+  onStopRecording,
 }: {
-  userId: string;
   sessionId: string | null;
   evaluation: EvaluationResult | null;
+  evaluating: boolean;
+  evalPhase: "saving" | "evaluating";
   error: string | null;
   isFreePractice: boolean;
   scenarioTitle: string;
   onSessionId: (id: string) => void;
   onError: (msg: string) => void;
-  onEvaluation: (result: EvaluationResult) => void;
-  onDisconnect: () => void;
-  onComplete: () => void;
+  onGetFeedback: () => void;
+  onStopRecording: (fn: () => Promise<Blob | null>) => void;
 }) {
   const { state: agentState, audioTrack, agentAttributes } = useVoiceAssistant();
+  const { microphoneTrack } = useLocalParticipant();
   const lkConnectionState = useConnectionState();
   const connectionStatus = toConnectionStatus(lkConnectionState);
   const isConnected = connectionStatus === "connected";
+
+  // Extract MediaStreamTracks for recording
+  const localMSTrack = microphoneTrack?.track?.mediaStreamTrack ?? null;
+  const remoteMSTrack = audioTrack?.publication?.track?.mediaStreamTrack ?? null;
+
+  // Recording: starts when both tracks available, stops via stopRecording
+  const { stopRecording } = useAudioRecorder({
+    localTrack: localMSTrack,
+    remoteTrack: remoteMSTrack,
+    enabled: isConnected,
+  });
+
+  // Pass stopRecording to parent so it can stop before clearing connection
+  useEffect(() => {
+    onStopRecording(stopRecording);
+  }, [stopRecording, onStopRecording]);
 
   // Read session ID from agent participant attributes
   useEffect(() => {
@@ -148,36 +193,12 @@ function VoiceSessionUI({
     }
   }, [agentAttributes, sessionId, onSessionId, onError]);
 
-  const handleGetFeedback = async () => {
-    if (!sessionId) {
-      onError("Agent has not created a session yet. Please try again.");
-      return;
-    }
-
-    // Disconnect room first -- triggers agent shutdown + transcript persistence
-    onDisconnect();
-
-    try {
-      const result = await requestEvaluationWithRetry(sessionId, userId);
-      onEvaluation(result);
-    } catch (evalError) {
-      onError(
-        evalError instanceof Error ? evalError.message : "Evaluation failed"
-      );
-    }
-  };
-
-  const isAgentActive = agentState === "listening" || agentState === "thinking" || agentState === "speaking";
-
   return (
     <>
       {/* Connection Status Bar */}
       <div className="px-4 py-2 border-b border-gray-700 flex items-center justify-between">
-        <ConnectionStatusIndicator status={connectionStatus} />
+        <ConnectionStatusIndicator status={connectionStatus} agentState={agentState} />
         <div className="flex items-center gap-2">
-          {agentState && isConnected && (
-            <span className="text-xs text-gray-500 font-marfa capitalize">{agentState}</span>
-          )}
           {error && (
             <span className="text-red-400 text-sm font-marfa">{error}</span>
           )}
@@ -213,56 +234,42 @@ function VoiceSessionUI({
                   ? "Caller is thinking..."
                   : agentState === "listening"
                     ? "Your turn to speak"
-                    : "Waiting for agent..."}
+                    : "Preparing roleplay simulator..."}
             </p>
             <p className="text-gray-400 font-marfa text-sm">
-              {isFreePractice ? "Free Practice" : scenarioTitle}
+              {agentState === "listening" || agentState === "speaking" || agentState === "thinking"
+                ? (isFreePractice ? "Free Practice" : scenarioTitle)
+                : "This usually takes a few seconds"}
             </p>
-
-            {/* LiveKit mic controls */}
-            <VoiceAssistantControlBar />
           </div>
         )}
       </div>
 
-      {/* Controls or Evaluation */}
-      {!evaluation ? (
-        <div className="p-4 border-t border-gray-700">
-          {isConnected && (
-            <button
-              onClick={handleGetFeedback}
-              disabled={!isAgentActive && agentState !== "idle"}
-              className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-lg
-                         font-marfa font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Get Feedback
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-gray-800 font-marfa">Session Feedback</h2>
-            </div>
-
-            <div className="prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-800">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {evaluation.evaluation}
-              </ReactMarkdown>
-            </div>
-
-            <div className="mt-6 flex justify-end">
-              <button
-                onClick={onComplete}
-                className="bg-brand-orange hover:bg-brand-orange-hover text-white px-6 py-2 rounded-lg font-marfa font-medium"
-              >
-                Back to Dashboard
-              </button>
-            </div>
+      {/* Controls — End Session button is primary, mic toggle is secondary */}
+      <div className="p-4 border-t border-gray-700 space-y-3">
+        {isConnected && !evaluating && (
+          <button
+            onClick={onGetFeedback}
+            className="w-full bg-brand-orange hover:bg-brand-orange-hover text-white py-3 rounded-lg
+                       font-marfa font-medium text-lg"
+          >
+            End Session &amp; Get Feedback
+          </button>
+        )}
+        {evaluating && (
+          <div className="text-center py-3">
+            <span className="text-gray-400 font-marfa animate-pulse">
+              {evalPhase === "saving" ? "Saving session..." : "Generating feedback..."}
+            </span>
           </div>
-        </div>
-      )}
+        )}
+
+        {isConnected && !evaluating && (
+          <div className="flex justify-center opacity-70">
+            <VoiceAssistantControlBar />
+          </div>
+        )}
+      </div>
 
       {/* LiveKit audio renderer (plays agent audio via WebRTC) */}
       <RoomAudioRenderer />
@@ -313,8 +320,14 @@ export default function VoiceTrainingView({
   const [serverUrl, setServerUrl] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
+  const [evaluating, setEvaluating] = useState(false);
+  const [evalPhase, setEvalPhase] = useState<"saving" | "evaluating">("saving");
+  const [evalElapsed, setEvalElapsed] = useState(0);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("disconnected");
   const [error, setError] = useState<string | null>(null);
+  const evaluationTriggered = useRef(false);
+  const connectionAttemptRef = useRef(0);
+  const stopRecordingRef = useRef<(() => Promise<Blob | null>) | null>(null);
 
   const scenarioId = assignment?.scenarioId;
   const scenarioTitle = assignment?.scenarioTitle || "Untitled";
@@ -326,10 +339,12 @@ export default function VoiceTrainingView({
       return;
     }
 
+    connectionAttemptRef.current += 1;
     setError(null);
     setSessionId(null);
     setEvaluation(null);
     setConnectionStatus("connecting");
+    evaluationTriggered.current = false;
 
     try {
       const response = await fetch("/api/livekit/token", {
@@ -362,18 +377,130 @@ export default function VoiceTrainingView({
     }
   }, [userId, scenarioId, assignment]);
 
-  const handleDisconnect = useCallback(() => {
+  // Clear LiveKit connection state (does NOT trigger evaluation)
+  const clearConnection = useCallback(() => {
     setToken(null);
     setServerUrl(null);
     setConnectionStatus("disconnected");
   }, []);
 
+  // Fire-and-forget recording upload. Runs during the 3s "saving" delay.
+  const uploadRecording = useCallback(
+    (blob: Blob, sid: string) => {
+      const formData = new FormData();
+      formData.append("file", blob, `${sid}.webm`);
+      formData.append("sessionId", sid);
+      fetch("/api/recordings/upload", {
+        method: "POST",
+        headers: { "x-user-id": userId },
+        body: formData,
+      }).catch((err) => console.warn("[Recording] Upload failed:", err));
+    },
+    [userId]
+  );
+
+  // Stop recording and fire-and-forget upload before clearing connection
+  const stopAndUploadRecording = useCallback(async () => {
+    try {
+      const blob = await stopRecordingRef.current?.();
+      if (blob && sessionId) {
+        uploadRecording(blob, sessionId);
+      }
+    } catch (err) {
+      console.warn("[Recording] Stop failed:", err);
+    }
+  }, [sessionId, uploadRecording]);
+
+  // Auto-evaluate: any disconnect path triggers evaluation if we have a session
+  const triggerEvaluation = useCallback(async () => {
+    if (!sessionId || evaluationTriggered.current) return;
+    evaluationTriggered.current = true;
+    setEvaluating(true);
+    setEvalPhase("saving");
+    setEvalElapsed(0);
+
+    try {
+      const result = await requestEvaluationWithRetry(sessionId, userId, (phase, elapsed) => {
+        setEvalPhase(phase);
+        if (elapsed !== undefined) setEvalElapsed(elapsed);
+      });
+      setEvaluation(result);
+    } catch (evalError) {
+      setError(evalError instanceof Error ? evalError.message : "Evaluation failed");
+    } finally {
+      setEvaluating(false);
+    }
+  }, [sessionId, userId]);
+
+  // Called when LiveKit room disconnects (user clicked LiveKit disconnect, network drop, etc.)
+  // If we never got a session ID (agent didn't join), auto-retry up to 3 times.
+  const handleRoomDisconnected = useCallback(async () => {
+    if (!sessionId && connectionAttemptRef.current < 3) {
+      console.log(`[Voice] Agent didn't join, auto-retrying (attempt ${connectionAttemptRef.current + 1}/3)...`);
+      clearConnection();
+      // Brief delay before retry
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      handleConnect();
+      return;
+    }
+
+    await stopAndUploadRecording();
+    clearConnection();
+    triggerEvaluation();
+  }, [sessionId, stopAndUploadRecording, clearConnection, triggerEvaluation, handleConnect]);
+
+  // "End Session & Get Feedback" button — explicit user action
+  const handleGetFeedback = useCallback(async () => {
+    await stopAndUploadRecording();
+    clearConnection();
+    triggerEvaluation();
+  }, [stopAndUploadRecording, clearConnection, triggerEvaluation]);
+
   const handleExit = () => {
-    handleDisconnect();
-    onComplete();
+    clearConnection();
+    // If session exists, evaluate in background so it shows up in history
+    if (sessionId && !evaluationTriggered.current) {
+      triggerEvaluation();
+    } else {
+      onComplete();
+    }
   };
 
-  // Pre-connection UI
+  // Post-session evaluation modal (shown after disconnect + evaluation)
+  if (evaluation && !token) {
+    return (
+      <div className="flex flex-col h-screen bg-brand-navy">
+        <VoiceTrainingHeader title={scenarioTitle} isFreePractice={isFreePractice} onExit={handleExit} />
+
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="bg-white rounded-lg max-w-2xl mx-auto p-6">
+            <h2 className="text-xl font-bold text-gray-800 font-marfa mb-4">Session Feedback</h2>
+
+            <div className="prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-800">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {evaluation.evaluation}
+              </ReactMarkdown>
+            </div>
+
+            {sessionId && (
+              <SessionFeedback sessionId={sessionId} userId={userId} variant="light" mode="phone" />
+            )}
+
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={onComplete}
+                className="bg-brand-orange hover:bg-brand-orange-hover text-white px-6 py-2 rounded-lg font-marfa font-medium"
+              >
+                Back to Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Pre-connection UI (or evaluating state)
   if (!token || !serverUrl) {
     return (
       <div className="flex flex-col h-screen bg-brand-navy">
@@ -387,27 +514,72 @@ export default function VoiceTrainingView({
           )}
         </div>
 
-        {/* Connect prompt */}
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <p className="text-gray-400 font-marfa mb-6">
-              Click &quot;Start Session&quot; to begin your voice training
-            </p>
+        {evaluating ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <p className="text-gray-400 font-marfa animate-pulse text-lg">
+                {evalPhase === "saving" ? "Saving session..." : "Generating feedback..."}
+              </p>
+              <p className="text-gray-500 font-marfa text-sm mt-2">
+                {evalPhase === "saving"
+                  ? "Waiting for voice agent to finish processing"
+                  : "This may take a few moments"}
+              </p>
+              {evalElapsed > 5 && (
+                <p className="text-gray-400 font-marfa text-base mt-3 tabular-nums">
+                  {evalElapsed}s elapsed
+                </p>
+              )}
+            </div>
           </div>
-        </div>
+        ) : error && sessionId ? (
+          /* Evaluation failed — show actionable message instead of "Start Session" */
+          <>
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center max-w-md px-4">
+                <p className="text-yellow-400 font-marfa text-lg mb-2">
+                  {error}
+                </p>
+                <p className="text-gray-500 font-marfa text-sm">
+                  Your session was saved. Feedback will be available from the dashboard shortly.
+                </p>
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-700">
+              <button
+                onClick={onComplete}
+                className="w-full bg-brand-orange hover:bg-brand-orange-hover text-white
+                           py-3 rounded-lg font-marfa font-medium"
+              >
+                Back to Dashboard
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Connect prompt */}
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center">
+                <p className="text-gray-400 font-marfa mb-6">
+                  Click &quot;Start Session&quot; to begin your voice training
+                </p>
+              </div>
+            </div>
 
-        {/* Start button */}
-        <div className="p-4 border-t border-gray-700">
-          <button
-            onClick={handleConnect}
-            disabled={connectionStatus === "connecting"}
-            className="w-full bg-brand-orange hover:bg-brand-orange-hover text-white
-                       py-3 rounded-lg font-marfa font-medium
-                       disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {connectionStatus === "connecting" ? "Connecting..." : "Start Session"}
-          </button>
-        </div>
+            {/* Start button */}
+            <div className="p-4 border-t border-gray-700">
+              <button
+                onClick={handleConnect}
+                disabled={connectionStatus === "connecting"}
+                className="w-full bg-brand-orange hover:bg-brand-orange-hover text-white
+                           py-3 rounded-lg font-marfa font-medium
+                           disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {connectionStatus === "connecting" ? "Connecting..." : "Start Session"}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     );
   }
@@ -423,21 +595,21 @@ export default function VoiceTrainingView({
         connect={true}
         audio={true}
         video={false}
-        onDisconnected={handleDisconnect}
+        onDisconnected={handleRoomDisconnected}
         className="flex flex-col flex-1"
       >
         <VoiceSessionUI
-          userId={userId}
           sessionId={sessionId}
           evaluation={evaluation}
+          evaluating={evaluating}
+          evalPhase={evalPhase}
           error={error}
           isFreePractice={isFreePractice}
           scenarioTitle={scenarioTitle}
           onSessionId={setSessionId}
           onError={setError}
-          onEvaluation={setEvaluation}
-          onDisconnect={handleDisconnect}
-          onComplete={onComplete}
+          onGetFeedback={handleGetFeedback}
+          onStopRecording={(fn) => { stopRecordingRef.current = fn; }}
         />
       </LiveKitRoom>
     </div>

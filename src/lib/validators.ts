@@ -141,6 +141,51 @@ export const createLiveKitTokenSchema = z.object({
   scenarioId: z.string().uuid().optional(),
 })
 
+// --- Session Flag enums (single source of truth) ---
+
+// Flag type — exhaustive list across all governance features
+export const SessionFlagTypeValues = [
+  // Counselor-reported
+  'user_feedback',
+  'ai_guidance_concern',
+  'voice_technical_issue',
+  // Safety (auto-detected)
+  'jailbreak',
+  'inappropriate',
+  'off_topic',
+  'pii_sharing',
+  'system_gaming',
+  // Consistency (auto-detected)
+  'role_confusion',
+  'prompt_leakage',
+  'character_break',
+  'behavior_omission',
+  'unauthorized_elements',
+] as const
+export const SessionFlagTypeSchema = z.enum(SessionFlagTypeValues)
+export type SessionFlagType = z.infer<typeof SessionFlagTypeSchema>
+
+export const FlagSeverityValues = ['info', 'warning', 'critical'] as const
+export const FlagSeveritySchema = z.enum(FlagSeverityValues)
+export type FlagSeverity = z.infer<typeof FlagSeveritySchema>
+
+export const FlagStatusValues = ['pending', 'reviewed', 'dismissed'] as const
+export const FlagStatusSchema = z.enum(FlagStatusValues)
+export type FlagStatus = z.infer<typeof FlagStatusSchema>
+
+// Counselor feedback submission
+export const createFlagSchema = z.object({
+  type: z.enum(['user_feedback', 'ai_guidance_concern', 'voice_technical_issue']),
+  details: z.string().min(1).max(1000),
+})
+
+// Supervisor flag query
+export const flagQuerySchema = z.object({
+  status: FlagStatusSchema.optional(),
+  severity: FlagSeveritySchema.optional(),
+  sessionId: z.string().uuid().optional(),
+})
+
 // Inferred types
 export type CreateUserInput = z.infer<typeof createUserSchema>
 export type UpdateUserInput = z.infer<typeof updateUserSchema>
