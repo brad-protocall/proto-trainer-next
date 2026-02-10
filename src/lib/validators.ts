@@ -186,6 +186,24 @@ export const flagQuerySchema = z.object({
   sessionId: z.string().uuid().optional(),
 })
 
+// Scenario generation from complaint text
+export const generateScenarioSchema = z.object({
+  sourceText: z.string().min(50).max(15000),
+  additionalInstructions: z.string().max(1000).optional(),
+})
+
+export const generatedScenarioSchema = z.object({
+  title: z.string().max(255),
+  description: z.string(),
+  prompt: z.string(),
+  evaluatorContext: z.string(),
+  category: ScenarioCategorySchema.nullable(),
+  skills: z.array(SkillSchema),
+})
+
+export type GenerateScenarioInput = z.infer<typeof generateScenarioSchema>
+export type GeneratedScenario = z.infer<typeof generatedScenarioSchema>
+
 // Inferred types
 export type CreateUserInput = z.infer<typeof createUserSchema>
 export type UpdateUserInput = z.infer<typeof updateUserSchema>
