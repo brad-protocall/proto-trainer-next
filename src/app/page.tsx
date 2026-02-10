@@ -40,7 +40,7 @@ export default function HomePage() {
           className="bg-blue-500 hover:bg-blue-600 text-white
                      font-marfa font-bold py-4 px-8 rounded-lg text-lg"
         >
-          Counselor
+          Learner
         </button>
       </div>
     </main>

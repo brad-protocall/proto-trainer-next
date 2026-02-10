@@ -47,15 +47,24 @@ function toConnectionStatus(state: ConnectionState): ConnectionStatus {
   }
 }
 
-function ConnectionStatusIndicator({ status }: { status: ConnectionStatus }) {
-  const statusConfig = {
-    disconnected: { color: "bg-gray-500", text: "Disconnected" },
-    connecting: { color: "bg-yellow-500 animate-pulse", text: "Connecting..." },
-    connected: { color: "bg-green-500", text: "Connected" },
-    error: { color: "bg-red-500", text: "Error" },
-  };
+function ConnectionStatusIndicator({ status, agentState }: { status: ConnectionStatus; agentState?: string }) {
+  // When agentState is provided, refine "connected" to show agent readiness
+  const isAgentReady = agentState === "listening" || agentState === "speaking" || agentState === "thinking";
 
-  const config = statusConfig[status];
+  let config;
+  if (status === "connected" && agentState !== undefined && !isAgentReady) {
+    config = { color: "bg-yellow-500 animate-pulse", text: "Preparing simulator..." };
+  } else if (status === "connected" && isAgentReady) {
+    config = { color: "bg-green-500", text: "Ready" };
+  } else {
+    const statusConfig = {
+      disconnected: { color: "bg-gray-500", text: "Disconnected" },
+      connecting: { color: "bg-yellow-500 animate-pulse", text: "Connecting..." },
+      connected: { color: "bg-green-500", text: "Connected" },
+      error: { color: "bg-red-500", text: "Error" },
+    };
+    config = statusConfig[status];
+  }
 
   return (
     <div className="flex items-center gap-2">
@@ -188,11 +197,8 @@ function VoiceSessionUI({
     <>
       {/* Connection Status Bar */}
       <div className="px-4 py-2 border-b border-gray-700 flex items-center justify-between">
-        <ConnectionStatusIndicator status={connectionStatus} />
+        <ConnectionStatusIndicator status={connectionStatus} agentState={agentState} />
         <div className="flex items-center gap-2">
-          {agentState && isConnected && (
-            <span className="text-xs text-gray-500 font-marfa capitalize">{agentState}</span>
-          )}
           {error && (
             <span className="text-red-400 text-sm font-marfa">{error}</span>
           )}
@@ -228,10 +234,12 @@ function VoiceSessionUI({
                   ? "Caller is thinking..."
                   : agentState === "listening"
                     ? "Your turn to speak"
-                    : "Waiting for agent..."}
+                    : "Preparing roleplay simulator..."}
             </p>
             <p className="text-gray-400 font-marfa text-sm">
-              {isFreePractice ? "Free Practice" : scenarioTitle}
+              {agentState === "listening" || agentState === "speaking" || agentState === "thinking"
+                ? (isFreePractice ? "Free Practice" : scenarioTitle)
+                : "This usually takes a few seconds"}
             </p>
           </div>
         )}
@@ -518,7 +526,7 @@ export default function VoiceTrainingView({
                   : "This may take a few moments"}
               </p>
               {evalElapsed > 5 && (
-                <p className="text-gray-600 font-marfa text-xs mt-3">
+                <p className="text-gray-400 font-marfa text-base mt-3 tabular-nums">
                   {evalElapsed}s elapsed
                 </p>
               )}
