@@ -156,6 +156,16 @@ export async function uploadPolicyToVectorStore(
 }
 
 /**
+ * Format transcript turns for LLM consumption.
+ * Maps 'user' role → 'Counselor' and 'assistant' role → 'Caller'.
+ */
+export function formatTranscriptForLLM(transcript: TranscriptTurn[]): string {
+  return transcript
+    .map((turn) => `${turn.role === 'user' ? 'Counselor' : 'Caller'}: ${turn.content}`)
+    .join('\n\n')
+}
+
+/**
  * Convert letter grade to numeric score
  */
 function gradeToScore(grade: string | null): number {
@@ -247,9 +257,7 @@ export async function generateEvaluation(options: {
   const systemPrompt = loadPrompt(getEvaluatorPromptFile())
 
   // Format transcript
-  const transcriptText = transcript
-    .map((turn) => `${turn.role === 'user' ? 'Counselor' : 'Caller'}: ${turn.content}`)
-    .join('\n\n')
+  const transcriptText = formatTranscriptForLLM(transcript)
 
   // Build user message with context
   let userMessage = ''
@@ -402,9 +410,7 @@ export async function analyzeSessionTranscript(options: {
   const truncated = truncateTranscript(transcript)
 
   // Format transcript (same format as generateEvaluation)
-  const transcriptText = truncated
-    .map((turn) => `${turn.role === 'user' ? 'Counselor' : 'Caller'}: ${turn.content}`)
-    .join('\n\n')
+  const transcriptText = formatTranscriptForLLM(truncated)
 
   // Build user message
   let userMessage = ''

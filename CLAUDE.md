@@ -57,6 +57,7 @@ OPENAI_API_KEY=sk-...
 # Models (optional, have defaults)
 CHAT_MODEL=gpt-4o
 EVALUATOR_MODEL=gpt-4o
+ANALYZER_MODEL=gpt-4.1-mini
 REALTIME_MODEL=gpt-4o-realtime-preview
 REALTIME_VOICE=shimmer
 
@@ -124,7 +125,8 @@ proto-trainer-next/
 | `/api/sessions` | POST | Create chat session |
 | `/api/sessions/[id]` | GET | Get session with transcript |
 | `/api/sessions/[id]/message` | POST | Send message, get AI response |
-| `/api/sessions/[id]/evaluate` | POST | Generate evaluation |
+| `/api/sessions/[id]/evaluate` | POST | Generate evaluation (triggers analysis fire-and-forget) |
+| `/api/sessions/[id]/analyze` | POST | Manual analysis trigger (supervisor-only, idempotent) |
 | `/api/livekit/token` | POST | Generate LiveKit room token for voice training |
 
 ### Internal API (X-Internal-Service-Key auth)
@@ -429,10 +431,10 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ## Resume Context (2026-02-10 Late Evening)
 
-### Current State: Feature #12 Complete, Compound Docs Written
+### Current State: Post-Session Analysis Scanning — Review Fixes
 
-**Branch:** `main` (PR #44 merged, compound docs merged)
-**Status:** Scenario Generation from Complaint feature fully implemented, code-reviewed (16 findings fixed), merged, deployed to Pi. Compound documentation session completed.
+**Branch:** `ralph/post-session-analysis-scanning` (review fixes in progress)
+**Status:** Ralph implemented 7 user stories (Prisma migration, types, prompt, LLM function, flag sources, analyze endpoint, fire-and-forget trigger). 6-agent code review completed. Fixing P1/P2 findings before PR creation.
 
 ### What Happened This Session (2026-02-10)
 
@@ -521,6 +523,7 @@ Previously noticed higher latency, but testing tonight showed normal response ti
 | #39 | Free practice dashboard visibility | **Done** (`5640615`) | #38 (done) |
 | #40 | Post-session analysis (feedback, safety, consistency) | **Done** (PR #43 merged, `bdfca2f`) | #38 (done) |
 | #12 | Scenario Generation from Complaint | **Done** (PR #44 merged, `b8dab3f`) | — |
+| — | Post-Session Analysis Scanning | **In Review** (branch: `ralph/post-session-analysis-scanning`) | #40 (done) |
 
 ### Previous Sessions
 
@@ -578,6 +581,17 @@ Previously noticed higher latency, but testing tonight showed normal response ti
 - `SessionFeedback` shared component with dark/light variants + `mode` prop (voice sessions get "Voice agent had technical issues" option)
 - Console log (`🚩`) on every flag creation; email notification via `src/lib/notifications.ts` (nodemailer, fire-and-forget)
 - Supervisor dashboard: "Flags" tab with red badge count
+
+**Post-Session Analysis Scanning (Defense-in-Depth):**
+- Separate LLM pass (gpt-4.1-mini) runs misuse + consistency checks AFTER every evaluation
+- Fire-and-forget: `analyzeSession().catch(...)` in evaluate route — does NOT block evaluation response
+- Shared helper `src/lib/analysis.ts` used by both fire-and-forget trigger and manual `POST /api/sessions/[id]/analyze` endpoint
+- `source` field on SessionFlag: `evaluation` | `analysis` | `user_feedback` — distinguishes flag origin
+- Idempotent: checks for existing `source='analysis'` flags before running
+- Creates `analysis_clean` flag as audit trail when no issues found
+- Anti-manipulation: prompt treats transcript as DATA, not instructions; zodResponseFormat constrains output
+- Env vars: `ANALYZER_MODEL` (default: gpt-4.1-mini), `SESSION_ANALYZER_PROMPT_FILE` (default: session-analyzer.txt)
+- Manual endpoint: supervisor-only, rate-limited (5/session/hour)
 
 ### LiveKit Reference
 
