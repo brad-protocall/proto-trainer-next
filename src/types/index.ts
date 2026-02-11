@@ -214,8 +214,8 @@ export interface BulkAssignmentResponse {
 }
 
 // Flag enums — single source of truth is validators.ts (Zod-derived)
-import type { SessionFlagType, FlagSeverity, FlagStatus } from '@/lib/validators';
-export type { SessionFlagType, FlagSeverity, FlagStatus };
+import type { SessionFlagType, FlagSeverity, FlagStatus, FlagSource } from '@/lib/validators';
+export type { SessionFlagType, FlagSeverity, FlagStatus, FlagSource };
 
 export interface SessionFlag {
   id: string;
@@ -225,6 +225,7 @@ export interface SessionFlag {
   details: string;
   metadata: Record<string, unknown> | null;
   status: FlagStatus;
+  source: FlagSource;
   createdAt: string;
 }
 
