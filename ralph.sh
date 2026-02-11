@@ -136,7 +136,11 @@ execute_story() {
     local log_file="$LOG_DIR/${story_id}-$(date '+%Y%m%d-%H%M%S').log"
 
     # Build the prompt for Claude
-    local prompt="You are executing user story $story_id for the Proto Trainer Next pre-handoff cleanup.
+    local project_desc=$(jq -r '.description' "$PRD_FILE")
+    local prompt="You are Ralph, an autonomous development agent executing user story $story_id for Proto Trainer Next.
+
+## Project Context
+$project_desc
 
 ## Story Details
 **ID:** $story_id
@@ -149,18 +153,34 @@ $criteria
 ## Notes
 $story_notes
 
-## Instructions
-1. Read the relevant files mentioned in the acceptance criteria
-2. Make the required changes
-3. Run \`npx tsc --noEmit\` to verify no type errors
-4. Run \`npm run lint\` if specified in criteria
-5. If all criteria pass, commit with the message specified in criteria
-6. Report success or failure with details
+## Before You Start
+1. Read CLAUDE.md for project conventions (especially Ralph Autonomous Agent Guidelines section)
+2. If a plan file is referenced in the notes, read it for detailed technical context
+3. Read the relevant source files mentioned in the acceptance criteria
 
-IMPORTANT:
+## Instructions
+1. Make the required changes following acceptance criteria exactly
+2. Run \`npx tsc --noEmit\` to verify no type errors after EVERY file change
+3. Run \`npm run lint\` if specified in criteria
+4. If all criteria pass, commit with the message specified in criteria
+5. Report success or failure with details
+
+## Key Codebase Patterns
+- Zod schemas in src/lib/validators.ts are single source of truth for types
+- Types re-exported from src/types/index.ts (import from validators, re-export)
+- Prompt files in prompts/ dir, loaded via accessor functions in src/lib/prompts.ts
+- LLM structured output: use getOpenAI().beta.chat.completions.parse() with zodResponseFormat
+- API routes modeled on src/app/api/sessions/[id]/evaluate/route.ts
+- API helpers: apiSuccess, apiError, handleApiError, notFound, forbidden from src/lib/api.ts
+- Auth: requireAuth() from src/lib/auth.ts
+- Rate limiting: checkRateLimit() from src/lib/rate-limit.ts
+
+## Critical Rules
+- Search for all usages before renaming anything: grep -r \"fieldName\" src/
+- Never use \`any\` type — always use typed interfaces
 - Auto-commit when all acceptance criteria pass
 - If you encounter errors, fix them before committing
-- Do not modify tests to make them pass - fix the implementation
+- Do not modify tests to make them pass — fix the implementation
 - Be precise and minimal in your changes"
 
     if [ "$DRY_RUN" = true ]; then
@@ -203,10 +223,12 @@ IMPORTANT:
 
 # Main execution loop
 main() {
+    local description=$(jq -r '.description' "$PRD_FILE")
+
     echo -e "${GREEN}"
     echo "╔═══════════════════════════════════════════════════════════════╗"
     echo "║                    RALPH AUTONOMOUS AGENT                      ║"
-    echo "║              Proto Trainer Next - Pre-Handoff Cleanup          ║"
+    echo "║  $description"
     echo "╚═══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 
@@ -219,7 +241,6 @@ main() {
     # Read stories from prd.json
     local total_stories=$(jq '.userStories | length' "$PRD_FILE")
     local project_name=$(jq -r '.project' "$PRD_FILE")
-    local description=$(jq -r '.description' "$PRD_FILE")
 
     echo ""
     echo -e "${BLUE}Project: $project_name${NC}"
