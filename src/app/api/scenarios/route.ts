@@ -129,10 +129,16 @@ export async function POST(request: NextRequest) {
       const contextPath = path.join(contextDir, 'context.txt')
       await writeFile(contextPath, result.data.evaluatorContext, 'utf-8')
 
-      await prisma.scenario.update({
+      const updatedScenario = await prisma.scenario.update({
         where: { id: scenario.id },
-        data: { evaluatorContextPath: contextPath }
+        data: { evaluatorContextPath: contextPath },
+        include: {
+          creator: { select: { displayName: true } },
+          account: { select: { name: true } },
+        },
       })
+
+      return apiSuccess(updatedScenario, 201)
     }
 
     return apiSuccess(scenario, 201)

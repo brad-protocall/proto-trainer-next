@@ -6,16 +6,25 @@ import { ScenarioCategoryValues } from "@/lib/validators";
 import type { GeneratedScenario } from "@/lib/validators";
 import { VALID_SKILLS } from "@/lib/skills";
 
+const CATEGORY_LABEL_OVERRIDES: Record<string, string> = {
+  tap: "TAP",
+  dv_assessment: "DV Assessment",
+};
+
+function formatCategoryLabel(value: string): string {
+  if (CATEGORY_LABEL_OVERRIDES[value]) return CATEGORY_LABEL_OVERRIDES[value];
+  return value
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
 const CATEGORY_OPTIONS: { value: string; label: string }[] = [
   { value: "", label: "-- None --" },
-  { value: "cohort_training", label: "Cohort Training" },
-  { value: "onboarding", label: "Onboarding" },
-  { value: "expert_skill_path", label: "Expert Skill Path" },
-  { value: "account_specific", label: "Account Specific" },
-  { value: "sales", label: "Sales" },
-  { value: "customer_facing", label: "Customer Facing" },
-  { value: "tap", label: "TAP" },
-  { value: "supervisors", label: "Supervisors" },
+  ...ScenarioCategoryValues.map((v) => ({
+    value: v,
+    label: formatCategoryLabel(v),
+  })),
 ];
 
 const SKILL_LABELS: Record<string, string> = {
@@ -172,7 +181,7 @@ export default function GenerateScenarioModal({
     }
   };
 
-  const updateField = (field: keyof EditableScenario, value: unknown) => {
+  const updateField = <K extends keyof EditableScenario>(field: K, value: EditableScenario[K]) => {
     if (!generatedScenario) return;
     setGeneratedScenario({ ...generatedScenario, [field]: value });
   };
@@ -280,7 +289,7 @@ export default function GenerateScenarioModal({
               <div className="flex items-center gap-3 py-4">
                 <div className="animate-spin rounded-full h-5 w-5 border-2 border-brand-orange border-t-transparent" />
                 <p className="text-gray-300 font-marfa">
-                  Generating scenario... This usually takes 3-5 seconds.
+                  Generating scenario... This usually takes 5-15 seconds.
                 </p>
               </div>
             )}

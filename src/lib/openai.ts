@@ -334,7 +334,7 @@ export async function generateScenarioFromComplaint(
     ],
     response_format: zodResponseFormat(generatedScenarioSchema, 'generated_scenario'),
     temperature: 0.7,
-  }, { timeout: 15000 })
+  }, { timeout: 30000 })
 
   const message = response.choices[0].message
 
