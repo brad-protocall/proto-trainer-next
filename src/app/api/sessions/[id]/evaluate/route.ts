@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, handleApiError, notFound, conflict, forbidden } from '@/lib/api'
 import { generateEvaluation } from '@/lib/openai'
 import { requireAuth, canAccessResource } from '@/lib/auth'
+import { analyzeSession } from '@/lib/analysis'
 import type { TranscriptTurn } from '@/types'
 
 interface RouteParams {
@@ -154,12 +155,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               type: flag.category,
               severity: flag.severity,
               details: flag.description,
+              source: 'evaluation' as const,
             })),
           })
         }
 
         return eval_
       })
+
+      // Fire-and-forget: run post-session analysis in background
+      // Analysis failures must NOT affect the evaluation response
+      analyzeSession(id, scenario ?? null, transcriptForEval)
+        .catch(err => console.error('Analysis failed for session ' + id + ':', err))
 
       return apiSuccess({
         evaluation: {

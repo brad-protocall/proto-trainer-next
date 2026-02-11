@@ -2,9 +2,9 @@ import OpenAI from 'openai'
 import { zodResponseFormat } from 'openai/helpers/zod'
 import fs from 'fs'
 import type { TranscriptTurn, EvaluationResponse, EvaluationFlag, FlagSeverity, SessionFlagType } from '@/types'
-import { SessionFlagTypeValues, FlagSeverityValues, generatedScenarioSchema } from '@/lib/validators'
-import type { GeneratedScenario } from '@/lib/validators'
-import { loadPrompt, getEvaluatorPromptFile, getChextSimulatorPromptFile, getScenarioGeneratorPromptFile } from './prompts'
+import { SessionFlagTypeValues, FlagSeverityValues, generatedScenarioSchema, analysisResultSchema } from '@/lib/validators'
+import type { GeneratedScenario, AnalysisResult } from '@/lib/validators'
+import { loadPrompt, getEvaluatorPromptFile, getChextSimulatorPromptFile, getScenarioGeneratorPromptFile, getSessionAnalyzerPromptFile } from './prompts'
 
 // Lazy-initialize OpenAI client (avoids crash during Next.js build when env var is absent)
 let _openai: OpenAI | null = null
@@ -156,6 +156,16 @@ export async function uploadPolicyToVectorStore(
 }
 
 /**
+ * Format transcript turns for LLM consumption.
+ * Maps 'user' role → 'Counselor' and 'assistant' role → 'Caller'.
+ */
+export function formatTranscriptForLLM(transcript: TranscriptTurn[]): string {
+  return transcript
+    .map((turn) => `${turn.role === 'user' ? 'Counselor' : 'Caller'}: ${turn.content}`)
+    .join('\n\n')
+}
+
+/**
  * Convert letter grade to numeric score
  */
 function gradeToScore(grade: string | null): number {
@@ -247,9 +257,7 @@ export async function generateEvaluation(options: {
   const systemPrompt = loadPrompt(getEvaluatorPromptFile())
 
   // Format transcript
-  const transcriptText = transcript
-    .map((turn) => `${turn.role === 'user' ? 'Counselor' : 'Caller'}: ${turn.content}`)
-    .join('\n\n')
+  const transcriptText = formatTranscriptForLLM(transcript)
 
   // Build user message with context
   let userMessage = ''
@@ -344,6 +352,96 @@ export async function generateScenarioFromComplaint(
 
   if (!message.parsed) {
     throw new ScenarioGenerationError('parse_failure', 'Failed to parse structured response from model')
+  }
+
+  return message.parsed
+}
+
+/**
+ * Error thrown by analyzeSessionTranscript when the model refuses or fails to parse.
+ */
+export class SessionAnalysisError extends Error {
+  type: 'refusal' | 'parse_failure'
+
+  constructor(type: 'refusal' | 'parse_failure', message: string) {
+    super(message)
+    this.name = 'SessionAnalysisError'
+    this.type = type
+  }
+}
+
+/**
+ * Truncate transcript to fit within cost/context limits.
+ * Takes at most 50 turns and 15,000 characters (whichever is smaller).
+ * Keeps the earliest turns first (most relevant for detecting misuse patterns).
+ */
+export function truncateTranscript(transcript: TranscriptTurn[]): TranscriptTurn[] {
+  const maxTurns = 50
+  const maxChars = 15000
+
+  const capped = transcript.slice(0, maxTurns)
+
+  let totalChars = 0
+  const result: TranscriptTurn[] = []
+  for (const turn of capped) {
+    totalChars += turn.content.length
+    if (totalChars > maxChars) break
+    result.push(turn)
+  }
+
+  return result
+}
+
+/**
+ * Analyze a session transcript for misuse and consistency issues.
+ * Uses zodResponseFormat for structured output (same pattern as generateScenarioFromComplaint).
+ * Model: gpt-4.1-mini (cheaper, sufficient for classification).
+ */
+export async function analyzeSessionTranscript(options: {
+  transcript: TranscriptTurn[]
+  scenarioPrompt: string | null
+  scenarioDescription: string | null
+}): Promise<AnalysisResult> {
+  const { transcript, scenarioPrompt, scenarioDescription } = options
+
+  const systemPrompt = loadPrompt(getSessionAnalyzerPromptFile())
+
+  // Truncate transcript to control cost
+  const truncated = truncateTranscript(transcript)
+
+  // Format transcript (same format as generateEvaluation)
+  const transcriptText = formatTranscriptForLLM(truncated)
+
+  // Build user message
+  let userMessage = ''
+
+  if (scenarioPrompt) {
+    userMessage += `## SCENARIO PROMPT\n${scenarioPrompt}\n\n`
+    if (scenarioDescription) {
+      userMessage += `## SCENARIO DESCRIPTION\n${scenarioDescription}\n\n`
+    }
+  }
+
+  userMessage += `## TRANSCRIPT\n\n${transcriptText}`
+
+  const response = await getOpenAI().beta.chat.completions.parse({
+    model: process.env.ANALYZER_MODEL ?? 'gpt-4.1-mini',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage },
+    ],
+    response_format: zodResponseFormat(analysisResultSchema, 'analysis_result'),
+    temperature: 0.3,
+  }, { timeout: 30000 })
+
+  const message = response.choices[0].message
+
+  if (message.refusal) {
+    throw new SessionAnalysisError('refusal', message.refusal)
+  }
+
+  if (!message.parsed) {
+    throw new SessionAnalysisError('parse_failure', 'Failed to parse structured response from model')
   }
 
   return message.parsed

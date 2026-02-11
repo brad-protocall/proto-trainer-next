@@ -161,6 +161,9 @@ export const SessionFlagTypeValues = [
   'character_break',
   'behavior_omission',
   'unauthorized_elements',
+  'difficulty_mismatch',
+  // Audit trail
+  'analysis_clean',
 ] as const
 export const SessionFlagTypeSchema = z.enum(SessionFlagTypeValues)
 export type SessionFlagType = z.infer<typeof SessionFlagTypeSchema>
@@ -172,6 +175,10 @@ export type FlagSeverity = z.infer<typeof FlagSeveritySchema>
 export const FlagStatusValues = ['pending', 'reviewed', 'dismissed'] as const
 export const FlagStatusSchema = z.enum(FlagStatusValues)
 export type FlagStatus = z.infer<typeof FlagStatusSchema>
+
+export const FlagSourceValues = ['evaluation', 'analysis', 'user_feedback'] as const
+export const FlagSourceSchema = z.enum(FlagSourceValues)
+export type FlagSource = z.infer<typeof FlagSourceSchema>
 
 // Counselor feedback submission
 export const createFlagSchema = z.object({
@@ -203,6 +210,35 @@ export const generatedScenarioSchema = z.object({
 
 export type GenerateScenarioInput = z.infer<typeof generateScenarioSchema>
 export type GeneratedScenario = z.infer<typeof generatedScenarioSchema>
+
+// Post-session analysis result (combined misuse + consistency scanning)
+export const analysisResultSchema = z.object({
+  misuse: z.object({
+    clean: z.boolean(),
+    findings: z.array(z.object({
+      category: z.enum(['jailbreak', 'inappropriate', 'off_topic', 'pii_sharing', 'system_gaming']),
+      severity: z.enum(['critical', 'warning', 'info']),
+      summary: z.string().max(200),
+      evidence: z.string().max(500),
+    })),
+  }),
+  consistency: z.object({
+    assessed: z.boolean(),
+    overallScore: z.number().min(1).max(10).nullable(),
+    findings: z.array(z.object({
+      category: z.enum([
+        'role_confusion', 'prompt_leakage', 'character_break',
+        'behavior_omission', 'unauthorized_elements', 'difficulty_mismatch',
+      ]),
+      severity: z.enum(['critical', 'warning', 'info']),
+      summary: z.string().max(200),
+      evidence: z.string().max(500),
+      promptReference: z.string().max(300),
+    })),
+    summary: z.string().max(500).nullable(),
+  }),
+})
+export type AnalysisResult = z.infer<typeof analysisResultSchema>
 
 // Inferred types
 export type CreateUserInput = z.infer<typeof createUserSchema>
