@@ -3,15 +3,24 @@ import path from 'path'
 
 const PROMPTS_DIR = path.join(process.cwd(), 'prompts')
 
+// Cache prompt file contents — prompts never change at runtime (only via deployment)
+const promptCache = new Map<string, string>()
+
 /**
  * Load a prompt file by name.
+ * Results are cached in memory after first read to avoid repeated file I/O.
  * Falls back to default if file not found.
  */
 export function loadPrompt(filename: string, fallback?: string): string {
+  const cached = promptCache.get(filename)
+  if (cached !== undefined) return cached
+
   const filePath = path.join(PROMPTS_DIR, filename)
 
   try {
-    return fs.readFileSync(filePath, 'utf-8').trim()
+    const content = fs.readFileSync(filePath, 'utf-8').trim()
+    promptCache.set(filename, content)
+    return content
   } catch {
     if (fallback !== undefined) {
       return fallback

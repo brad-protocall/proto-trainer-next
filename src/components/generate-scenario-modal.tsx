@@ -135,7 +135,7 @@ export default function GenerateScenarioModal({
           mode: generatedScenario.mode,
           category: generatedScenario.category || undefined,
           skills: generatedScenario.skills,
-          isOneTime: true,
+          isOneTime: true, // Generated scenarios default to one-time; promote to reusable via scenario edit
         }),
       });
 
@@ -167,7 +167,7 @@ export default function GenerateScenarioModal({
         "skills",
         current.filter((s) => s !== skill)
       );
-    } else if (current.length < 10) {
+    } else if (current.length < 10) { // LLM generates 1-5; cap at 10 so supervisors can add more during review
       updateField("skills", [...current, skill]);
     }
   };
