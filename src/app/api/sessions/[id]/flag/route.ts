@@ -59,6 +59,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         severity,
         details: parsed.details,
         status: 'pending',
+        source: 'user_feedback' as const,
       },
     })
 

@@ -154,6 +154,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               type: flag.category,
               severity: flag.severity,
               details: flag.description,
+              source: 'evaluation' as const,
             })),
           })
         }
