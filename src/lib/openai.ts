@@ -4,7 +4,7 @@ import fs from 'fs'
 import type { TranscriptTurn, EvaluationResponse, EvaluationFlag, FlagSeverity, SessionFlagType } from '@/types'
 import { SessionFlagTypeValues, FlagSeverityValues, generatedScenarioSchema } from '@/lib/validators'
 import type { GeneratedScenario } from '@/lib/validators'
-import { loadPrompt, getEvaluatorPromptFile, getChextSimulatorPromptFile } from './prompts'
+import { loadPrompt, getEvaluatorPromptFile, getChextSimulatorPromptFile, getScenarioGeneratorPromptFile } from './prompts'
 
 // Lazy-initialize OpenAI client (avoids crash during Next.js build when env var is absent)
 let _openai: OpenAI | null = null
@@ -319,7 +319,7 @@ export async function generateScenarioFromComplaint(
   sourceText: string,
   additionalInstructions?: string
 ): Promise<GeneratedScenario> {
-  const systemPrompt = loadPrompt('scenario-generator.txt')
+  const systemPrompt = loadPrompt(getScenarioGeneratorPromptFile())
 
   let userMessage = sourceText
   if (additionalInstructions) {

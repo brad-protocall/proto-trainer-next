@@ -4,7 +4,8 @@ import { useState } from "react";
 import { ScenarioCategory, ScenarioMode } from "@/types";
 import { ScenarioCategoryValues } from "@/lib/validators";
 import type { GeneratedScenario } from "@/lib/validators";
-import { VALID_SKILLS } from "@/lib/skills";
+import { VALID_SKILLS, type CrisisSkill } from "@/lib/skills";
+import { authFetch } from "@/lib/fetch";
 
 const CATEGORY_LABEL_OVERRIDES: Record<string, string> = {
   tap: "TAP",
@@ -27,23 +28,19 @@ const CATEGORY_OPTIONS: { value: string; label: string }[] = [
   })),
 ];
 
-const SKILL_LABELS: Record<string, string> = {
-  "risk-assessment": "Risk Assessment",
-  "safety-planning": "Safety Planning",
+const SKILL_LABEL_OVERRIDES: Record<string, string> = {
   "de-escalation": "De-escalation",
-  "active-listening": "Active Listening",
   "self-harm-assessment": "Self-Harm Assessment",
-  "substance-assessment": "Substance Assessment",
   "dv-assessment": "DV Assessment",
-  "grief-support": "Grief Support",
-  "anxiety-support": "Anxiety Support",
-  "rapport-building": "Rapport Building",
-  "call-routing": "Call Routing",
-  "medication-support": "Medication Support",
-  "resource-linkage": "Resource Linkage",
-  "boundary-setting": "Boundary Setting",
-  "termination": "Termination",
 };
+
+function formatSkillLabel(skill: string): string {
+  if (SKILL_LABEL_OVERRIDES[skill]) return SKILL_LABEL_OVERRIDES[skill];
+  return skill
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
 
 interface GenerateScenarioModalProps {
   isOpen: boolean;
@@ -52,15 +49,7 @@ interface GenerateScenarioModalProps {
   userId?: string;
 }
 
-interface EditableScenario {
-  title: string;
-  description: string;
-  prompt: string;
-  evaluatorContext: string;
-  mode: ScenarioMode;
-  category: ScenarioCategory | null;
-  skills: string[];
-}
+type EditableScenario = GeneratedScenario & { mode: ScenarioMode };
 
 export default function GenerateScenarioModal({
   isOpen,
@@ -96,14 +85,10 @@ export default function GenerateScenarioModal({
     setError(null);
 
     try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (userId) headers["x-user-id"] = userId;
-
-      const response = await fetch("/api/scenarios/generate", {
+      const response = await authFetch("/api/scenarios/generate", {
         method: "POST",
-        headers,
+        userId,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sourceText: complaintText,
           additionalInstructions: additionalInstructions || undefined,
@@ -117,15 +102,7 @@ export default function GenerateScenarioModal({
       }
 
       const generated: GeneratedScenario = data.data;
-      setGeneratedScenario({
-        title: generated.title,
-        description: generated.description,
-        prompt: generated.prompt,
-        evaluatorContext: generated.evaluatorContext,
-        mode: "phone",
-        category: generated.category,
-        skills: generated.skills,
-      });
+      setGeneratedScenario({ ...generated, mode: "phone" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed");
     } finally {
@@ -146,14 +123,10 @@ export default function GenerateScenarioModal({
     setError(null);
 
     try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (userId) headers["x-user-id"] = userId;
-
-      const response = await fetch("/api/scenarios", {
+      const response = await authFetch("/api/scenarios", {
         method: "POST",
-        headers,
+        userId,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: generatedScenario.title,
           description: generatedScenario.description,
@@ -186,7 +159,7 @@ export default function GenerateScenarioModal({
     setGeneratedScenario({ ...generatedScenario, [field]: value });
   };
 
-  const toggleSkill = (skill: string) => {
+  const toggleSkill = (skill: CrisisSkill) => {
     if (!generatedScenario) return;
     const current = generatedScenario.skills;
     if (current.includes(skill)) {
@@ -445,7 +418,7 @@ export default function GenerateScenarioModal({
                           : "bg-gray-700 text-gray-300 hover:bg-gray-600"
                       } disabled:opacity-50`}
                     >
-                      {SKILL_LABELS[skill] || skill}
+                      {formatSkillLabel(skill)}
                     </button>
                   );
                 })}

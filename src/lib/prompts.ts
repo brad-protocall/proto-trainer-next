@@ -64,3 +64,10 @@ export function getRealtimeCallerPromptFile(): string {
 export function getChextSimulatorPromptFile(): string {
   return process.env.CHEXT_SIMULATOR_PROMPT_FILE ?? 'chext-simulator.txt'
 }
+
+/**
+ * Get the scenario generator prompt filename from environment or default.
+ */
+export function getScenarioGeneratorPromptFile(): string {
+  return process.env.SCENARIO_GENERATOR_PROMPT_FILE ?? 'scenario-generator.txt'
+}

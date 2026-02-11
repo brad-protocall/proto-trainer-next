@@ -62,7 +62,7 @@ export const createScenarioSchema = z.object({
   accountId: z.string().uuid().optional().nullable(),
   isOneTime: z.boolean().default(false),
   relevantPolicySections: z.string().max(500).optional(),
-  evaluatorContext: z.string().optional(),
+  evaluatorContext: z.string().max(5000).optional(),
 })
 
 export const updateScenarioSchema = createScenarioSchema.partial()
@@ -194,11 +194,11 @@ export const generateScenarioSchema = z.object({
 
 export const generatedScenarioSchema = z.object({
   title: z.string().max(255),
-  description: z.string(),
-  prompt: z.string(),
-  evaluatorContext: z.string(),
+  description: z.string().max(2000),
+  prompt: z.string().max(10000),
+  evaluatorContext: z.string().max(5000),
   category: ScenarioCategorySchema.nullable(),
-  skills: z.array(SkillSchema),
+  skills: z.array(SkillSchema).max(10),
 })
 
 export type GenerateScenarioInput = z.infer<typeof generateScenarioSchema>
