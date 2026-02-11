@@ -172,11 +172,13 @@ model SessionFlag {
   details   String   // Human-readable description
   metadata  Json?    // Structured data for automated findings
   status    String   @default("pending") // FlagStatus: pending, reviewed, dismissed
+  source    String   @default("evaluation") @map("source") // FlagSource: evaluation, analysis, user_feedback
   createdAt DateTime @default(now()) @map("created_at")
 
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
   @@index([status, severity])
+  @@index([sessionId, source])
   @@map("session_flags")
 }
