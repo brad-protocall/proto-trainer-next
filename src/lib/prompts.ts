@@ -80,3 +80,10 @@ export function getChextSimulatorPromptFile(): string {
 export function getScenarioGeneratorPromptFile(): string {
   return process.env.SCENARIO_GENERATOR_PROMPT_FILE ?? 'scenario-generator.txt'
 }
+
+/**
+ * Get the session analyzer prompt filename from environment or default.
+ */
+export function getSessionAnalyzerPromptFile(): string {
+  return process.env.SESSION_ANALYZER_PROMPT_FILE ?? 'session-analyzer.txt'
+}
