@@ -367,6 +367,35 @@ const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 if (userId) headers['x-user-id'] = userId;
 ```
 
+#### 5. Fire-and-Forget + Shared Helper Pattern (2026-02-11)
+
+**Problem**: Ralph duplicated 90 lines of flag-building logic between the shared helper (`analysis.ts`) and the manual endpoint (`analyze/route.ts`).
+
+**Prevention**: When a background task needs to be triggerable both automatically AND manually:
+1. Put ALL business logic in a shared helper that returns a typed result
+2. Route handlers are thin wrappers: auth + rate limit + data loading + call helper + return response
+3. Fire-and-forget callers: `helper().catch(err => console.error(...))`
+
+```typescript
+// GOOD: Shared helper returns typed result
+export async function analyzeSession(...): Promise<AnalyzeResult | AnalyzeSkipped> {
+  // idempotency, LLM call, flag creation — ALL here
+}
+
+// Route: thin wrapper
+const result = await analyzeSession(id, scenario, transcript)
+return apiSuccess(result)
+
+// Fire-and-forget: same helper
+analyzeSession(id, scenario, transcript).catch(...)
+```
+
+#### 6. Dev Server Hot-Reload and Return Type Changes (2026-02-11)
+
+**Problem**: After refactoring `analyzeSession()` from `void` to returning a result type, the dev server returned 500 errors. Restarting the dev server fixed it.
+
+**Prevention**: When refactoring function return types that change from `void` to a concrete type, restart the dev server before E2E testing. Hot-reload doesn't always pick up structural type changes in server-side code.
+
 ### Migration Script Best Practices
 
 Scripts in `scripts/` that modify database records should follow these patterns:
@@ -431,35 +460,32 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ## Resume Context (2026-02-10 Late Evening)
 
-### Current State: Post-Session Analysis Scanning — Review Fixes
+### Current State: Post-Session Analysis Scanning Complete
 
-**Branch:** `ralph/post-session-analysis-scanning` (review fixes in progress)
-**Status:** Ralph implemented 7 user stories (Prisma migration, types, prompt, LLM function, flag sources, analyze endpoint, fire-and-forget trigger). 6-agent code review completed. Fixing P1/P2 findings before PR creation.
+**Branch:** `main` (PR #45 merged)
+**Status:** Post-session analysis scanning fully implemented, code-reviewed (6-agent review, all P1/P2 fixed), E2E tested, merged.
 
-### What Happened This Session (2026-02-10)
+### What Happened This Session (2026-02-11)
 
-1. **Ralph autonomous agent** implemented Feature #12 (Scenario Generation from Complaint) across 7 commits
-2. **6-agent code review** identified 16 findings (5 P1, 7 P2, 4 P3)
-3. **Fixed all 16 findings** in 3 commits (P1 → P2 → P3)
-4. **Created PR #44**, merged to main, deployed to Pi
-5. **Compound documentation session** — 4 parallel subagents captured lessons
+1. **Ralph autonomous agent** implemented Post-Session Analysis Scanning across 7 user stories (8 commits)
+2. **6-agent code review** (security, production-ready, architecture, performance, patterns, data integrity) — Production Ready score 20/25
+3. **Fixed 7 findings** in 1 commit: refactored analyze route to use shared helper (cut 90 lines), `requireSupervisor()`, `formatTranscriptForLLM()`, metadata key normalization, env vars documented
+4. **E2E tested**: API tests (analyze, idempotency, auth rejection) + browser test (full chat → evaluate → analysis flags in supervisor dashboard)
+5. **Created PR #45**, merged to main
 
-### Key Files Added/Modified (Feature #12)
+### Key Files Added/Modified (Analysis Scanning)
 
 | File | What |
 |------|------|
-| `src/components/generate-scenario-modal.tsx` | **New** — two-phase modal (paste complaint → review/edit AI output) |
-| `src/app/api/scenarios/generate/route.ts` | **New** — generation endpoint with rate limiting |
-| `src/lib/rate-limit.ts` | **New** — in-memory sliding window rate limiter |
-| `prompts/scenario-generator.txt` | **New** — system prompt for complaint-to-scenario AI |
-| `src/lib/openai.ts` | Added `generateScenarioFromComplaint()` using `zodResponseFormat` |
-| `src/lib/validators.ts` | Added generation schemas with `.max()` constraints |
-| `src/lib/prompts.ts` | Added `getScenarioGeneratorPromptFile()` accessor + prompt caching |
-| `src/app/api/sessions/[id]/evaluate/route.ts` | **Bug fix** — reads file content instead of passing path to LLM |
-| `docs/solutions/process-workflow/` | **New** — compound doc for this workflow |
-| `docs/solutions/prevention-strategies/ai-code-generation-prevention-checklist.md` | **New** — AI code review checklist |
+| `prisma/schema.prisma` + migration | `source` field on SessionFlag, composite index `[sessionId, source]` |
+| `prompts/session-analyzer.txt` | **New** — 126-line combined misuse + consistency prompt with anti-manipulation rules |
+| `src/lib/analysis.ts` | **New** — shared `analyzeSession()` helper (idempotent, returns typed result) |
+| `src/app/api/sessions/[id]/analyze/route.ts` | **New** — supervisor-only manual analysis endpoint |
+| `src/lib/openai.ts` | Added `analyzeSessionTranscript()`, `truncateTranscript()`, `formatTranscriptForLLM()` |
+| `src/lib/validators.ts` | Added `analysisResultSchema`, `FlagSourceValues`, new flag types |
+| `src/app/api/sessions/[id]/evaluate/route.ts` | Fire-and-forget analysis trigger after evaluation |
 
-### Pre-existing Bug Discovered During Review
+### Pre-existing Bug Discovered During Review (2026-02-10)
 
 The evaluate route was passing `evaluatorContextPath` (a file path string) directly to the LLM instead of reading the file contents. This meant evaluator context **never worked** for any scenario. Fixed in the P1 commit.
 
@@ -469,6 +495,8 @@ The evaluate route was passing `evaluatorContextPath` (a file path string) direc
 2. **Long-term feedback speed** — Have agent persist transcripts via data channel before disconnect instead of relying on shutdown callback (would eliminate 30-40s wait)
 3. **Home page label** — "Learner" button still routes to `/counselor` path internally (fine for now, rename route if needed later)
 4. **CLAUDE.md AI patterns** — The prevention checklist has ready-to-paste CLAUDE.md additions for AI code generation patterns (optional, do when next Ralph session is planned)
+5. **Deploy analysis to Pi** — Run `npm run deploy:pi:full` to sync + build + restart. Migration `20260211000000_add_flag_source` will apply on first `prisma migrate deploy`.
+6. **Analysis deferred P3s** — Force re-analysis param, catch `SessionAnalysisError` specifically, constant for min turns (3), filter `analysis_clean` from badge count
 
 ### Ngrok Auth Gotcha (NEW — 2026-02-07)
 
@@ -523,10 +551,11 @@ Previously noticed higher latency, but testing tonight showed normal response ti
 | #39 | Free practice dashboard visibility | **Done** (`5640615`) | #38 (done) |
 | #40 | Post-session analysis (feedback, safety, consistency) | **Done** (PR #43 merged, `bdfca2f`) | #38 (done) |
 | #12 | Scenario Generation from Complaint | **Done** (PR #44 merged, `b8dab3f`) | — |
-| — | Post-Session Analysis Scanning | **In Review** (branch: `ralph/post-session-analysis-scanning`) | #40 (done) |
+| — | Post-Session Analysis Scanning | **Done** (PR #45 merged) | #40 (done) |
 
 ### Previous Sessions
 
+- **2026-02-11 (Afternoon)**: Post-Session Analysis Scanning — Ralph implemented 7 user stories (8 commits), 6-agent code review (20/25 production ready), fixed 7 P1/P2 findings in 1 commit. E2E tested (API + browser). PR #45 merged. Key pattern: shared analysis helper with typed return values, called by both fire-and-forget trigger and manual endpoint. Lesson: dev server hot-reload doesn't always pick up refactored return types — restart needed for reliable E2E testing.
 - **2026-02-10 (Evening)**: Feature #12 — Ralph implemented scenario generation (7 commits), 6-agent code review found 16 findings (5 P1, 7 P2, 4 P3), all fixed in 3 commits. Discovered pre-existing bug: evaluate route passed file path to LLM instead of reading content. Created PR #44, merged, deployed to Pi. Ran compound documentation session (4 parallel subagents), wrote process-workflow doc + AI code generation prevention checklist. Latest on main: `49f896c`.
 - **2026-02-09 (Late Evening)**: Two UX fixes: voice readiness indicator + renamed Counselor to Learner. Merged PR #43 to main. Commit: `bdfca2f`.
 - **2026-02-09 (Evening)**: Pushed voice recording fix, then user-tested on Pi. Found two UX issues: (1) feedback took ~50s because agent transcript persistence is slow (30-40s through shutdown → ngrok pipeline), (2) voice connection needed 2-3 manual attempts. Fixed with: faster transcript polling (1.5s interval, 30 retries, elapsed timer), graceful failure screen with "Back to Dashboard", and auto-retry connection (up to 3 times, no user action). Three deploys to Pi total. Commits: `196c2b4`, `9836951`.
@@ -681,10 +710,11 @@ npm run dev               # Next.js on :3003
 
 ### Git Status
 
-- Latest commit on main: `49f896c` (merge of compound docs from ralph/scenario-generation-from-complaint)
+- Latest commit on main: `120fc41` (merge of PR #45 — post-session analysis scanning)
 - **PR #43 merged** — all 16 commits for #40 on main
 - **PR #44 merged** — all 10 commits for #12 (scenario generation) + compound docs on main
-- Branch: `main` (ralph/scenario-generation-from-complaint branch can be deleted)
+- **PR #45 merged** — 8 commits for post-session analysis scanning (defense-in-depth)
+- Branch: `main`
 - Pi deployed 2026-02-10 with scenario generation feature (PR #44 code, not compound docs — docs-only, no redeploy needed)
 - Pi `.env` was fixed previously: DATABASE_URL password correct, INTERNAL_SERVICE_KEY present
 - ngrok OAuth removed — must stay off for LiveKit agent callbacks
