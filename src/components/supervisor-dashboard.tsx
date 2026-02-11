@@ -14,6 +14,7 @@ import {
 import { createAuthFetch } from "@/lib/fetch";
 import { formatDate, getStatusColor } from "@/lib/format";
 import BulkImportModal from "./bulk-import-modal";
+import GenerateScenarioModal from "./generate-scenario-modal";
 
 // Categories must match ScenarioCategoryValues in src/lib/validators.ts
 const SCENARIO_CATEGORIES = [
@@ -93,6 +94,7 @@ export default function SupervisorDashboard() {
   const [scenarioFilter, setScenarioFilter] = useState<"global" | "one-time">("global");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [showBulkImport, setShowBulkImport] = useState(false);
+  const [showGenerate, setShowGenerate] = useState(false);
 
   // Account state
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -703,6 +705,13 @@ export default function SupervisorDashboard() {
                 </button>
               </>
             )}
+            <button
+              onClick={() => setShowGenerate(true)}
+              className="bg-purple-600 hover:bg-purple-500
+                       text-white font-marfa font-bold py-2 px-4 rounded"
+            >
+              Generate from Complaint
+            </button>
           </div>
 
           {loading ? (
@@ -1495,6 +1504,17 @@ export default function SupervisorDashboard() {
         onClose={() => setShowBulkImport(false)}
         onSuccess={() => {
           setShowBulkImport(false);
+          loadScenarios();
+        }}
+        userId={currentUser?.id}
+      />
+
+      {/* Generate from Complaint Modal */}
+      <GenerateScenarioModal
+        isOpen={showGenerate}
+        onClose={() => setShowGenerate(false)}
+        onSuccess={() => {
+          setShowGenerate(false);
           loadScenarios();
         }}
         userId={currentUser?.id}

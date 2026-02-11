@@ -1,8 +1,10 @@
 import OpenAI from 'openai'
+import { zodResponseFormat } from 'openai/helpers/zod'
 import fs from 'fs'
 import type { TranscriptTurn, EvaluationResponse, EvaluationFlag, FlagSeverity, SessionFlagType } from '@/types'
-import { SessionFlagTypeValues, FlagSeverityValues } from '@/lib/validators'
-import { loadPrompt, getEvaluatorPromptFile, getChextSimulatorPromptFile } from './prompts'
+import { SessionFlagTypeValues, FlagSeverityValues, generatedScenarioSchema } from '@/lib/validators'
+import type { GeneratedScenario } from '@/lib/validators'
+import { loadPrompt, getEvaluatorPromptFile, getChextSimulatorPromptFile, getScenarioGeneratorPromptFile } from './prompts'
 
 // Lazy-initialize OpenAI client (avoids crash during Next.js build when env var is absent)
 let _openai: OpenAI | null = null
@@ -294,4 +296,55 @@ export async function generateEvaluation(options: {
   })
 
   return processRawEvaluation(response.choices[0].message.content ?? '')
+}
+
+/**
+ * Error thrown by generateScenarioFromComplaint when the model refuses or fails to parse.
+ */
+export class ScenarioGenerationError extends Error {
+  type: 'refusal' | 'parse_failure'
+
+  constructor(type: 'refusal' | 'parse_failure', message: string) {
+    super(message)
+    this.name = 'ScenarioGenerationError'
+    this.type = type
+  }
+}
+
+/**
+ * Generate a training scenario from complaint/case text using structured output.
+ * Uses zodResponseFormat to guarantee the response matches GeneratedScenario schema.
+ */
+export async function generateScenarioFromComplaint(
+  sourceText: string,
+  additionalInstructions?: string
+): Promise<GeneratedScenario> {
+  const systemPrompt = loadPrompt(getScenarioGeneratorPromptFile())
+
+  let userMessage = sourceText
+  if (additionalInstructions) {
+    userMessage += `\n\n## ADDITIONAL INSTRUCTIONS\n${additionalInstructions}`
+  }
+
+  const response = await getOpenAI().beta.chat.completions.parse({
+    model: process.env.CHAT_MODEL ?? 'gpt-4.1',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage },
+    ],
+    response_format: zodResponseFormat(generatedScenarioSchema, 'generated_scenario'),
+    temperature: 0.7,
+  }, { timeout: 30000 })
+
+  const message = response.choices[0].message
+
+  if (message.refusal) {
+    throw new ScenarioGenerationError('refusal', message.refusal)
+  }
+
+  if (!message.parsed) {
+    throw new ScenarioGenerationError('parse_failure', 'Failed to parse structured response from model')
+  }
+
+  return message.parsed
 }

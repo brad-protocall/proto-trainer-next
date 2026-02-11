@@ -6,6 +6,8 @@ export type ApiErrorType =
   | "FORBIDDEN"
   | "CONFLICT"
   | "TOO_EARLY"
+  | "RATE_LIMITED"
+  | "UPSTREAM_ERROR"
   | "INTERNAL_ERROR";
 
 export interface ApiError {

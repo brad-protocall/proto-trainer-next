@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { Prisma } from '@prisma/client'
+import { readFile } from 'fs/promises'
 import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, handleApiError, notFound, conflict, forbidden } from '@/lib/api'
 import { generateEvaluation } from '@/lib/openai'
@@ -94,7 +95,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const scenario = session.assignment?.scenario ?? session.scenario
     const scenarioTitle = scenario?.title ?? 'Free Practice Session'
     const scenarioDescription = scenario?.description ?? null
-    const scenarioEvaluatorContext = scenario?.evaluatorContextPath ?? null // TODO: Load from file if needed
+    // Load evaluator context from file if a path is stored
+    let scenarioEvaluatorContext: string | null = null
+    if (scenario?.evaluatorContextPath) {
+      try {
+        scenarioEvaluatorContext = await readFile(scenario.evaluatorContextPath, 'utf-8')
+      } catch {
+        // File missing or unreadable — evaluate without context rather than failing
+      }
+    }
     const vectorStoreId = scenario?.account?.vectorStoreId ?? undefined
 
     // Generate evaluation using OpenAI
