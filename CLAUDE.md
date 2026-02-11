@@ -427,64 +427,46 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ---
 
-## Resume Context (2026-02-09 Evening)
+## Resume Context (2026-02-10 Late Evening)
 
-### Current State: All Bugs Fixed, UX Polished, Awaiting User Testing
+### Current State: Feature #12 Complete, Compound Docs Written
 
-**Branch:** `feat/40-post-session-analysis`
-**PR:** https://github.com/brad-protocall/proto-trainer-next/pull/43
-**Status:** All 3 critical bugs fixed. Voice UX improved (faster polling, auto-retry connection). Pi redeployed with all 15 commits (2026-02-09). Awaiting user testing tonight.
+**Branch:** `main` (PR #44 merged, compound docs merged)
+**Status:** Scenario Generation from Complaint feature fully implemented, code-reviewed (16 findings fixed), merged, deployed to Pi. Compound documentation session completed.
 
-### Commits on Branch (all pushed)
+### What Happened This Session (2026-02-10)
 
-1. `e4763bf` — feat: add post-session analysis with feedback, safety, and consistency checks (#40)
-2. `7162445` — chore: add session_flags migration for Pi deployment
-3. `d69f267` — fix: lazy-init OpenAI client and exclude livekit-agent from tsconfig
-4. `1dd7b2f` — feat: auto-provision external users on first API call
-5. `1d238bb` — chore: add PTG users to seed and document voice/deployment lessons
-6. `825ebc9` — feat: add voice feedback option, flag notifications, and recording parity
-7. `ed07f27` — fix: any voice disconnect triggers evaluation (prevents orphaned sessions)
-8. `aff0374` — docs: update resume context with Pi deployment results and 3 critical bugs
-9. `f2d2bb9` — feat: accept evaluator_context in external scenarios API
-10. `c01302b` — feat: add safe Pi deploy script with .env protection
-11. `1aecb3d` — fix: transcript timing race condition with phase-aware loading
-12. `afe1570` — docs: update resume context with deploy script and timing fix
-13. `9f0dbfb` — feat: browser-side voice recording with P1 security fixes
-14. `196c2b4` — fix: increase transcript retry window to 50s and improve failure UX
-15. `9836951` — fix: faster transcript polling (1.5s) and auto-retry voice connection
+1. **Ralph autonomous agent** implemented Feature #12 (Scenario Generation from Complaint) across 7 commits
+2. **6-agent code review** identified 16 findings (5 P1, 7 P2, 4 P3)
+3. **Fixed all 16 findings** in 3 commits (P1 → P2 → P3)
+4. **Created PR #44**, merged to main, deployed to Pi
+5. **Compound documentation session** — 4 parallel subagents captured lessons
 
-### Critical Bugs Status (All Fixed)
+### Key Files Added/Modified (Feature #12)
 
-#### 1. Voice Recordings Not Created (FIXED — `9f0dbfb`)
-**Problem**: LiveKit agent doesn't create recordings (old WebSocket logic was never ported).
-**Short-term fix**: Browser-side recording using AudioContext + MediaRecorder.
-- New hook: `src/hooks/use-audio-recorder.ts` — mixes local mic + remote agent audio tracks, outputs webm/opus
-- New endpoint: `POST /api/recordings/upload` — FormData upload with user auth, 25MB limit, upsert to Recording model
-- `voice-training-view.tsx` — starts recording on connect, uploads blob on session end
-- Play button now always visible for voice sessions (disabled state when no recording yet)
-- Dashboard uses Content-Type whitelist for audio playback security
-- P1 security fixes on download route: async fs/promises, UUID validation, Range header validation
-**Long-term**: Consider LiveKit Egress for server-side recording (higher quality, no browser dependency)
+| File | What |
+|------|------|
+| `src/components/generate-scenario-modal.tsx` | **New** — two-phase modal (paste complaint → review/edit AI output) |
+| `src/app/api/scenarios/generate/route.ts` | **New** — generation endpoint with rate limiting |
+| `src/lib/rate-limit.ts` | **New** — in-memory sliding window rate limiter |
+| `prompts/scenario-generator.txt` | **New** — system prompt for complaint-to-scenario AI |
+| `src/lib/openai.ts` | Added `generateScenarioFromComplaint()` using `zodResponseFormat` |
+| `src/lib/validators.ts` | Added generation schemas with `.max()` constraints |
+| `src/lib/prompts.ts` | Added `getScenarioGeneratorPromptFile()` accessor + prompt caching |
+| `src/app/api/sessions/[id]/evaluate/route.ts` | **Bug fix** — reads file content instead of passing path to LLM |
+| `docs/solutions/process-workflow/` | **New** — compound doc for this workflow |
+| `docs/solutions/prevention-strategies/ai-code-generation-prevention-checklist.md` | **New** — AI code review checklist |
 
-#### 2. Transcript Timing / Feedback Flow (FIXED — `1aecb3d`, improved `196c2b4` + `9836951`)
-**Original fix**: 3s initial delay + 8 retries (19s max) + phase-aware loading messages.
-**Problem found during testing**: 19s wasn't enough — agent takes 30-40s to persist transcripts through LiveKit shutdown → ngrok → Pi pipeline.
-**Improved**: Poll every 1.5s (was 3s), 30 retries (was 8), ~48s total window. Shows elapsed time counter after 5s. Failure screen shows "Back to Dashboard" button instead of confusing "Start Session."
-**Root cause**: Agent only persists transcripts in its shutdown callback, which fires after LiveKit detects the room is empty. Future optimization: have agent persist via data channel message BEFORE disconnect.
+### Pre-existing Bug Discovered During Review
 
-#### 3. External API Missing Evaluator Context Field (FIXED — `f2d2bb9`)
-**Fix**: `POST /api/external/scenarios` accepts `evaluator_context` (string, max 5000 chars, optional).
-
-#### 4. Voice Connection Failures (IMPROVED — `9836951`)
-**Problem found during testing**: Voice session often required 2-3 manual attempts before agent would join (cold-start / stale container).
-**Fix**: Auto-retry up to 3 times with 2s delay when room disconnects without ever receiving a session ID from the agent. No user action needed.
+The evaluate route was passing `evaluatorContextPath` (a file path string) directly to the LLM instead of reading the file contents. This meant evaluator context **never worked** for any scenario. Fixed in the P1 commit.
 
 ### Remaining TODO (Pick Up Here)
 
-1. **User testing tonight** — Voice recording, auto-retry connection, faster feedback polling — verify on Pi
-2. **Merge PR #43** — After testing confirms everything works
-3. **Long-term recording** — Consider LiveKit Egress for server-side recording (deferred)
-4. **Long-term feedback speed** — Have agent persist transcripts via data channel before disconnect instead of relying on shutdown callback (would eliminate 30-40s wait)
+1. **Long-term recording** — Consider LiveKit Egress for server-side recording (deferred)
+2. **Long-term feedback speed** — Have agent persist transcripts via data channel before disconnect instead of relying on shutdown callback (would eliminate 30-40s wait)
+3. **Home page label** — "Learner" button still routes to `/counselor` path internally (fine for now, rename route if needed later)
+4. **CLAUDE.md AI patterns** — The prevention checklist has ready-to-paste CLAUDE.md additions for AI code generation patterns (optional, do when next Ralph session is planned)
 
 ### Ngrok Auth Gotcha (NEW — 2026-02-07)
 
@@ -537,11 +519,14 @@ Previously noticed higher latency, but testing tonight showed normal response ti
 |-------|-------|--------|------------|
 | #38 | Record and evaluate free practice sessions | **Done** (`c15a984`) | — |
 | #39 | Free practice dashboard visibility | **Done** (`5640615`) | #38 (done) |
-| #40 | Post-session analysis (feedback, safety, consistency) | **PR #43 open**, deployed to Pi, E2E passed | #38 (done) |
+| #40 | Post-session analysis (feedback, safety, consistency) | **Done** (PR #43 merged, `bdfca2f`) | #38 (done) |
+| #12 | Scenario Generation from Complaint | **Done** (PR #44 merged, `b8dab3f`) | — |
 
 ### Previous Sessions
 
-- **2026-02-09 (Evening)**: Pushed voice recording fix, then user-tested on Pi. Found two UX issues: (1) feedback took ~50s because agent transcript persistence is slow (30-40s through shutdown → ngrok pipeline), (2) voice connection needed 2-3 manual attempts. Fixed with: faster transcript polling (1.5s interval, 30 retries, elapsed timer), graceful failure screen with "Back to Dashboard", and auto-retry connection (up to 3 times, no user action). Three deploys to Pi total. Commits: `196c2b4`, `9836951`. Awaiting user testing tonight.
+- **2026-02-10 (Evening)**: Feature #12 — Ralph implemented scenario generation (7 commits), 6-agent code review found 16 findings (5 P1, 7 P2, 4 P3), all fixed in 3 commits. Discovered pre-existing bug: evaluate route passed file path to LLM instead of reading content. Created PR #44, merged, deployed to Pi. Ran compound documentation session (4 parallel subagents), wrote process-workflow doc + AI code generation prevention checklist. Latest on main: `49f896c`.
+- **2026-02-09 (Late Evening)**: Two UX fixes: voice readiness indicator + renamed Counselor to Learner. Merged PR #43 to main. Commit: `bdfca2f`.
+- **2026-02-09 (Evening)**: Pushed voice recording fix, then user-tested on Pi. Found two UX issues: (1) feedback took ~50s because agent transcript persistence is slow (30-40s through shutdown → ngrok pipeline), (2) voice connection needed 2-3 manual attempts. Fixed with: faster transcript polling (1.5s interval, 30 retries, elapsed timer), graceful failure screen with "Back to Dashboard", and auto-retry connection (up to 3 times, no user action). Three deploys to Pi total. Commits: `196c2b4`, `9836951`.
 - **2026-02-08 (Evening)**: Implemented browser-side voice recording (`9f0dbfb`) — AudioContext + MediaRecorder hook, FormData upload endpoint, P1 security fixes on download route. Short-term fix for missing voice recordings. Code review ran but session ended before resume context update.
 - **2026-02-08 (Afternoon)**: Created safe Pi deploy script (`scripts/deploy-pi.sh`) — rsync wrapper that always excludes `.env`, dry run by default, post-sync verification. Fixed transcript timing race condition — 3s initial delay before first eval attempt, 8 retries (19s max), phase-aware loading messages ("Saving session..." → "Generating feedback..."). Interim work: evaluator_context support added to external scenarios API (`f2d2bb9`).
 - **2026-02-07 (Late Evening)**: Pi deployment tested — fixed .env overwrite (DATABASE_URL password + missing INTERNAL_SERVICE_KEY), rebuilt on Pi, voice working. Discovered 3 critical bugs: (1) no voice recordings since LiveKit migration, (2) transcript timing race condition, (3) external API missing evaluatorContext field. Committed disconnect fix (`ed07f27`), pushed all to GitHub. PTG-generated scenario worked via external API.
@@ -682,11 +667,11 @@ npm run dev               # Next.js on :3003
 
 ### Git Status
 
-- Latest pushed commit: `9836951` (fix: faster transcript polling and auto-retry voice connection)
-- **No uncommitted code changes** (only `tsconfig.tsbuildinfo` and untracked docs/screenshots)
-- Branch: `feat/40-post-session-analysis`
-- PR: #43 (https://github.com/brad-protocall/proto-trainer-next/pull/43)
-- Pi redeployed 2026-02-09 with `npm run deploy:pi:full` — has all 15 commits
+- Latest commit on main: `49f896c` (merge of compound docs from ralph/scenario-generation-from-complaint)
+- **PR #43 merged** — all 16 commits for #40 on main
+- **PR #44 merged** — all 10 commits for #12 (scenario generation) + compound docs on main
+- Branch: `main` (ralph/scenario-generation-from-complaint branch can be deleted)
+- Pi deployed 2026-02-10 with scenario generation feature (PR #44 code, not compound docs — docs-only, no redeploy needed)
 - Pi `.env` was fixed previously: DATABASE_URL password correct, INTERNAL_SERVICE_KEY present
 - ngrok OAuth removed — must stay off for LiveKit agent callbacks
 - Pi service may need manual restart after deploy (`sudo systemctl restart proto-trainer-next`)
