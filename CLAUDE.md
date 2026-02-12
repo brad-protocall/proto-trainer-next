@@ -520,28 +520,24 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ## Resume Context (2026-02-12)
 
-### Current State: PR #47 reviewed and ready to merge — One-Time Scenario Workflow.
+### Current State: All caught up. Supervisor dashboard decomposed, deployed to Pi.
 
-**Branch:** `feature/one-time-scenario-workflow` at `e8279d5`
-**PR:** https://github.com/brad-protocall/proto-trainer-next/pull/47
-**Status:** Implemented, reviewed (7-agent parallel review), all findings fixed. Type check + lint clean. Zero npm vulnerabilities. Ready to merge.
+**Branch:** `main` at `b36d0d3`
+**Status:** Clean. PR #47 merged. Supervisor dashboard decomposed (`fe7016d`). Deployed to Pi. All checks pass.
 
-### Pick Up Here: Merge PR #47 and Deploy
+### What Just Happened
 
-1. **Merge PR #47** — All review findings addressed. 5 commits on branch.
-2. **Deploy to Pi** — Run `npm run deploy:pi:full`. Three pending migrations: `20260211000000_add_flag_source`, `20260212000000_add_document_review`, `20260212100000_add_scenario_is_one_time_index`. Also `npm install` on Pi for `unpdf` dependency.
-3. **Decompose supervisor-dashboard.tsx** (P3) — 1665 lines, extract ScenarioForm, ScenarioList, AssignmentPanel, FlagPanel as sub-components. Separate PR.
-
-### What PR #47 Contains (5 commits)
-
-1. `3bdaf3e` — feat: One-Time Scenario Workflow (6 features)
-2. `7007525` — fix: isOneTime URL param for tab filtering
-3. `ceceaed` — fix: 11 review findings (schema guard, shared labels, rate limiting, text truncation, index, dead code removal, type docs, duplicate API call)
-4. `e8279d5` — chore: npm audit fix (Next.js high severity vulnerability)
+1. **PR #47 merged** — One-Time Scenario Workflow (5 commits).
+2. **Supervisor dashboard decomposed** (`fe7016d`) — 1,616-line monolith split into 3 files:
+   - `supervisor-dashboard.tsx` (277 lines): tabs, user init, shared data, flags inline
+   - `supervisor/scenario-tab.tsx` (833 lines): scenario list + form modal + import/generate
+   - `supervisor/assignment-tab.tsx` (588 lines): assignment list + bulk assignment modal
+3. **Type safety fixes**: `AuthFetchFn` exported, `getUserDisplayName` replaces `any`-typed helper, `BulkAssignmentResponse` used instead of inline type.
+4. **Deployed to Pi** — All migrations applied, build clean, service restarted.
+5. **Decision doc** for PTG legacy: `docs/supervisor-dashboard-decomposition.md`
 
 ### Backlog (deferred, not blocking)
 
-- Decompose supervisor-dashboard.tsx (1665 lines → 4 sub-components)
 - LiveKit Egress for server-side voice recording
 - Agent transcript persistence via data channel (eliminate 30-40s feedback wait)
 - Rename `/counselor` route to `/learner` (cosmetic)
@@ -549,12 +545,11 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ### GitHub Issues
 
-PR #47 ready to merge.
-
-Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-session analysis), #12/PR#44 (scenario generation), PR#45 (analysis scanning), PR#46 (document consistency review)
+Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-session analysis), #12/PR#44 (scenario generation), PR#45 (analysis scanning), PR#46 (document consistency review), PR#47 (one-time scenario workflow)
 
 ### Previous Sessions
 
+- **2026-02-12 (Afternoon)**: Decomposed supervisor-dashboard.tsx (3 files). Deployed to Pi. Wrote PTG legacy decision doc.
 - **2026-02-12 (Morning)**: Reviewed PR #47 with 7-agent parallel review. Fixed `isOneTime` URL param bug. Addressed all 11 findings in single pass. Compounded learnings.
 - **2026-02-12 (Night)**: Implemented One-Time Scenario Workflow (6 changes). E2E tested (6/6 pass). PR #47 created.
 - **2026-02-11 (Late evening)**: Planned One-Time Scenario Workflow. 3-agent review. Plan v2 ready.
@@ -577,9 +572,8 @@ Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-sess
 
 ### Git Status
 
-- Branch `feature/one-time-scenario-workflow` at `e8279d5` (PR #47 ready to merge)
-- Main at `dc44ef0` (PR #46 — document consistency review)
-- Pi deployed 2026-02-10 with scenario generation (PR #44). Three migrations pending on Pi.
+- Main at `b36d0d3` (supervisor dashboard decomposition + docs)
+- Pi deployed 2026-02-12 with all features including decomposition.
 
 ---
 
