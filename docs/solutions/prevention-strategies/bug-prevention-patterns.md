@@ -536,3 +536,198 @@ Recommended order:
 2. Export enum values from `validators.ts` (5 min fix)
 3. Add `safeParseJson` utility (10 min fix)
 4. Add pre-delete dependency checks (30 min per endpoint)
+
+---
+
+## 5. Fire-and-Forget + Shared Helper Pattern
+
+*Discovered 2026-02-11 during post-session analysis scanning implementation.*
+
+**Bug**: Ralph duplicated 90 lines of flag-building logic between the shared helper (`src/lib/analysis.ts`) and the manual endpoint (`src/app/api/sessions/[id]/analyze/route.ts`). The two implementations drifted, with the route handler missing idempotency checks the helper had.
+
+**Root Cause**: When a background task needs to be callable both automatically (fire-and-forget) and manually (API endpoint), it's tempting to put logic in both places. Code duplication across async boundaries is especially dangerous because failures are silent.
+
+### Prevention: Single Helper, Thin Wrappers
+
+#### Code Pattern
+
+```typescript
+// src/lib/analysis.ts — ALL business logic lives here
+export async function analyzeSession(
+  sessionId: string,
+  scenario: { title: string; prompt: string },
+  transcript: TranscriptTurn[]
+): Promise<AnalyzeResult | AnalyzeSkipped> {
+  // Idempotency check
+  const existing = await prisma.sessionFlag.findFirst({
+    where: { sessionId, source: 'analysis' }
+  });
+  if (existing) return { status: 'skipped', reason: 'already_analyzed' };
+
+  // LLM call
+  const result = await callAnalyzerLLM(scenario, transcript);
+
+  // Flag creation
+  await prisma.sessionFlag.createMany({ data: flags });
+
+  return { status: 'completed', flagCount: flags.length };
+}
+```
+
+```typescript
+// Route handler — thin wrapper (auth + data loading + call helper)
+export async function POST(request: NextRequest, { params }: RouteParams) {
+  const authResult = await requireSupervisor(request);
+  if (authResult.error) return authResult.error;
+
+  const session = await prisma.session.findUnique({ ... });
+  const result = await analyzeSession(session.id, scenario, transcript);
+  return apiSuccess(result);
+}
+```
+
+```typescript
+// Fire-and-forget caller — same helper, catch errors
+analyzeSession(session.id, scenario, transcript).catch(err =>
+  console.error(`[Analysis] Failed for session ${session.id}:`, err)
+);
+```
+
+#### Why This Matters
+
+- **One place to fix bugs**: If the idempotency logic has a bug, fix it once in the helper.
+- **One place to add features**: Rate limiting, logging, metrics — add once, both callers get it.
+- **Silent failures surface**: The fire-and-forget `.catch()` at least logs; duplicated code might not.
+
+#### Testing Strategy
+
+Test the helper directly. Route tests become thin integration tests.
+
+```typescript
+describe('analyzeSession', () => {
+  it('returns skipped when already analyzed', async () => {
+    await createFlag({ sessionId: 'test', source: 'analysis' });
+    const result = await analyzeSession('test', scenario, transcript);
+    expect(result.status).toBe('skipped');
+  });
+});
+```
+
+---
+
+## 6. Dev Server Hot-Reload and Return Type Changes
+
+*Discovered 2026-02-11 during post-session analysis refactor.*
+
+**Bug**: After refactoring `analyzeSession()` from `void` to returning `AnalyzeResult | AnalyzeSkipped`, the dev server returned 500 errors. The route handler tried to serialize the result, but the hot-reloaded module still had the old `void` return type cached. Restarting the dev server fixed it.
+
+**Root Cause**: Next.js hot-reload (HMR) doesn't always invalidate server-side module caches when a function's return type changes structurally (especially in `.ts` files imported across module boundaries).
+
+### Prevention
+
+**Rule**: When refactoring function return types that change from `void` to a concrete type (or between structurally different types), **restart the dev server before E2E testing**.
+
+Signs this is happening:
+- Route works in tests but returns 500 in browser
+- Error message references the old return shape
+- `npx tsc --noEmit` passes clean (types are correct, cache is wrong)
+
+#### When to Restart
+
+| Change | Restart Needed? |
+|--------|----------------|
+| Add/remove a property from an existing return type | Usually no |
+| Change `void` → concrete type | **Yes** |
+| Change one interface → different interface | **Yes** |
+| Rename a type without changing shape | No |
+| Add new exported function | Usually no |
+
+---
+
+## 7. File Picker in Modal Containers
+
+*Discovered 2026-02-11 during document consistency review implementation.*
+
+**Bug**: Programmatic `fileInputRef.current?.click()` didn't reliably trigger the OS file dialog when the button was inside a scrollable modal (`overflow-y-auto`, `max-h-[80vh]`). Playwright E2E tests showed 3 file chooser dialogs queued but the OS never showed the picker.
+
+**Root Cause**: Browser security restrictions on programmatic `.click()` inside complex container hierarchies. The click event loses its "user-initiated" status when it bubbles through scrollable containers with `overflow` properties, and the browser suppresses the file dialog as a potential popup.
+
+### Prevention: Native `<label>` Pattern
+
+```tsx
+// GOOD: Works in any container including scrollable modals
+<label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+  Upload File
+  <input
+    type="file"
+    accept=".pdf"
+    onChange={handleFileChange}
+    className="hidden"
+  />
+</label>
+```
+
+```tsx
+// BAD: Fails inside scrollable modal containers
+const fileInputRef = useRef<HTMLInputElement>(null);
+
+<input ref={fileInputRef} type="file" className="hidden" />
+<button onClick={() => fileInputRef.current?.click()}>
+  Upload File
+</button>
+```
+
+#### Why `<label>` Works
+
+The `<label>` element has native browser behavior: clicking it activates its associated input. This bypasses the programmatic click restrictions because the browser treats it as a direct user interaction with the input element.
+
+#### Where This Applies
+
+Any file upload UI inside:
+- Modals with `overflow-y-auto` or `overflow-y-scroll`
+- Containers with `max-h-*` constraints
+- Nested scrollable divs
+- Dialog elements
+
+If the file picker is in a simple page layout (no scroll containers), programmatic `.click()` works fine. But the `<label>` pattern works everywhere, so prefer it as the default.
+
+---
+
+## 8. Prisma Client Regeneration After Schema Changes
+
+*Discovered 2026-02-11 during document consistency review implementation.*
+
+**Bug**: After adding a `DocumentReview` model to `schema.prisma` and applying the migration with `npx prisma migrate dev`, the route handler returned: `Unknown field 'documentReview' for include statement on model 'Session'`.
+
+**Root Cause**: `prisma migrate dev` applies the SQL migration but the TypeScript Prisma client in `node_modules/.prisma/client` was still generated from the old schema. The dev server's hot-reload loaded the new route code but used the stale Prisma client.
+
+### Prevention
+
+**Rule**: After ANY schema change, always run both steps:
+
+```bash
+npx prisma migrate dev --name <name>  # Applies migration AND regenerates client
+# OR if migration already applied:
+npx prisma generate                   # Just regenerate client
+```
+
+Then **restart the dev server** (`Ctrl+C` and `npm run dev`).
+
+#### Why `migrate dev` Alone Isn't Enough
+
+`prisma migrate dev` does regenerate the client, but the running dev server has the old client cached in memory. The hot-reload system loads new `.ts` files but doesn't re-import `@prisma/client` because it's in `node_modules/`.
+
+#### Checklist After Schema Changes
+
+1. Edit `prisma/schema.prisma`
+2. Run `npx prisma migrate dev --name <name>`
+3. Verify migration SQL looks correct
+4. Stop the dev server (`Ctrl+C`)
+5. Restart: `npm run dev`
+6. Test the new model/field in the browser
+
+#### Signs the Client Is Stale
+
+- `Unknown field 'X' for include statement on model 'Y'`
+- `Unknown arg 'X' in data.X for type YCreateInput`
+- TypeScript autocomplete works (IDE reads schema) but runtime fails (server has old client)
