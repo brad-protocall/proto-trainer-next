@@ -2,6 +2,8 @@
  * Authenticated fetch wrapper that includes x-user-id header
  */
 
+export type AuthFetchFn = (url: string, options?: RequestInit) => Promise<Response>;
+
 export interface AuthFetchOptions extends RequestInit {
   userId?: string;
 }

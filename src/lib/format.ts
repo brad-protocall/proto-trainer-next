@@ -2,7 +2,7 @@
  * Shared formatting utilities for dashboards and components
  */
 
-import type { AssignmentStatus } from "@/types";
+import type { AssignmentStatus, User } from "@/types";
 
 /**
  * Format a date string for display
@@ -60,4 +60,11 @@ export function getStatusIcon(status: AssignmentStatus): string {
     default:
       return "•";
   }
+}
+
+/**
+ * Get display name for a user, falling back to email then "Unknown"
+ */
+export function getUserDisplayName(user: User): string {
+  return user.displayName || user.email || "Unknown";
 }
