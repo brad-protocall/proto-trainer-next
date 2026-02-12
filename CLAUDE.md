@@ -494,18 +494,16 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ---
 
-## Resume Context (2026-02-11 Late Evening)
+## Resume Context (2026-02-11)
 
-### Current State: Document Consistency Review Implemented (Not Yet Merged)
+### Current State: All features merged. No active branch.
 
-**Branch:** `feat/document-consistency-review` (off `main`, 1 commit: `1076aaa`)
-**Status:** Fully implemented, E2E tested locally. Not yet code-reviewed, not yet PR'd.
+**Branch:** `main` at `dc44ef0`
+**Status:** Document Consistency Review merged (PR #46). CLAUDE.md trimmed + compound knowledge archived.
 
 ### Remaining TODO (Pick Up Here)
 
-1. **Push branch + create PR** for document consistency review (`feat/document-consistency-review`)
-2. **Optional: Run code review** (multi-agent review before PR)
-3. **Deploy to Pi** — Run `npm run deploy:pi:full`. Migrations `20260212000000_add_document_review` will apply. Also need `npm install` on Pi for `unpdf` dependency.
+1. **Deploy to Pi** — Run `npm run deploy:pi:full`. Two pending migrations: `20260211000000_add_flag_source` and `20260212000000_add_document_review`. Also need `npm install` on Pi for `unpdf` dependency.
 
 ### Backlog (deferred, not blocking)
 
@@ -513,19 +511,16 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 - Agent transcript persistence via data channel (eliminate 30-40s feedback wait)
 - Rename `/counselor` route to `/learner` (cosmetic)
 - Force re-analysis param, catch `SessionAnalysisError` specifically, filter `analysis_clean` from badge count
-- Deploy analysis to Pi (`20260211000000_add_flag_source` migration)
 
 ### GitHub Issues
 
-| Issue | Title | Status |
-|-------|-------|--------|
-| — | Document Consistency Review | **In Progress** (`feat/document-consistency-review`, `1076aaa`) |
+No issues currently in progress.
 
-Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-session analysis), #12/PR#44 (scenario generation), PR#45 (analysis scanning)
+Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-session analysis), #12/PR#44 (scenario generation), PR#45 (analysis scanning), PR#46 (document consistency review)
 
 ### Previous Sessions
 
-- **2026-02-11 (Evening)**: Document Consistency Review — full feature (Prisma model, PDF extraction via unpdf, OpenAI structured output scoring, frontend component). Fixed 3 bugs: migration drift, unpdf mergePages, file picker in modal. E2E tested. Committed `1076aaa`.
+- **2026-02-11 (Evening)**: Document Consistency Review — full feature implemented, E2E tested, PR #46 merged. CLAUDE.md trimmed (767→666 lines), archived compound knowledge to `docs/solutions/` (bug patterns 5-8, Pi deployment runbook).
 - **2026-02-11 (Afternoon)**: Post-Session Analysis Scanning — Ralph implemented, 6-agent code review, PR #45 merged.
 - **2026-02-10 (Evening)**: Feature #12 scenario generation — Ralph implemented, 6-agent review, PR #44 merged, deployed to Pi.
 - **2026-02-09**: Voice UX fixes (feedback timing, auto-retry connection). Merged PR #43.
@@ -553,9 +548,9 @@ Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-sess
 
 ### Git Status
 
-- Latest commit on main: `120fc41` (merge of PR #45)
-- **Active branch**: `feat/document-consistency-review` — 1 commit (`1076aaa`), not yet pushed
-- Pi deployed 2026-02-10 with scenario generation (PR #44)
+- Latest commit on main: `dc44ef0` (merge of PR #46 — document consistency review)
+- No active branch
+- Pi deployed 2026-02-10 with scenario generation (PR #44). Two migrations pending on Pi.
 
 ---
 
