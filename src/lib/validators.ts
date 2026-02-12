@@ -257,6 +257,14 @@ export const analysisResultSchema = z.object({
 })
 export type AnalysisResult = z.infer<typeof analysisResultSchema>
 
+// Dedicated schema for one-time scenario creation with auto-assignment
+// Separate from createScenarioSchema to avoid contaminating update/external APIs
+export const createOneTimeScenarioWithAssignmentSchema = createScenarioSchema.extend({
+  assignTo: z.string().uuid(),
+  isOneTime: z.literal(true),
+})
+export type CreateOneTimeScenarioWithAssignmentInput = z.infer<typeof createOneTimeScenarioWithAssignmentSchema>
+
 // Inferred types
 export type CreateUserInput = z.infer<typeof createUserSchema>
 export type UpdateUserInput = z.infer<typeof updateUserSchema>

@@ -13,6 +13,8 @@ import {
 } from "@/types";
 import { createAuthFetch } from "@/lib/fetch";
 import { formatDate, getStatusColor } from "@/lib/format";
+import { ScenarioCategoryValues } from "@/lib/validators";
+import { VALID_SKILLS, type CrisisSkill } from "@/lib/skills";
 import BulkImportModal from "./bulk-import-modal";
 import GenerateScenarioModal from "./generate-scenario-modal";
 
@@ -39,6 +41,12 @@ const CATEGORY_LABELS: Record<string, string> = {
   customer_facing: "Customer Facing",
   tap: "TAP",
   supervisors: "Supervisors",
+};
+
+const SKILL_LABEL_OVERRIDES: Record<string, string> = {
+  "de-escalation": "De-escalation",
+  "self-harm-assessment": "Self-Harm Assessment",
+  "dv-assessment": "DV Assessment",
 };
 
 interface ScenarioFormData {
@@ -111,6 +119,11 @@ export default function SupervisorDashboard() {
     evaluator_context: "",
     evaluator_context_file: null,
   });
+
+  // One-time form variant state
+  const [formVariant, setFormVariant] = useState<"global" | "one-time">("global");
+  const [assignToId, setAssignToId] = useState("");
+  const [selectedSkills, setSelectedSkills] = useState<CrisisSkill[]>([]);
 
   // Toggle states for form input modes
   const [promptInputMode, setPromptInputMode] = useState<"text" | "file">("text");
@@ -371,11 +384,21 @@ export default function SupervisorDashboard() {
     setPromptInputMode("text");
     setContextInputMode("text");
     setEditingScenario(null);
+    setFormVariant("global");
+    setAssignToId("");
+    setSelectedSkills([]);
     setShowForm(false);
   };
 
   const openCreateForm = () => {
     resetForm();
+    setFormVariant("global");
+    setShowForm(true);
+  };
+
+  const openCreateOneTimeForm = () => {
+    resetForm();
+    setFormVariant("one-time");
     setShowForm(true);
   };
 
@@ -432,16 +455,23 @@ export default function SupervisorDashboard() {
         });
       } else {
         // Send JSON (without file fields)
-        const jsonData = {
+        const jsonData: Record<string, unknown> = {
           title: formData.title,
           description: formData.description,
           prompt: formData.prompt,
           mode: formData.mode,
-          account_id: formData.account_id,
+          accountId: formData.account_id,
           category: formData.category,
-          relevant_policy_sections: formData.relevant_policy_sections,
-          evaluator_context: formData.evaluator_context || undefined,
+          relevantPolicySections: formData.relevant_policy_sections,
+          evaluatorContext: formData.evaluator_context || undefined,
         };
+
+        // One-time variant: add assignTo and skills, force isOneTime
+        if (formVariant === "one-time" && !editingScenario) {
+          jsonData.isOneTime = true;
+          jsonData.assignTo = assignToId;
+          jsonData.skills = selectedSkills;
+        }
 
         response = await authFetch(url, {
           method,
@@ -459,6 +489,24 @@ export default function SupervisorDashboard() {
       setError(err instanceof Error ? err.message : "Failed to save scenario");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handlePromoteToGlobal = async (id: string) => {
+    if (!window.confirm("This will make the scenario visible to all supervisors for assignment. If this scenario was generated from a complaint, ensure no PII remains. Continue?")) return;
+
+    try {
+      const response = await authFetch(`/api/scenarios/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isOneTime: false }),
+      });
+
+      const data = await response.json();
+      if (!data.ok) throw new Error(data.error?.message || "Promote failed");
+      await loadScenarios();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to promote scenario");
     }
   };
 
@@ -705,13 +753,24 @@ export default function SupervisorDashboard() {
                 </button>
               </>
             )}
-            <button
-              onClick={() => setShowGenerate(true)}
-              className="bg-purple-600 hover:bg-purple-500
-                       text-white font-marfa font-bold py-2 px-4 rounded"
-            >
-              Generate from Complaint
-            </button>
+            {scenarioFilter === "one-time" && (
+              <>
+                <button
+                  onClick={openCreateOneTimeForm}
+                  className="bg-brand-orange hover:bg-brand-orange-hover
+                           text-white font-marfa font-bold py-2 px-4 rounded"
+                >
+                  + Create One-Time Scenario
+                </button>
+                <button
+                  onClick={() => setShowGenerate(true)}
+                  className="bg-purple-600 hover:bg-purple-500
+                           text-white font-marfa font-bold py-2 px-4 rounded"
+                >
+                  Generate from Complaint
+                </button>
+              </>
+            )}
           </div>
 
           {loading ? (
@@ -763,6 +822,14 @@ export default function SupervisorDashboard() {
                     )}
                   </div>
                   <div className="flex gap-3 ml-4">
+                    {scenarioFilter === "one-time" && (
+                      <button
+                        onClick={() => handlePromoteToGlobal(scenario.id)}
+                        className="text-green-400 hover:text-green-300 text-sm"
+                      >
+                        Promote to Global
+                      </button>
+                    )}
                     <button
                       onClick={() => openEditForm(scenario)}
                       className="text-brand-orange hover:text-brand-orange-light text-sm"
@@ -946,7 +1013,11 @@ export default function SupervisorDashboard() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-brand-navy border border-gray-700 rounded-lg p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-marfa text-white mb-4">
-              {editingScenario ? "Edit Scenario" : "Create Scenario"}
+              {editingScenario
+                ? "Edit Scenario"
+                : formVariant === "one-time"
+                  ? "Create One-Time Scenario"
+                  : "Create Scenario"}
             </h2>
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -1020,16 +1091,74 @@ export default function SupervisorDashboard() {
                              text-white font-marfa focus:outline-none focus:border-brand-orange"
                 >
                   <option value="">-- None --</option>
-                  <option value="cohort_training">Cohort Training</option>
-                  <option value="onboarding">Onboarding</option>
-                  <option value="expert_skill_path">Expert Skill Path</option>
-                  <option value="account_specific">Account Specific</option>
-                  <option value="sales">Sales</option>
-                  <option value="customer_facing">Customer Facing</option>
-                  <option value="tap">TAP</option>
-                  <option value="supervisors">Supervisors</option>
+                  {ScenarioCategoryValues.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {CATEGORY_LABELS[cat] || cat}
+                    </option>
+                  ))}
                 </select>
               </div>
+
+              {/* Learner dropdown — one-time variant only */}
+              {formVariant === "one-time" && !editingScenario && (
+                <div>
+                  <label className="block text-gray-300 text-sm font-marfa mb-1">
+                    Assign to Learner *
+                  </label>
+                  <select
+                    value={assignToId}
+                    onChange={(e) => setAssignToId(e.target.value)}
+                    required
+                    className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2
+                               text-white font-marfa focus:outline-none focus:border-brand-orange"
+                  >
+                    <option value="">-- Select Learner --</option>
+                    {counselors.length === 0 ? (
+                      <option disabled>No learners available</option>
+                    ) : (
+                      counselors.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {getCounselorName(c)}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              )}
+
+              {/* Skills chips — one-time variant only */}
+              {formVariant === "one-time" && !editingScenario && (
+                <div>
+                  <label className="block text-gray-300 text-sm font-marfa mb-1">
+                    Skills (max 10)
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {VALID_SKILLS.map((skill) => {
+                      const isSelected = selectedSkills.includes(skill);
+                      return (
+                        <button
+                          key={skill}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedSkills(selectedSkills.filter((s) => s !== skill));
+                            } else if (selectedSkills.length < 10) {
+                              setSelectedSkills([...selectedSkills, skill]);
+                            }
+                          }}
+                          className={`px-2 py-1 text-xs rounded font-marfa transition-colors ${
+                            isSelected
+                              ? "bg-brand-orange text-white"
+                              : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                          }`}
+                        >
+                          {SKILL_LABEL_OVERRIDES[skill] || skill.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <div className="flex items-center justify-between mb-1">
@@ -1174,63 +1303,67 @@ export default function SupervisorDashboard() {
                 )}
               </div>
 
-              {/* Organization Account */}
-              <div>
-                <label className="block text-gray-300 text-sm font-marfa mb-1">
-                  Organization Account (Optional)
-                </label>
-                <div className="flex gap-2">
-                  <select
-                    value={formData.account_id || ""}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        account_id: e.target.value || null,
-                      })
-                    }
-                    className="flex-1 bg-gray-800 border border-gray-600 rounded px-3 py-2
-                               text-white font-marfa focus:outline-none focus:border-brand-orange"
-                  >
-                    <option value="">No account</option>
-                    {accounts.map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {account.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm"
-                    onClick={() => {
-                      // TODO: Open account creation modal
-                      alert("Account creation coming soon");
-                    }}
-                  >
-                    + New
-                  </button>
-                </div>
-              </div>
+              {/* Organization Account — hidden for one-time variant */}
+              {formVariant !== "one-time" && (
+                <>
+                  <div>
+                    <label className="block text-gray-300 text-sm font-marfa mb-1">
+                      Organization Account (Optional)
+                    </label>
+                    <div className="flex gap-2">
+                      <select
+                        value={formData.account_id || ""}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            account_id: e.target.value || null,
+                          })
+                        }
+                        className="flex-1 bg-gray-800 border border-gray-600 rounded px-3 py-2
+                                   text-white font-marfa focus:outline-none focus:border-brand-orange"
+                      >
+                        <option value="">No account</option>
+                        {accounts.map((account) => (
+                          <option key={account.id} value={account.id}>
+                            {account.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm"
+                        onClick={() => {
+                          // TODO: Open account creation modal
+                          alert("Account creation coming soon");
+                        }}
+                      >
+                        + New
+                      </button>
+                    </div>
+                  </div>
 
-              {/* Relevant Procedures Sections - only show when account is selected */}
-              {formData.account_id && (
-                <div>
-                  <label className="block text-gray-300 text-sm font-marfa mb-1">
-                    Relevant Procedures Sections
-                  </label>
-                  <textarea
-                    value={formData.relevant_policy_sections}
-                    onChange={(e) =>
-                      setFormData({ ...formData, relevant_policy_sections: e.target.value })
-                    }
-                    rows={2}
-                    className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2
-                               text-white font-marfa focus:outline-none focus:border-brand-orange"
-                    placeholder="e.g., Crisis De-escalation Protocol, Section 4.2"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Help the evaluator focus on specific procedures sections relevant to this scenario
-                  </p>
-                </div>
+                  {/* Relevant Procedures Sections - only show when account is selected */}
+                  {formData.account_id && (
+                    <div>
+                      <label className="block text-gray-300 text-sm font-marfa mb-1">
+                        Relevant Procedures Sections
+                      </label>
+                      <textarea
+                        value={formData.relevant_policy_sections}
+                        onChange={(e) =>
+                          setFormData({ ...formData, relevant_policy_sections: e.target.value })
+                        }
+                        rows={2}
+                        className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2
+                                   text-white font-marfa focus:outline-none focus:border-brand-orange"
+                        placeholder="e.g., Crisis De-escalation Protocol, Section 4.2"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Help the evaluator focus on specific procedures sections relevant to this scenario
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
 
               <div className="flex justify-end gap-3 pt-4">
@@ -1243,11 +1376,18 @@ export default function SupervisorDashboard() {
                 </button>
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={saving || (formVariant === "one-time" && !editingScenario && !assignToId)}
                   className="px-4 py-2 bg-brand-orange hover:bg-brand-orange-hover
-                             text-white font-marfa font-bold rounded disabled:opacity-50"
+                             text-white font-marfa font-bold rounded disabled:opacity-50
+                             disabled:cursor-not-allowed"
                 >
-                  {saving ? "Saving..." : editingScenario ? "Update" : "Create"}
+                  {saving
+                    ? "Saving..."
+                    : editingScenario
+                      ? "Update"
+                      : formVariant === "one-time"
+                        ? "Create & Assign"
+                        : "Create"}
                 </button>
               </div>
             </form>
@@ -1518,6 +1658,7 @@ export default function SupervisorDashboard() {
           loadScenarios();
         }}
         userId={currentUser?.id}
+        counselors={counselors}
       />
     </div>
   );
