@@ -1,52 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { ScenarioCategory, ScenarioMode } from "@/types";
-import { ScenarioCategoryValues } from "@/lib/validators";
+import { ScenarioCategory, ScenarioMode, User } from "@/types";
 import type { GeneratedScenario } from "@/lib/validators";
 import { VALID_SKILLS, type CrisisSkill } from "@/lib/skills";
 import { authFetch } from "@/lib/fetch";
+import { formatSkillLabel, CATEGORY_OPTIONS } from "@/lib/labels";
 
-const CATEGORY_LABEL_OVERRIDES: Record<string, string> = {
-  tap: "TAP",
-  dv_assessment: "DV Assessment",
-};
-
-function formatCategoryLabel(value: string): string {
-  if (CATEGORY_LABEL_OVERRIDES[value]) return CATEGORY_LABEL_OVERRIDES[value];
-  return value
-    .split("_")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
-
-const CATEGORY_OPTIONS: { value: string; label: string }[] = [
-  { value: "", label: "-- None --" },
-  ...ScenarioCategoryValues.map((v) => ({
-    value: v,
-    label: formatCategoryLabel(v),
-  })),
-];
-
-const SKILL_LABEL_OVERRIDES: Record<string, string> = {
-  "de-escalation": "De-escalation",
-  "self-harm-assessment": "Self-Harm Assessment",
-  "dv-assessment": "DV Assessment",
-};
-
-function formatSkillLabel(skill: string): string {
-  if (SKILL_LABEL_OVERRIDES[skill]) return SKILL_LABEL_OVERRIDES[skill];
-  return skill
-    .split("-")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 interface GenerateScenarioModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
   userId?: string;
+  counselors?: User[];
 }
 
 type EditableScenario = GeneratedScenario & { mode: ScenarioMode };
@@ -56,10 +24,15 @@ export default function GenerateScenarioModal({
   onClose,
   onSuccess,
   userId,
+  counselors = [],
 }: GenerateScenarioModalProps) {
   // Input phase state
   const [complaintText, setComplaintText] = useState("");
   const [additionalInstructions, setAdditionalInstructions] = useState("");
+
+  // File upload state
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
 
   // Generation/editing state
   const [generatedScenario, setGeneratedScenario] =
@@ -67,17 +40,95 @@ export default function GenerateScenarioModal({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Learner assignment state
+  const [assignTo, setAssignTo] = useState("");
+
   const resetState = () => {
     setComplaintText("");
     setAdditionalInstructions("");
+    setUploadedFileName(null);
+    setIsExtracting(false);
     setGeneratedScenario(null);
     setIsLoading(false);
     setError(null);
+    setAssignTo("");
   };
 
   const handleClose = () => {
     resetState();
     onClose();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Reset input so same file can be re-selected
+    e.target.value = "";
+    if (!file) return;
+
+    setError(null);
+
+    // Client-side size validation before reading
+    if (file.size > MAX_FILE_SIZE) {
+      setError("File must be under 10MB");
+      return;
+    }
+
+    // Client-side extension validation
+    const ext = file.name.toLowerCase().split(".").pop();
+    if (ext !== "pdf" && ext !== "txt") {
+      setError("Only PDF and TXT files are supported");
+      return;
+    }
+
+    if (ext === "txt") {
+      // Read TXT client-side
+      try {
+        const text = await file.text();
+        const trimmed = text.trim();
+        if (trimmed.length > 15000) {
+          setComplaintText(trimmed.slice(0, 15000));
+          setError("File text exceeds 15,000 characters. Text has been truncated.");
+        } else {
+          setComplaintText(trimmed);
+        }
+        setUploadedFileName(file.name);
+      } catch {
+        setError("Failed to read file");
+      }
+    } else {
+      // Upload PDF to server for extraction
+      setIsExtracting(true);
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const response = await authFetch("/api/scenarios/extract-text", {
+          method: "POST",
+          userId,
+          body: formData,
+        });
+
+        const data = await response.json();
+        if (!data.ok) {
+          throw new Error(data.error?.message || "Failed to extract text");
+        }
+
+        setComplaintText(data.data.text);
+        setUploadedFileName(data.data.fileName);
+        if (data.data.truncated) {
+          setError("PDF text exceeds 15,000 characters. Text has been truncated.");
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to extract text from PDF");
+      } finally {
+        setIsExtracting(false);
+      }
+    }
+  };
+
+  const clearUploadedFile = () => {
+    setUploadedFileName(null);
+    setComplaintText("");
   };
 
   const handleGenerate = async () => {
@@ -113,6 +164,7 @@ export default function GenerateScenarioModal({
   const handleStartOver = () => {
     setGeneratedScenario(null);
     setError(null);
+    setAssignTo("");
     // Keep complaintText and additionalInstructions preserved
   };
 
@@ -123,20 +175,27 @@ export default function GenerateScenarioModal({
     setError(null);
 
     try {
+      const body: Record<string, unknown> = {
+        title: generatedScenario.title,
+        description: generatedScenario.description,
+        prompt: generatedScenario.prompt,
+        evaluatorContext: generatedScenario.evaluatorContext,
+        mode: generatedScenario.mode,
+        category: generatedScenario.category || undefined,
+        skills: generatedScenario.skills,
+        isOneTime: true,
+      };
+
+      // Include assignTo if a learner is selected (triggers one-time+assignment transaction)
+      if (assignTo) {
+        body.assignTo = assignTo;
+      }
+
       const response = await authFetch("/api/scenarios", {
         method: "POST",
         userId,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: generatedScenario.title,
-          description: generatedScenario.description,
-          prompt: generatedScenario.prompt,
-          evaluatorContext: generatedScenario.evaluatorContext,
-          mode: generatedScenario.mode,
-          category: generatedScenario.category || undefined,
-          skills: generatedScenario.skills,
-          isOneTime: true, // Generated scenarios default to one-time; promote to reusable via scenario edit
-        }),
+        body: JSON.stringify(body),
       });
 
       const data = await response.json();
@@ -220,7 +279,7 @@ export default function GenerateScenarioModal({
                 onChange={(e) => setComplaintText(e.target.value)}
                 rows={8}
                 maxLength={15000}
-                disabled={isGenerating}
+                disabled={isGenerating || isExtracting}
                 className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2
                            text-white font-marfa focus:outline-none focus:border-brand-orange
                            disabled:opacity-50"
@@ -234,6 +293,47 @@ export default function GenerateScenarioModal({
                 <p className="text-xs text-gray-500">
                   {complaintText.length} / 15,000
                 </p>
+              </div>
+            </div>
+
+            {/* File Upload */}
+            <div>
+              <div className="flex items-center gap-2">
+                <label
+                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded text-sm font-marfa cursor-pointer
+                             ${isExtracting || isGenerating
+                               ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                               : "bg-gray-700 text-gray-300 hover:bg-gray-600"}`}
+                >
+                  {isExtracting ? (
+                    <>
+                      <span className="animate-spin inline-block h-3 w-3 border-2 border-brand-orange border-t-transparent rounded-full" />
+                      Extracting...
+                    </>
+                  ) : (
+                    "Upload PDF/TXT"
+                  )}
+                  <input
+                    type="file"
+                    accept=".pdf,.txt,application/pdf,text/plain"
+                    onChange={handleFileChange}
+                    disabled={isExtracting || isGenerating}
+                    className="hidden"
+                  />
+                </label>
+                {uploadedFileName && (
+                  <span className="flex items-center gap-1 text-xs text-gray-400 font-marfa">
+                    {uploadedFileName}
+                    <button
+                      type="button"
+                      onClick={clearUploadedFile}
+                      className="text-gray-500 hover:text-red-400 ml-1"
+                      title="Clear uploaded file"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                )}
               </div>
             </div>
 
@@ -278,7 +378,7 @@ export default function GenerateScenarioModal({
               <button
                 type="button"
                 onClick={handleGenerate}
-                disabled={!canGenerate || isGenerating}
+                disabled={!canGenerate || isGenerating || isExtracting}
                 className="bg-brand-orange text-white px-4 py-2 rounded font-marfa
                            hover:bg-brand-orange-hover disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -366,6 +466,32 @@ export default function GenerateScenarioModal({
               </select>
             </div>
 
+            {/* Assign to Learner */}
+            <div>
+              <label className="block text-gray-300 text-sm font-marfa mb-1">
+                Assign to Learner *
+              </label>
+              <select
+                value={assignTo}
+                onChange={(e) => setAssignTo(e.target.value)}
+                disabled={isSaving}
+                className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2
+                           text-white font-marfa focus:outline-none focus:border-brand-orange
+                           disabled:opacity-50"
+              >
+                <option value="">-- Select Learner --</option>
+                {counselors.length === 0 ? (
+                  <option disabled>No learners available</option>
+                ) : (
+                  counselors.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.displayName || c.email || "Unknown"}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+
             <div>
               <label className="block text-gray-300 text-sm font-marfa mb-1">
                 Prompt (Instructions for AI Caller) *
@@ -448,12 +574,13 @@ export default function GenerateScenarioModal({
                   disabled={
                     isSaving ||
                     !generatedScenario.title.trim() ||
-                    !generatedScenario.prompt.trim()
+                    !generatedScenario.prompt.trim() ||
+                    !assignTo
                   }
                   className="bg-brand-orange text-white px-4 py-2 rounded font-marfa
                              hover:bg-brand-orange-hover disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isSaving ? "Saving..." : "Save Scenario"}
+                  {isSaving ? "Saving..." : "Save & Assign"}
                 </button>
               </div>
             </div>

@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import prisma from '@/lib/prisma'
 import { apiSuccess, apiError, handleApiError, notFound } from '@/lib/api'
-import { createScenarioSchema, scenarioQuerySchema } from '@/lib/validators'
+import { createScenarioSchema, createOneTimeScenarioWithAssignmentSchema, scenarioQuerySchema } from '@/lib/validators'
 import { requireAuth, requireSupervisor } from '@/lib/auth'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
@@ -73,6 +73,98 @@ export async function POST(request: NextRequest) {
     const user = authResult.user
 
     const body = await request.json()
+
+    // Helper to resolve accountId (provided or default)
+    async function resolveAccountId(providedId: string | null | undefined) {
+      if (providedId) {
+        const account = await prisma.account.findUnique({ where: { id: providedId } })
+        if (!account) return { accountId: null as string | null, error: notFound('Account not found') }
+        return { accountId: providedId, error: null }
+      }
+      const defaultAccount = await prisma.account.findFirst()
+      if (!defaultAccount) {
+        return {
+          accountId: null as string | null,
+          error: apiError({ type: 'INTERNAL_ERROR', message: 'No accounts configured. Please create an account first.' }, 500),
+        }
+      }
+      return { accountId: defaultAccount.id, error: null }
+    }
+
+    // Helper to save evaluator context file (after scenario creation)
+    async function saveEvaluatorContext(scenarioId: string, evaluatorContext: string | undefined) {
+      if (!evaluatorContext) return null
+      const contextDir = path.join(process.cwd(), 'uploads', 'evaluator_context', scenarioId)
+      await mkdir(contextDir, { recursive: true })
+      const contextPath = path.join(contextDir, 'context.txt')
+      await writeFile(contextPath, evaluatorContext, 'utf-8')
+      return prisma.scenario.update({
+        where: { id: scenarioId },
+        data: { evaluatorContextPath: contextPath },
+        include: { creator: { select: { displayName: true } }, account: { select: { name: true } } },
+      })
+    }
+
+    // Try one-time-with-assignment schema first
+    const oneTimeResult = createOneTimeScenarioWithAssignmentSchema.safeParse(body)
+    if (oneTimeResult.success) {
+      // Validate counselor exists and has correct role
+      const counselor = await prisma.user.findUnique({
+        where: { id: oneTimeResult.data.assignTo },
+      })
+      if (!counselor || counselor.role !== 'counselor') {
+        return apiError({ type: 'VALIDATION_ERROR', message: 'Invalid learner selected' }, 400)
+      }
+
+      const { accountId, error: accountError } = await resolveAccountId(oneTimeResult.data.accountId)
+      if (accountError) return accountError
+
+      const result = await prisma.$transaction(async (tx) => {
+        const scenario = await tx.scenario.create({
+          data: {
+            title: oneTimeResult.data.title,
+            description: oneTimeResult.data.description,
+            prompt: oneTimeResult.data.prompt,
+            mode: oneTimeResult.data.mode,
+            category: oneTimeResult.data.category || null,
+            skills: oneTimeResult.data.skills || [],
+            accountId: accountId!,
+            isOneTime: true,
+            relevantPolicySections: oneTimeResult.data.relevantPolicySections,
+            createdBy: user.id,
+          },
+          include: { creator: { select: { displayName: true } }, account: { select: { name: true } } },
+        })
+
+        const assignment = await tx.assignment.create({
+          data: {
+            scenarioId: scenario.id,
+            counselorId: oneTimeResult.data.assignTo,
+            accountId: accountId!,
+            assignedBy: user.id,
+            status: 'pending',
+          },
+        })
+
+        return { scenario, assignment }
+      })
+
+      // Save evaluator context outside transaction (file I/O)
+      const updated = await saveEvaluatorContext(result.scenario.id, oneTimeResult.data.evaluatorContext)
+
+      return apiSuccess({ ...(updated || result.scenario), assignmentId: result.assignment.id }, 201)
+    }
+
+    // Reject isOneTime: true that failed one-time schema (prevents orphan scenarios)
+    if (body.isOneTime === true) {
+      const details = oneTimeResult.error?.flatten().fieldErrors as Record<string, unknown> | undefined
+      return apiError(
+        { type: 'VALIDATION_ERROR', message: 'One-time scenarios require a valid assignTo (learner UUID)', details },
+        400
+      )
+    }
+
+    // Fall through to standard schema
     const result = createScenarioSchema.safeParse(body)
 
     if (!result.success) {
@@ -82,26 +174,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Determine accountId - use provided, or fall back to first account
-    let accountId = result.data.accountId
-    if (accountId) {
-      const account = await prisma.account.findUnique({
-        where: { id: accountId },
-      })
-      if (!account) {
-        return notFound('Account not found')
-      }
-    } else {
-      // Get default account (first one) - accountId is required in schema
-      const defaultAccount = await prisma.account.findFirst()
-      if (!defaultAccount) {
-        return apiError(
-          { type: 'INTERNAL_ERROR', message: 'No accounts configured. Please create an account first.' },
-          500
-        )
-      }
-      accountId = defaultAccount.id
-    }
+    const { accountId, error: accountError } = await resolveAccountId(result.data.accountId)
+    if (accountError) return accountError
 
     const scenario = await prisma.scenario.create({
       data: {
@@ -111,7 +185,7 @@ export async function POST(request: NextRequest) {
         mode: result.data.mode,
         category: result.data.category || null,
         skills: result.data.skills || [],
-        accountId,
+        accountId: accountId!,
         isOneTime: result.data.isOneTime,
         relevantPolicySections: result.data.relevantPolicySections,
         createdBy: user.id,
@@ -122,26 +196,9 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Save evaluator context as file if provided
-    if (result.data.evaluatorContext) {
-      const contextDir = path.join(process.cwd(), 'uploads', 'evaluator_context', scenario.id)
-      await mkdir(contextDir, { recursive: true })
-      const contextPath = path.join(contextDir, 'context.txt')
-      await writeFile(contextPath, result.data.evaluatorContext, 'utf-8')
+    const updated = await saveEvaluatorContext(scenario.id, result.data.evaluatorContext)
 
-      const updatedScenario = await prisma.scenario.update({
-        where: { id: scenario.id },
-        data: { evaluatorContextPath: contextPath },
-        include: {
-          creator: { select: { displayName: true } },
-          account: { select: { name: true } },
-        },
-      })
-
-      return apiSuccess(updatedScenario, 201)
-    }
-
-    return apiSuccess(scenario, 201)
+    return apiSuccess(updated || scenario, 201)
   } catch (error) {
     return handleApiError(error)
   }
