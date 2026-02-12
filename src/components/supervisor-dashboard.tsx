@@ -239,7 +239,7 @@ export default function SupervisorDashboard() {
     setError(null);
     try {
       const params = new URLSearchParams();
-      params.set("is_one_time", String(scenarioFilter === "one-time"));
+      params.set("isOneTime", String(scenarioFilter === "one-time"));
       const response = await authFetch(`/api/scenarios?${params}`);
       const data: ApiResponse<Scenario[]> = await response.json();
       if (!data.ok) throw new Error(data.error.message);
@@ -330,7 +330,7 @@ export default function SupervisorDashboard() {
     if (!currentUser) return;
     const loadGlobalScenarios = async () => {
       try {
-        const response = await authFetch("/api/scenarios?is_one_time=false");
+        const response = await authFetch("/api/scenarios?isOneTime=false");
         const data: ApiResponse<Scenario[]> = await response.json();
         if (data.ok) {
           setGlobalScenariosCache(data.data);
