@@ -155,6 +155,15 @@ export async function POST(request: NextRequest) {
       return apiSuccess({ ...(updated || result.scenario), assignmentId: result.assignment.id }, 201)
     }
 
+    // Reject isOneTime: true that failed one-time schema (prevents orphan scenarios)
+    if (body.isOneTime === true) {
+      const details = oneTimeResult.error?.flatten().fieldErrors as Record<string, unknown> | undefined
+      return apiError(
+        { type: 'VALIDATION_ERROR', message: 'One-time scenarios require a valid assignTo (learner UUID)', details },
+        400
+      )
+    }
+
     // Fall through to standard schema
     const result = createScenarioSchema.safeParse(body)
 

@@ -82,6 +82,8 @@ export interface Scenario {
   estimatedTime: number | null;
   account?: Account;
   creator?: User;
+  // Present when created via one-time-with-assignment transaction
+  assignmentId?: string;
 }
 
 export interface Assignment {

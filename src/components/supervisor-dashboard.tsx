@@ -13,41 +13,10 @@ import {
 } from "@/types";
 import { createAuthFetch } from "@/lib/fetch";
 import { formatDate, getStatusColor } from "@/lib/format";
-import { ScenarioCategoryValues } from "@/lib/validators";
 import { VALID_SKILLS, type CrisisSkill } from "@/lib/skills";
+import { formatSkillLabel, formatCategoryLabel, CATEGORY_OPTIONS, CATEGORY_FILTER_OPTIONS } from "@/lib/labels";
 import BulkImportModal from "./bulk-import-modal";
 import GenerateScenarioModal from "./generate-scenario-modal";
-
-// Categories must match ScenarioCategoryValues in src/lib/validators.ts
-const SCENARIO_CATEGORIES = [
-  { value: "", label: "All" },
-  { value: "cohort_training", label: "Cohort Training" },
-  { value: "onboarding", label: "Onboarding" },
-  { value: "expert_skill_path", label: "Expert Skill Path" },
-  { value: "account_specific", label: "Account Specific" },
-  { value: "sales", label: "Sales" },
-  { value: "customer_facing", label: "Customer Facing" },
-  { value: "tap", label: "TAP" },
-  { value: "supervisors", label: "Supervisors" },
-  { value: "uncategorized", label: "Uncategorized" },
-];
-
-const CATEGORY_LABELS: Record<string, string> = {
-  cohort_training: "Cohort Training",
-  onboarding: "Onboarding",
-  expert_skill_path: "Expert Skill Path",
-  account_specific: "Account Specific",
-  sales: "Sales",
-  customer_facing: "Customer Facing",
-  tap: "TAP",
-  supervisors: "Supervisors",
-};
-
-const SKILL_LABEL_OVERRIDES: Record<string, string> = {
-  "de-escalation": "De-escalation",
-  "self-harm-assessment": "Self-Harm Assessment",
-  "dv-assessment": "DV Assessment",
-};
 
 interface ScenarioFormData {
   title: string;
@@ -325,24 +294,7 @@ export default function SupervisorDashboard() {
     }
   }, [currentUser, loadFlags]);
 
-  // Load global scenarios for assignment dropdown
-  useEffect(() => {
-    if (!currentUser) return;
-    const loadGlobalScenarios = async () => {
-      try {
-        const response = await authFetch("/api/scenarios?isOneTime=false");
-        const data: ApiResponse<Scenario[]> = await response.json();
-        if (data.ok) {
-          setGlobalScenariosCache(data.data);
-        }
-      } catch (err) {
-        console.error("Failed to load global scenarios", err);
-      }
-    };
-    loadGlobalScenarios();
-  }, [currentUser, authFetch]);
-
-  // Update cache when viewing global scenarios
+  // Update global scenarios cache when viewing global tab (used by assignment dropdown)
   useEffect(() => {
     if (scenarioFilter === "global" && scenarios.length > 0) {
       setGlobalScenariosCache(scenarios);
@@ -778,7 +730,7 @@ export default function SupervisorDashboard() {
           ) : filteredScenarios.length === 0 ? (
             <p className="text-gray-400">
               {categoryFilter
-                ? `No scenarios in "${CATEGORY_LABELS[categoryFilter] || categoryFilter}" category.`
+                ? `No scenarios in "${formatCategoryLabel(categoryFilter)}" category.`
                 : scenarioFilter === "one-time"
                   ? "No one-time scenarios yet."
                   : "No scenarios yet. Create your first one!"}
@@ -801,7 +753,7 @@ export default function SupervisorDashboard() {
                       </span>
                       {scenario.category && (
                         <span className="text-xs px-2 py-1 rounded bg-purple-500/20 text-purple-300">
-                          {CATEGORY_LABELS[scenario.category] || scenario.category}
+                          {formatCategoryLabel(scenario.category)}
                         </span>
                       )}
                       {scenario.isOneTime && (
@@ -855,7 +807,7 @@ export default function SupervisorDashboard() {
         <div>
           {/* Category Filter */}
           <div className="flex flex-wrap gap-2 mb-4">
-            {SCENARIO_CATEGORIES.map((cat) => (
+            {CATEGORY_FILTER_OPTIONS.map((cat) => (
               <button
                 key={cat.value}
                 onClick={() =>
@@ -900,7 +852,7 @@ export default function SupervisorDashboard() {
             <p className="text-gray-400">Loading assignments...</p>
           ) : filteredAssignments.length === 0 ? (
             <p className="text-gray-400">
-              {categoryFilter ? `No assignments in "${CATEGORY_LABELS[categoryFilter] || categoryFilter}" category.` : "No assignments yet."}
+              {categoryFilter ? `No assignments in "${formatCategoryLabel(categoryFilter)}" category.` : "No assignments yet."}
             </p>
           ) : (
             <div className="space-y-3">
@@ -1090,10 +1042,9 @@ export default function SupervisorDashboard() {
                   className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2
                              text-white font-marfa focus:outline-none focus:border-brand-orange"
                 >
-                  <option value="">-- None --</option>
-                  {ScenarioCategoryValues.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {CATEGORY_LABELS[cat] || cat}
+                  {CATEGORY_OPTIONS.map((cat) => (
+                    <option key={cat.value} value={cat.value}>
+                      {cat.label}
                     </option>
                   ))}
                 </select>
@@ -1152,7 +1103,7 @@ export default function SupervisorDashboard() {
                               : "bg-gray-700 text-gray-300 hover:bg-gray-600"
                           }`}
                         >
-                          {SKILL_LABEL_OVERRIDES[skill] || skill.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}
+                          {formatSkillLabel(skill)}
                         </button>
                       );
                     })}

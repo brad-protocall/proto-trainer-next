@@ -2,47 +2,12 @@
 
 import { useState } from "react";
 import { ScenarioCategory, ScenarioMode, User } from "@/types";
-import { ScenarioCategoryValues } from "@/lib/validators";
 import type { GeneratedScenario } from "@/lib/validators";
 import { VALID_SKILLS, type CrisisSkill } from "@/lib/skills";
 import { authFetch } from "@/lib/fetch";
+import { formatSkillLabel, CATEGORY_OPTIONS } from "@/lib/labels";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-
-const CATEGORY_LABEL_OVERRIDES: Record<string, string> = {
-  tap: "TAP",
-  dv_assessment: "DV Assessment",
-};
-
-function formatCategoryLabel(value: string): string {
-  if (CATEGORY_LABEL_OVERRIDES[value]) return CATEGORY_LABEL_OVERRIDES[value];
-  return value
-    .split("_")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
-
-const CATEGORY_OPTIONS: { value: string; label: string }[] = [
-  { value: "", label: "-- None --" },
-  ...ScenarioCategoryValues.map((v) => ({
-    value: v,
-    label: formatCategoryLabel(v),
-  })),
-];
-
-const SKILL_LABEL_OVERRIDES: Record<string, string> = {
-  "de-escalation": "De-escalation",
-  "self-harm-assessment": "Self-Harm Assessment",
-  "dv-assessment": "DV Assessment",
-};
-
-function formatSkillLabel(skill: string): string {
-  if (SKILL_LABEL_OVERRIDES[skill]) return SKILL_LABEL_OVERRIDES[skill];
-  return skill
-    .split("-")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
 
 interface GenerateScenarioModalProps {
   isOpen: boolean;
@@ -119,7 +84,13 @@ export default function GenerateScenarioModal({
       // Read TXT client-side
       try {
         const text = await file.text();
-        setComplaintText(text.trim());
+        const trimmed = text.trim();
+        if (trimmed.length > 15000) {
+          setComplaintText(trimmed.slice(0, 15000));
+          setError("File text exceeds 15,000 characters. Text has been truncated.");
+        } else {
+          setComplaintText(trimmed);
+        }
         setUploadedFileName(file.name);
       } catch {
         setError("Failed to read file");
@@ -144,6 +115,9 @@ export default function GenerateScenarioModal({
 
         setComplaintText(data.data.text);
         setUploadedFileName(data.data.fileName);
+        if (data.data.truncated) {
+          setError("PDF text exceeds 15,000 characters. Text has been truncated.");
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to extract text from PDF");
       } finally {

@@ -63,6 +63,7 @@ model Scenario {
   assignments Assignment[]
   sessions    Session[]    @relation("ScenarioSessions")
 
+  @@index([isOneTime, createdAt])
   @@map("scenarios")
 }
 
