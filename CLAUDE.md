@@ -432,6 +432,30 @@ analyzeSession(id, scenario, transcript).catch(...)
 
 **Prevention**: After any schema change, always run `npx prisma generate` AND restart the dev server. Hot-reload does not pick up Prisma client regeneration.
 
+#### 9. Dual-Schema Fallthrough Creates Orphan Data
+
+**Problem**: `POST /api/scenarios` tried an extended Zod schema first (one-time + assignment), fell through to the base schema on failure. Sending `isOneTime: true` without valid `assignTo` silently created an orphan one-time scenario with no assignment — invisible on the global tab and unreachable by counselors.
+
+**Prevention**: When using a try-first/fall-through schema pattern, add an explicit guard to reject requests that clearly intended the extended path:
+```typescript
+const extendedResult = extendedSchema.safeParse(body)
+if (extendedResult.success) { /* extended path */ }
+
+// Guard: reject if caller clearly intended the extended path
+if (body.discriminatorField === true) {
+  return apiError({ type: 'VALIDATION_ERROR', message: 'Extended path requires field X' }, 400)
+}
+
+// Standard path (only reached for standard requests)
+const result = baseSchema.safeParse(body)
+```
+
+#### 10. Shared Label Utilities Prevent Drift
+
+**Problem**: Three files independently defined category/skill label maps that drifted out of sync.
+
+**Prevention**: Extract display label logic to a shared module (`src/lib/labels.ts`) that derives from the Zod schema values. Components import, never define their own maps.
+
 ### Migration Script Best Practices
 
 Scripts in `scripts/` that modify database records should follow these patterns:
@@ -496,36 +520,28 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ## Resume Context (2026-02-12)
 
-### Current State: PR #47 open — One-Time Scenario Workflow Improvements. Needs review.
+### Current State: PR #47 reviewed and ready to merge — One-Time Scenario Workflow.
 
-**Branch:** `feature/one-time-scenario-workflow` at `3bdaf3e`
+**Branch:** `feature/one-time-scenario-workflow` at `e8279d5`
 **PR:** https://github.com/brad-protocall/proto-trainer-next/pull/47
-**Status:** Implemented, E2E tested (6/6 pass), type check + lint clean. Ready for code review.
+**Status:** Implemented, reviewed (7-agent parallel review), all findings fixed. Type check + lint clean. Zero npm vulnerabilities. Ready to merge.
 
-### Pick Up Here: Review PR #47
+### Pick Up Here: Merge PR #47 and Deploy
 
-Run Phase 4 (Review) from the SME prototype workflow. All 6 changes implemented and tested:
+1. **Merge PR #47** — All review findings addressed. 5 commits on branch.
+2. **Deploy to Pi** — Run `npm run deploy:pi:full`. Three pending migrations: `20260211000000_add_flag_source`, `20260212000000_add_document_review`, `20260212100000_add_scenario_is_one_time_index`. Also `npm install` on Pi for `unpdf` dependency.
+3. **Decompose supervisor-dashboard.tsx** (P3) — 1665 lines, extract ScenarioForm, ScenarioList, AssignmentPanel, FlagPanel as sub-components. Separate PR.
 
-1. **API: Dedicated schema + transaction** — `createOneTimeScenarioWithAssignmentSchema` in `validators.ts`. `POST /api/scenarios` tries one-time schema first, creates scenario + assignment in `$transaction` with `assignedBy`, `accountId`, counselor validation.
-2. **Move button** — "Generate from Complaint" only appears on One-Time tab.
-3. **Promote to Global** — Inline button on one-time scenario cards, `window.confirm()` PII warning, `PUT` with `{ isOneTime: false }`.
-4. **Extended form for one-time variant** — Learner dropdown + skills toggle chips in existing form when `formVariant === "one-time"`. "Create & Assign" button disabled until learner selected.
-5. **File upload in complaint generator** — New `POST /api/scenarios/extract-text` route (PDF via `unpdf`, TXT client-side). `<label>` wrapping pattern for modal reliability.
-6. **Learner picker in complaint generator** — Counselor dropdown in edit phase, "Save & Assign" button.
+### What PR #47 Contains (5 commits)
 
-**E2E Results:** All 6 tests pass (global tab buttons, one-time tab buttons, create form UI, atomic transaction, file upload, promote to global).
-
-**Pre-existing bugs found during E2E (not in PR scope):**
-- `is_one_time` URL param in `loadScenarios()` doesn't match Zod `isOneTime` field — both tabs show same scenarios
-- Dashboard loads External API System user by default instead of Test Supervisor
-
-### Also Pending
-
-1. **Deploy to Pi** — Run `npm run deploy:pi:full`. Two pending migrations: `20260211000000_add_flag_source` and `20260212000000_add_document_review`. Also need `npm install` on Pi for `unpdf` dependency.
-2. **Fix `is_one_time` → `isOneTime` URL param bug** — Quick fix in `supervisor-dashboard.tsx` `loadScenarios()`. Would make one-time tab actually filter correctly.
+1. `3bdaf3e` — feat: One-Time Scenario Workflow (6 features)
+2. `7007525` — fix: isOneTime URL param for tab filtering
+3. `ceceaed` — fix: 11 review findings (schema guard, shared labels, rate limiting, text truncation, index, dead code removal, type docs, duplicate API call)
+4. `e8279d5` — chore: npm audit fix (Next.js high severity vulnerability)
 
 ### Backlog (deferred, not blocking)
 
+- Decompose supervisor-dashboard.tsx (1665 lines → 4 sub-components)
 - LiveKit Egress for server-side voice recording
 - Agent transcript persistence via data channel (eliminate 30-40s feedback wait)
 - Rename `/counselor` route to `/learner` (cosmetic)
@@ -533,41 +549,37 @@ Run Phase 4 (Review) from the SME prototype workflow. All 6 changes implemented 
 
 ### GitHub Issues
 
-PR #47 open for review.
+PR #47 ready to merge.
 
 Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-session analysis), #12/PR#44 (scenario generation), PR#45 (analysis scanning), PR#46 (document consistency review)
 
 ### Previous Sessions
 
-- **2026-02-12 (Night)**: Implemented One-Time Scenario Workflow (6 changes). E2E tested all features (6/6 pass). PR #47 created. Found pre-existing `is_one_time` URL param bug.
-- **2026-02-11 (Late evening)**: Planned One-Time Scenario Workflow Improvements. 3-agent parallel review (DHH, Kieran, Simplicity). Plan v2 ready.
-- **2026-02-11 (Evening)**: Document Consistency Review — PR #46 merged. CLAUDE.md trimmed, archived compound knowledge.
+- **2026-02-12 (Morning)**: Reviewed PR #47 with 7-agent parallel review. Fixed `isOneTime` URL param bug. Addressed all 11 findings in single pass. Compounded learnings.
+- **2026-02-12 (Night)**: Implemented One-Time Scenario Workflow (6 changes). E2E tested (6/6 pass). PR #47 created.
+- **2026-02-11 (Late evening)**: Planned One-Time Scenario Workflow. 3-agent review. Plan v2 ready.
+- **2026-02-11 (Evening)**: Document Consistency Review — PR #46 merged.
 - **2026-02-11 (Afternoon)**: Post-Session Analysis Scanning — PR #45 merged.
 - **2026-02-10 (Evening)**: Feature #12 scenario generation — PR #44 merged, deployed to Pi.
-- **2026-02-09**: Voice UX fixes. Merged PR #43.
-- **2026-02-08**: Browser-side voice recording. Safe Pi deploy script.
-- **2026-02-07**: Pi deployment + voice debugging. Ngrok OAuth fix.
-- **2026-02-06**: Pi voice fix (LiveKit URL, database password).
-- **2026-02-05 and earlier**: Pi deploy, LiveKit migration, user testing, security hardening.
+- **2026-02-09 and earlier**: Voice UX, recording, Pi deployment, LiveKit migration, security hardening.
 
 ### P2 Items Deferred (fix before production)
 
 1. No `reviewedBy` / `updatedAt` on SessionFlag (audit trail)
 2. No rate limiting on flag endpoint (per-session cap)
 3. No rate limiting on evaluate endpoint (LLM cost protection)
-4. Composite index could include `createdAt` for query performance
-5. Scenario metadata injection risk (evaluatorContext could manipulate grading)
-6. No raw evaluation logging (audit trail for flag parsing)
-7. P2002 catch doesn't re-validate auth after concurrent race
-8. No UUID validation on `id` URL params (invalid IDs cause 500 instead of 400)
-9. Unhandled JSON parse error in flag route (500 instead of 400)
-10. `parseFlags()` validation now skips invalid LLM output silently — could log warnings
+4. Scenario metadata injection risk (evaluatorContext could manipulate grading)
+5. No raw evaluation logging (audit trail for flag parsing)
+6. P2002 catch doesn't re-validate auth after concurrent race
+7. No UUID validation on `id` URL params (invalid IDs cause 500 instead of 400)
+8. Unhandled JSON parse error in flag route (500 instead of 400)
+9. `parseFlags()` validation now skips invalid LLM output silently — could log warnings
 
 ### Git Status
 
-- Branch `feature/one-time-scenario-workflow` at `3bdaf3e` (PR #47 open)
+- Branch `feature/one-time-scenario-workflow` at `e8279d5` (PR #47 ready to merge)
 - Main at `dc44ef0` (PR #46 — document consistency review)
-- Pi deployed 2026-02-10 with scenario generation (PR #44). Two migrations pending on Pi.
+- Pi deployed 2026-02-10 with scenario generation (PR #44). Three migrations pending on Pi.
 
 ---
 
