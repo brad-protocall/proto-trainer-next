@@ -3,15 +3,22 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { EvaluationResult } from "@/types";
+import DocumentReviewButton from "./document-review-button";
 
 interface EvaluationResultsProps {
   evaluation: EvaluationResult;
   onClose: () => void;
+  sessionId?: string;
+  userId?: string;
+  hasDocumentReview?: boolean;
 }
 
 export default function EvaluationResults({
   evaluation,
   onClose,
+  sessionId,
+  userId,
+  hasDocumentReview,
 }: EvaluationResultsProps) {
   if (!evaluation) return null;
 
@@ -45,6 +52,14 @@ export default function EvaluationResults({
             {evaluation.evaluation}
           </ReactMarkdown>
         </div>
+
+        {sessionId && userId && (
+          <DocumentReviewButton
+            sessionId={sessionId}
+            userId={userId}
+            hasExistingReview={hasDocumentReview}
+          />
+        )}
 
         <div className="mt-4 flex justify-end">
           <button

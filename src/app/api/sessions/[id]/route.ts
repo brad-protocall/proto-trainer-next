@@ -48,6 +48,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             category: true,
           },
         },
+        documentReview: {
+          select: { id: true },
+        },
         assignment: {
           include: {
             scenario: {
@@ -88,7 +91,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return forbidden('Cannot view another user\'s session')
     }
 
-    return apiSuccess(session)
+    // Transform: replace documentReview object with boolean flag
+    const { documentReview, ...sessionData } = session
+    return apiSuccess({ ...sessionData, hasDocumentReview: !!documentReview })
   } catch (error) {
     return handleApiError(error)
   }

@@ -7,6 +7,7 @@ import remarkGfm from "remark-gfm";
 import { useChat } from "@/hooks/use-chat";
 import { Assignment } from "@/types";
 import SessionFeedback from "./session-feedback";
+import DocumentReviewButton from "./document-review-button";
 
 interface ChatTrainingViewProps {
   assignment: Assignment | null;
@@ -183,7 +184,10 @@ export default function ChatTrainingView({
               </ReactMarkdown>
             </div>
             {sessionId && (
-              <SessionFeedback sessionId={sessionId} userId={userId} />
+              <>
+                <DocumentReviewButton sessionId={sessionId} userId={userId} />
+                <SessionFeedback sessionId={sessionId} userId={userId} />
+              </>
             )}
           </div>
           <button
