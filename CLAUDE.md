@@ -494,16 +494,35 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ---
 
-## Resume Context (2026-02-11)
+## Resume Context (2026-02-12)
 
-### Current State: All features merged. No active branch.
+### Current State: PR #47 open — One-Time Scenario Workflow Improvements. Needs review.
 
-**Branch:** `main` at `dc44ef0`
-**Status:** Document Consistency Review merged (PR #46). CLAUDE.md trimmed + compound knowledge archived.
+**Branch:** `feature/one-time-scenario-workflow` at `3bdaf3e`
+**PR:** https://github.com/brad-protocall/proto-trainer-next/pull/47
+**Status:** Implemented, E2E tested (6/6 pass), type check + lint clean. Ready for code review.
 
-### Remaining TODO (Pick Up Here)
+### Pick Up Here: Review PR #47
+
+Run Phase 4 (Review) from the SME prototype workflow. All 6 changes implemented and tested:
+
+1. **API: Dedicated schema + transaction** — `createOneTimeScenarioWithAssignmentSchema` in `validators.ts`. `POST /api/scenarios` tries one-time schema first, creates scenario + assignment in `$transaction` with `assignedBy`, `accountId`, counselor validation.
+2. **Move button** — "Generate from Complaint" only appears on One-Time tab.
+3. **Promote to Global** — Inline button on one-time scenario cards, `window.confirm()` PII warning, `PUT` with `{ isOneTime: false }`.
+4. **Extended form for one-time variant** — Learner dropdown + skills toggle chips in existing form when `formVariant === "one-time"`. "Create & Assign" button disabled until learner selected.
+5. **File upload in complaint generator** — New `POST /api/scenarios/extract-text` route (PDF via `unpdf`, TXT client-side). `<label>` wrapping pattern for modal reliability.
+6. **Learner picker in complaint generator** — Counselor dropdown in edit phase, "Save & Assign" button.
+
+**E2E Results:** All 6 tests pass (global tab buttons, one-time tab buttons, create form UI, atomic transaction, file upload, promote to global).
+
+**Pre-existing bugs found during E2E (not in PR scope):**
+- `is_one_time` URL param in `loadScenarios()` doesn't match Zod `isOneTime` field — both tabs show same scenarios
+- Dashboard loads External API System user by default instead of Test Supervisor
+
+### Also Pending
 
 1. **Deploy to Pi** — Run `npm run deploy:pi:full`. Two pending migrations: `20260211000000_add_flag_source` and `20260212000000_add_document_review`. Also need `npm install` on Pi for `unpdf` dependency.
+2. **Fix `is_one_time` → `isOneTime` URL param bug** — Quick fix in `supervisor-dashboard.tsx` `loadScenarios()`. Would make one-time tab actually filter correctly.
 
 ### Backlog (deferred, not blocking)
 
@@ -514,24 +533,22 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ### GitHub Issues
 
-No issues currently in progress.
+PR #47 open for review.
 
 Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-session analysis), #12/PR#44 (scenario generation), PR#45 (analysis scanning), PR#46 (document consistency review)
 
 ### Previous Sessions
 
-- **2026-02-11 (Evening)**: Document Consistency Review — full feature implemented, E2E tested, PR #46 merged. CLAUDE.md trimmed (767→666 lines), archived compound knowledge to `docs/solutions/` (bug patterns 5-8, Pi deployment runbook).
-- **2026-02-11 (Afternoon)**: Post-Session Analysis Scanning — Ralph implemented, 6-agent code review, PR #45 merged.
-- **2026-02-10 (Evening)**: Feature #12 scenario generation — Ralph implemented, 6-agent review, PR #44 merged, deployed to Pi.
-- **2026-02-09**: Voice UX fixes (feedback timing, auto-retry connection). Merged PR #43.
+- **2026-02-12 (Night)**: Implemented One-Time Scenario Workflow (6 changes). E2E tested all features (6/6 pass). PR #47 created. Found pre-existing `is_one_time` URL param bug.
+- **2026-02-11 (Late evening)**: Planned One-Time Scenario Workflow Improvements. 3-agent parallel review (DHH, Kieran, Simplicity). Plan v2 ready.
+- **2026-02-11 (Evening)**: Document Consistency Review — PR #46 merged. CLAUDE.md trimmed, archived compound knowledge.
+- **2026-02-11 (Afternoon)**: Post-Session Analysis Scanning — PR #45 merged.
+- **2026-02-10 (Evening)**: Feature #12 scenario generation — PR #44 merged, deployed to Pi.
+- **2026-02-09**: Voice UX fixes. Merged PR #43.
 - **2026-02-08**: Browser-side voice recording. Safe Pi deploy script.
-- **2026-02-07**: Pi deployment + voice debugging. Ngrok OAuth fix. Transcript timing race condition.
-- **2026-02-06**: Pi voice fix (LiveKit URL, database password). LiveKit agent stale container fix.
-- **2026-02-05**: Pi deploy (P3005 baseline fix). Chunked code review of #40.
-- **2026-02-04**: LiveKit secrets fix (comma-separated values). E2E testing + Pi deployment.
-- **2026-02-03**: #38 + #39 implementation + reviews. LiveKit migration review.
-- **2026-02-02**: LiveKit full migration (spike → GO → implementation).
-- **2026-02-01 and earlier**: User testing bug fixes, security hardening, pre-handoff cleanup.
+- **2026-02-07**: Pi deployment + voice debugging. Ngrok OAuth fix.
+- **2026-02-06**: Pi voice fix (LiveKit URL, database password).
+- **2026-02-05 and earlier**: Pi deploy, LiveKit migration, user testing, security hardening.
 
 ### P2 Items Deferred (fix before production)
 
@@ -548,8 +565,8 @@ Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-sess
 
 ### Git Status
 
-- Latest commit on main: `dc44ef0` (merge of PR #46 — document consistency review)
-- No active branch
+- Branch `feature/one-time-scenario-workflow` at `3bdaf3e` (PR #47 open)
+- Main at `dc44ef0` (PR #46 — document consistency review)
 - Pi deployed 2026-02-10 with scenario generation (PR #44). Two migrations pending on Pi.
 
 ---
