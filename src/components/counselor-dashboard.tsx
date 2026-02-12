@@ -29,7 +29,7 @@ export default function CounselorDashboard({
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
   const [startingId, setStartingId] = useState<string | null>(null);
-  const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
+  const [evaluation, setEvaluation] = useState<EvaluationResult & { sessionId?: string } | null>(null);
   const [loadingFeedback, setLoadingFeedback] = useState<string | null>(null);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -143,7 +143,7 @@ export default function CounselorDashboard({
   }, [loadFreePracticeSessions]);
 
   // Shared helper: fetch and display evaluation feedback by ID
-  const fetchAndShowFeedback = async (entityId: string, evaluationId: string) => {
+  const fetchAndShowFeedback = async (entityId: string, evaluationId: string, sessionId?: string) => {
     setLoadingFeedback(entityId);
     setError(null);
     try {
@@ -152,6 +152,7 @@ export default function CounselorDashboard({
       if (!data.ok) throw new Error(data.error?.message || "Failed to load feedback");
       setEvaluation({
         evaluation: data.data.feedbackJson || data.data.rawResponse || "No evaluation content available",
+        sessionId,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load feedback");
@@ -232,6 +233,7 @@ export default function CounselorDashboard({
       if (!data.ok) throw new Error(data.error?.message || "Failed to get feedback");
       setEvaluation({
         evaluation: data.data.evaluation.evaluation,
+        sessionId,
       });
       await loadAssignments();
     } catch (err) {
@@ -246,7 +248,7 @@ export default function CounselorDashboard({
       setError("No evaluation found for this assignment");
       return;
     }
-    await fetchAndShowFeedback(assignment.id, assignment.evaluationId);
+    await fetchAndShowFeedback(assignment.id, assignment.evaluationId, assignment.sessionId ?? undefined);
   };
 
   const handleViewScenario = async (assignment: Assignment) => {
@@ -563,7 +565,7 @@ export default function CounselorDashboard({
                     )}
                     {session.evaluation && (
                       <button
-                        onClick={() => fetchAndShowFeedback(session.id, session.evaluation!.id)}
+                        onClick={() => fetchAndShowFeedback(session.id, session.evaluation!.id, session.id)}
                         disabled={loadingFeedback === session.id}
                         className="bg-green-600 hover:bg-green-700 text-white
                                    font-marfa font-bold py-1.5 px-3 rounded text-sm
@@ -838,6 +840,8 @@ export default function CounselorDashboard({
         <EvaluationResults
           evaluation={evaluation}
           onClose={() => setEvaluation(null)}
+          sessionId={evaluation.sessionId}
+          userId={currentUser?.id}
         />
       )}
 

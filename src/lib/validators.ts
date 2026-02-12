@@ -211,6 +211,23 @@ export const generatedScenarioSchema = z.object({
 export type GenerateScenarioInput = z.infer<typeof generateScenarioSchema>
 export type GeneratedScenario = z.infer<typeof generatedScenarioSchema>
 
+// Document review result (structured output from LLM)
+export const DocumentGapTypeValues = ['fabrication', 'omission', 'minimization', 'inaccuracy', 'formatting'] as const
+export const DocumentGapSeverityValues = ['critical', 'important', 'minor'] as const
+
+export const documentReviewResultSchema = z.object({
+  transcriptAccuracy: z.number().int().min(0).max(100),
+  guidelinesCompliance: z.number().int().min(0).max(100),
+  overallScore: z.number().int().min(0).max(100),
+  specificGaps: z.array(z.object({
+    type: z.enum(DocumentGapTypeValues),
+    detail: z.string(),
+    severity: z.enum(DocumentGapSeverityValues),
+  })),
+  narrative: z.string(),
+})
+export type DocumentReviewResult = z.infer<typeof documentReviewResultSchema>
+
 // Post-session analysis result (combined misuse + consistency scanning)
 export const analysisResultSchema = z.object({
   misuse: z.object({

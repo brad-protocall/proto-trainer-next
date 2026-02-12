@@ -213,6 +213,26 @@ export interface BulkAssignmentResponse {
   assignments?: AssignmentResponse[];
 }
 
+// Document review types
+import type { DocumentReviewResult } from '@/lib/validators';
+export type { DocumentReviewResult };
+
+export interface DocumentReview {
+  id: string;
+  sessionId: string;
+  fileName: string;
+  transcriptAccuracy: number;
+  guidelinesCompliance: number;
+  overallScore: number;
+  specificGaps: Array<{
+    type: 'fabrication' | 'omission' | 'minimization' | 'inaccuracy' | 'formatting';
+    detail: string;
+    severity: 'critical' | 'important' | 'minor';
+  }>;
+  reviewText: string;
+  createdAt: string;
+}
+
 // Flag enums — single source of truth is validators.ts (Zod-derived)
 import type { SessionFlagType, FlagSeverity, FlagStatus, FlagSource } from '@/lib/validators';
 export type { SessionFlagType, FlagSeverity, FlagStatus, FlagSource };
@@ -320,4 +340,5 @@ export interface SessionResponse {
     mode: ScenarioMode;
     category: ScenarioCategory | null;
   } | null;
+  hasDocumentReview?: boolean;
 }

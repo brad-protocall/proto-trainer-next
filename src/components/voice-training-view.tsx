@@ -17,6 +17,7 @@ import "@livekit/components-styles";
 import type { ConnectionState } from "livekit-client";
 import type { Assignment, ConnectionStatus, EvaluationResult } from "@/types";
 import SessionFeedback from "./session-feedback";
+import DocumentReviewButton from "./document-review-button";
 import { useAudioRecorder } from "@/hooks/use-audio-recorder";
 
 // Shared constants matching the agent's AGENT_ATTRS
@@ -483,7 +484,10 @@ export default function VoiceTrainingView({
             </div>
 
             {sessionId && (
-              <SessionFeedback sessionId={sessionId} userId={userId} variant="light" mode="phone" />
+              <>
+                <DocumentReviewButton sessionId={sessionId} userId={userId} />
+                <SessionFeedback sessionId={sessionId} userId={userId} variant="light" mode="phone" />
+              </>
             )}
 
             <div className="mt-6 flex justify-end">

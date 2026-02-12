@@ -107,10 +107,11 @@ model Session {
   assignment Assignment?      @relation(fields: [assignmentId], references: [id])
   user       User?            @relation("UserSessions", fields: [userId], references: [id])
   scenario   Scenario?        @relation("ScenarioSessions", fields: [scenarioId], references: [id])
-  transcript TranscriptTurn[]
-  recording  Recording?
-  evaluation Evaluation?
-  flags      SessionFlag[]
+  transcript     TranscriptTurn[]
+  recording      Recording?
+  evaluation     Evaluation?
+  flags          SessionFlag[]
+  documentReview DocumentReview?
 
   @@index([assignmentId])
   @@index([userId])
@@ -181,4 +182,20 @@ model SessionFlag {
   @@index([status, severity])
   @@index([sessionId, source])
   @@map("session_flags")
+}
+
+model DocumentReview {
+  id                   String   @id @default(uuid())
+  sessionId            String   @unique @map("session_id")
+  fileName             String   @map("file_name")
+  transcriptAccuracy   Int      @map("transcript_accuracy")
+  guidelinesCompliance Int      @map("guidelines_compliance")
+  overallScore         Int      @map("overall_score")
+  specificGaps         Json     @map("specific_gaps")
+  reviewText           String   @map("review_text")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("document_reviews")
 }
