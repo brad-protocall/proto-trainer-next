@@ -58,7 +58,7 @@ lk agent secrets
 ### 4. API callback working?
 ```bash
 curl -X POST https://proto-trainer.ngrok.io/api/internal/sessions \
-  -H "X-Internal-Service-Key: ptg-internal-key-2026" \
+  -H "X-Internal-Service-Key: <YOUR_INTERNAL_SERVICE_KEY>" \
   -H "Content-Type: application/json" \
   -d '{"type":"free_practice","userId":"00000000-0000-0000-0000-000000000000"}'
 # Result: 500

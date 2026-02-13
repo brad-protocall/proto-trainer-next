@@ -120,17 +120,6 @@ export async function getSimulatorResponse(
 // Vector Store Functions
 
 /**
- * Find an existing vector store by name or create a new one
- */
-async function findOrCreateVectorStore(name: string) {
-  const stores = await openai.vectorStores.list()
-  const existing = stores.data.find((s) => s.name === name)
-  if (existing) return existing
-
-  return openai.vectorStores.create({ name })
-}
-
-/**
  * Upload a policy file to OpenAI and add it to a vector store for the account.
  * Uses safe replace semantics: upload new file FIRST, then remove old files.
  * Accepts optional existingVectorStoreId to avoid listing all stores.
@@ -140,36 +129,49 @@ export async function uploadPolicyToVectorStore(
   filePath: string,
   existingVectorStoreId?: string | null
 ): Promise<{ fileId: string; vectorStoreId: string; status: string }> {
-  // 1. Resolve vector store — use existing ID if available (avoids listing all stores)
+  // 1. Resolve vector store — use existing ID if available, otherwise create new
   let vectorStoreId: string
   if (existingVectorStoreId) {
     try {
       const existing = await openai.vectorStores.retrieve(existingVectorStoreId)
       vectorStoreId = existing.id
     } catch {
-      // Stale ID — create new store
-      const created = await findOrCreateVectorStore(`account-${accountId}-policies`)
+      // Stale ID — create new store (no list needed, avoids pagination bug)
+      const created = await openai.vectorStores.create({ name: `account-${accountId}-policies` })
       vectorStoreId = created.id
     }
   } else {
-    const created = await findOrCreateVectorStore(`account-${accountId}-policies`)
+    const created = await openai.vectorStores.create({ name: `account-${accountId}-policies` })
     vectorStoreId = created.id
   }
 
   // 2. Upload new file FIRST (safe: old file still exists if this fails)
-  const uploadedFile = await openai.files.create({
-    file: fs.createReadStream(filePath),
-    purpose: 'assistants',
-  })
-  const vsFile = await openai.vectorStores.files.create(vectorStoreId, {
-    file_id: uploadedFile.id,
-  })
+  const uploadedFile = await openai.files.create(
+    { file: fs.createReadStream(filePath), purpose: 'assistants' },
+    { timeout: 60000 }
+  )
 
-  // 3. THEN remove old files (safe: new file already in store)
+  // 3. Attach to vector store — clean up uploaded file if this fails
+  let vsFile
+  try {
+    vsFile = await openai.vectorStores.files.create(
+      vectorStoreId,
+      { file_id: uploadedFile.id },
+      { timeout: 30000 }
+    )
+  } catch (error) {
+    await openai.files.del(uploadedFile.id).catch(() => {}) // Clean up orphan
+    throw error
+  }
+
+  // 4. THEN remove old files — best-effort (new file already in store)
+  // Note: only lists first page; acceptable since design is one PDF per account
   const existingFiles = await openai.vectorStores.files.list(vectorStoreId)
   for (const file of existingFiles.data) {
     if (file.id === uploadedFile.id) continue // Skip the one we just added
-    await openai.vectorStores.files.del(vectorStoreId, file.id)
+    await openai.vectorStores.files.del(vectorStoreId, file.id).catch((err) => {
+      console.warn(`[WARN] Failed to remove old file ${file.id} from vector store:`, err)
+    })
     await openai.files.del(file.id).catch(() => {}) // Best-effort cleanup
   }
 
@@ -313,19 +315,22 @@ export async function generateEvaluation(options: GenerateEvaluationOptions): Pr
   // Use Responses API with file_search tool when vector store exists
   if (vectorStoreId) {
     try {
-      const response = await openai.responses.create({
-        model: process.env.EVALUATOR_MODEL ?? 'gpt-4.1',
-        instructions: systemPrompt,
-        input: userMessage,
-        tools: [
-          {
-            type: 'file_search',
-            vector_store_ids: [vectorStoreId],
-          },
-        ],
-        temperature: 0.3,
-        max_output_tokens: 3000,
-      })
+      const response = await openai.responses.create(
+        {
+          model: process.env.EVALUATOR_MODEL ?? 'gpt-4.1',
+          instructions: systemPrompt,
+          input: userMessage,
+          tools: [
+            {
+              type: 'file_search',
+              vector_store_ids: [vectorStoreId],
+            },
+          ],
+          temperature: 0.3,
+          max_output_tokens: 3000,
+        },
+        { timeout: 60000 }
+      )
 
       const result = processRawEvaluation(response.output_text ?? '')
       return { ...result, usedFileSearch: true }

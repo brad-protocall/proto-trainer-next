@@ -348,7 +348,7 @@ services:
       - "5432:5432"
     environment:
       POSTGRES_USER: proto
-      POSTGRES_PASSWORD: proto_dev_2026
+      POSTGRES_PASSWORD: <DB_PASSWORD>
       POSTGRES_DB: proto_trainer
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -454,7 +454,7 @@ skills             String[]  @default([])
 Update `.env`:
 ```
 # DATABASE_URL="file:./dev.db"
-DATABASE_URL="postgresql://proto:proto_dev_2026@localhost:5432/proto_trainer"
+DATABASE_URL="postgresql://proto:<DB_PASSWORD>@localhost:5432/proto_trainer"
 ```
 
 **Verification:**
@@ -653,7 +653,7 @@ Add to Resume Context section:
 2. **Postgres Migration** ✅
    - Migrated from SQLite to Postgres (Docker)
    - Start with: `docker-compose up -d`
-   - Connection: postgresql://proto:proto_dev_2026@localhost:5432/proto_trainer
+   - Connection: postgresql://proto:<DB_PASSWORD>@localhost:5432/proto_trainer
 
 3. **Skills Array** ✅
    - Schema: `skills String[]` (Postgres native array)

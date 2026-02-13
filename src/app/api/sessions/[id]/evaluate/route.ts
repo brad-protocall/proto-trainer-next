@@ -176,6 +176,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           evaluation: evaluationResult.evaluation,
           grade: evaluationResult.grade,
           numericScore: evaluationResult.numericScore,
+          usedFileSearch: evaluationResult.usedFileSearch,
         },
         session: {
           id: session.id,

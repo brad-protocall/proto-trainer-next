@@ -21,7 +21,7 @@ The `docker-compose.yml` file contains hardcoded database credentials that are v
 ```yaml
 environment:
   POSTGRES_USER: proto
-  POSTGRES_PASSWORD: proto_dev_2026  # Hardcoded!
+  POSTGRES_PASSWORD: <DB_PASSWORD>  # Hardcoded!
   POSTGRES_DB: proto_trainer
 ports:
   - "5432:5432"  # Exposed to 0.0.0.0

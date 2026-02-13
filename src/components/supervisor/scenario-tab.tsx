@@ -828,7 +828,7 @@ export default function ScenarioTab({
               {/* Organization Account */}
               <div>
                 <label className="block text-gray-300 text-sm font-marfa mb-1">
-                  Organization Account {formVariant === "one-time" ? "(Optional)" : "(Optional)"}
+                  Organization Account (Optional)
                 </label>
                 <div className="flex gap-2">
                   <select

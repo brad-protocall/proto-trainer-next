@@ -554,7 +554,7 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
    - Supervisors re-upload procedures frequently — always want current version for evaluation
    - Procedures contain account numbers — can validate on upload
    - One PDF per account covers everything
-   - Existing OpenAI vector store "Proto Training Guide - Account Policies" (`vs_695c6bd...b19`) exists but is empty — will use per-account stores instead
+   - Existing OpenAI vector store "Proto Training Guide - Account Policies" exists but is empty — will use per-account stores instead
    - New convention (future): scenario titles should start with account number
 
 ### Uncommitted Files (from prior sessions — still need commit + deploy)
@@ -661,7 +661,7 @@ Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-sess
 7. **Prisma baselining**: If P3005 "schema not empty" error, baseline existing migrations with `prisma migrate resolve --applied` before `migrate deploy`
 8. **sudo in SSH one-liners fails**: "Interactive authentication required" — must SSH interactively for `sudo systemctl restart`
 9. **NEXT_PUBLIC_ vars require rebuild**: `NEXT_PUBLIC_*` env vars are baked into the Next.js build at compile time. Changing `.env` + restart is NOT enough — must run `npm run build` on Pi. Regular env vars (DATABASE_URL, OPENAI_API_KEY, etc.) only need a restart.
-10. **Pi database password is `Protocall`**: NOT `proto_dev_2026` (which is the local dev password). Pi's `.env` has `DATABASE_URL="postgresql://proto:Protocall@..."`. There's also a systemd override at `/etc/systemd/system/proto-trainer-next.service.d/override.conf` that sets this.
+10. **Pi database password**: See Pi's `.env` file (NOT the same as local dev). There's also a systemd override at `/etc/systemd/system/proto-trainer-next.service.d/override.conf` that sets this.
 11. **Don't edit Pi `.env` with values from local**: Pi and local have DIFFERENT database passwords. Be careful with nano — only edit the specific lines you intend to change.
 12. **Pi LiveKit URL**: `wss://proto-trainer-next-amw48y2e.livekit.cloud` — the `kf6mbd6s` URL that was previously there is invalid/non-existent.
 13. **Seed drift**: Adding users to `prisma/seed.ts` doesn't automatically add them to Pi. Must either re-run `npx prisma db seed` on Pi or INSERT directly via `sudo -u postgres psql -d proto_trainer`. Use `ON CONFLICT DO NOTHING` for idempotency.
@@ -693,7 +693,7 @@ Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-sess
 ```bash
 lk agent update-secrets \
   --secrets "NEXT_APP_URL=https://proto-trainer.ngrok.io" \
-  --secrets "INTERNAL_SERVICE_KEY=ptg-internal-key-2026" \
+  --secrets "INTERNAL_SERVICE_KEY=<YOUR_INTERNAL_SERVICE_KEY>" \
   --secrets "OPENAI_API_KEY=sk-..."
 ```
 

@@ -22,7 +22,7 @@ npm run deploy:pi:full   # Sync + build + restart service on Pi
 | Setting | Value |
 |---------|-------|
 | Directory | `~/apps/proto-trainer-next` (NOT `~/proto-trainer-next`) |
-| Database | PostgreSQL, password: `Protocall` |
+| Database | PostgreSQL (see Pi `.env` for password) |
 | Service | `proto-trainer-next` (systemd) |
 | LiveKit URL | `wss://proto-trainer-next-amw48y2e.livekit.cloud` |
 | ngrok URL | `https://proto-trainer.ngrok.io` |
@@ -31,8 +31,8 @@ npm run deploy:pi:full   # Sync + build + restart service on Pi
 
 | Setting | Local (Mac) | Pi |
 |---------|-------------|-----|
-| Database | SQLite (`file:./dev.db`) | PostgreSQL (`proto:Protocall@localhost`) |
-| Database password | `proto_dev_2026` | `Protocall` |
+| Database | SQLite (`file:./dev.db`) | PostgreSQL (`proto:<PI_PASSWORD>@localhost`) |
+| Database password | See local `.env` | See Pi `.env` |
 | LiveKit URL | Same cloud URL | Same cloud URL |
 | Node modules | macOS binaries | ARM binaries |
 | `.next/` build | macOS Prisma engine | Linux ARM Prisma engine |
@@ -138,7 +138,7 @@ lk agent update-secrets --secrets "NEXT_APP_URL=https://example.com,INTERNAL_SER
 ```bash
 lk agent update-secrets \
   --secrets "NEXT_APP_URL=https://proto-trainer.ngrok.io" \
-  --secrets "INTERNAL_SERVICE_KEY=ptg-internal-key-2026" \
+  --secrets "INTERNAL_SERVICE_KEY=<YOUR_INTERNAL_SERVICE_KEY>" \
   --secrets "OPENAI_API_KEY=sk-..."
 ```
 
