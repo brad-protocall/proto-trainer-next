@@ -13,7 +13,6 @@ const saveTranscriptTurnSchema = z.object({
   role: z.enum(['user', 'assistant']),
   content: z.string().min(1).max(50000),
   turnOrder: z.number().int().min(0).optional(),
-  attemptNumber: z.number().int().min(1).optional(),
 })
 
 // Schema for bulk saving transcript turns
@@ -55,8 +54,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Get session to verify ownership
     const session = await prisma.session.findUnique({
       where: { id },
-      include: {
-        assignment: true,
+      select: {
+        id: true,
+        status: true,
+        currentAttempt: true,
+        userId: true,
+        assignment: { select: { counselorId: true } },
       },
     })
 
@@ -79,47 +82,38 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       ? bulkResult.data.turns
       : [singleResult.data!]
 
-    // Save all turns in a transaction with proper turnOrder
-    const savedTurns = await prisma.$transaction(async (tx) => {
-      // Get session's current attempt number for default
-      const currentSession = await tx.session.findUnique({
-        where: { id },
-        select: { currentAttempt: true },
-      })
-      const defaultAttemptNumber = currentSession?.currentAttempt ?? 1
+    // Get session's current attempt number for default
+    const defaultAttemptNumber = session.currentAttempt ?? 1
 
-      // Get current max turnOrder for this attempt
-      const maxResult = await tx.transcriptTurn.aggregate({
+    // Idempotent: delete existing turns for this attempt, then bulk insert.
+    // "Most turns wins" — skip overwrite if existing transcript is more complete.
+    // Both client (fast path) and agent (shutdown) may persist; keep the longer one.
+    const turnData = turnsToSave.map((turn, i) => ({
+      sessionId: id,
+      role: turn.role,
+      content: turn.content,
+      turnOrder: turn.turnOrder ?? i + 1,
+      attemptNumber: defaultAttemptNumber,
+    }))
+
+    const result = await prisma.$transaction(async (tx) => {
+      const existingCount = await tx.transcriptTurn.count({
         where: { sessionId: id, attemptNumber: defaultAttemptNumber },
-        _max: { turnOrder: true },
       })
-      let nextTurnOrder = (maxResult._max.turnOrder ?? 0) + 1
 
-      const results = []
-      for (const turn of turnsToSave) {
-        const saved = await tx.transcriptTurn.create({
-          data: {
-            sessionId: id,
-            role: turn.role,
-            content: turn.content,
-            turnOrder: turn.turnOrder ?? nextTurnOrder,
-            attemptNumber: turn.attemptNumber ?? defaultAttemptNumber,
-          },
-        })
-        results.push(saved)
-        nextTurnOrder++
+      if (existingCount > turnData.length) {
+        return { count: existingCount }
       }
 
-      return results
+      await tx.transcriptTurn.deleteMany({
+        where: { sessionId: id, attemptNumber: defaultAttemptNumber },
+      })
+
+      return tx.transcriptTurn.createMany({ data: turnData })
     })
 
     return apiSuccess({
-      saved: savedTurns.length,
-      turns: savedTurns.map(t => ({
-        id: t.id,
-        role: t.role,
-        turnOrder: t.turnOrder,
-      })),
+      saved: result.count,
     })
   } catch (error) {
     return handleApiError(error)

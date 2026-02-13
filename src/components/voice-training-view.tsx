@@ -12,6 +12,7 @@ import {
   VoiceAssistantControlBar,
   useConnectionState,
   useLocalParticipant,
+  useDataChannel,
 } from "@livekit/components-react";
 import "@livekit/components-styles";
 import type { ConnectionState } from "livekit-client";
@@ -25,6 +26,38 @@ const AGENT_ATTRS = {
   SESSION_ID: "session.id",
   ERROR: "error",
 } as const;
+
+/** Must match counterpart in livekit-agent/src/main.ts */
+interface TranscriptDataMessage {
+  role: "user" | "assistant";
+  content: string;
+  turnOrder: number;
+}
+
+function parseTranscriptMessage(
+  payload: Uint8Array
+): TranscriptDataMessage | null {
+  try {
+    const decoded = new TextDecoder().decode(payload);
+    const parsed = JSON.parse(decoded);
+    if (
+      (parsed.role === "user" || parsed.role === "assistant") &&
+      typeof parsed.content === "string" &&
+      typeof parsed.turnOrder === "number"
+    ) {
+      return parsed as TranscriptDataMessage;
+    }
+    console.warn("[Voice] Invalid transcript message shape:", {
+      hasRole: typeof parsed.role,
+      hasContent: typeof parsed.content,
+      hasTurnOrder: typeof parsed.turnOrder,
+    });
+    return null;
+  } catch (err) {
+    console.warn("[Voice] Failed to parse transcript message:", err);
+    return null;
+  }
+}
 
 interface VoiceTrainingViewProps {
   assignment: Assignment | null;
@@ -146,6 +179,7 @@ function VoiceSessionUI({
   onError,
   onGetFeedback,
   onStopRecording,
+  onTranscriptTurn,
 }: {
   sessionId: string | null;
   evaluation: EvaluationResult | null;
@@ -158,8 +192,19 @@ function VoiceSessionUI({
   onError: (msg: string) => void;
   onGetFeedback: () => void;
   onStopRecording: (fn: () => Promise<Blob | null>) => void;
+  onTranscriptTurn: (turn: TranscriptDataMessage) => void;
 }) {
   const { state: agentState, audioTrack, agentAttributes } = useVoiceAssistant();
+
+  // Subscribe to transcript data channel from agent
+  const handleTranscriptMessage = useCallback(
+    (msg: { payload: Uint8Array }) => {
+      const turn = parseTranscriptMessage(msg.payload);
+      if (turn) onTranscriptTurn(turn);
+    },
+    [onTranscriptTurn],
+  );
+  useDataChannel("transcript", handleTranscriptMessage);
   const { microphoneTrack } = useLocalParticipant();
   const lkConnectionState = useConnectionState();
   const connectionStatus = toConnectionStatus(lkConnectionState);
@@ -329,6 +374,7 @@ export default function VoiceTrainingView({
   const evaluationTriggered = useRef(false);
   const connectionAttemptRef = useRef(0);
   const stopRecordingRef = useRef<(() => Promise<Blob | null>) | null>(null);
+  const transcriptTurnsRef = useRef<TranscriptDataMessage[]>([]);
 
   const scenarioId = assignment?.scenarioId;
   const scenarioTitle = assignment?.scenarioTitle || "Untitled";
@@ -346,6 +392,7 @@ export default function VoiceTrainingView({
     setEvaluation(null);
     setConnectionStatus("connecting");
     evaluationTriggered.current = false;
+    transcriptTurnsRef.current = [];
 
     try {
       const response = await fetch("/api/livekit/token", {
@@ -377,6 +424,10 @@ export default function VoiceTrainingView({
       setConnectionStatus("disconnected");
     }
   }, [userId, scenarioId, assignment]);
+
+  const handleTranscriptTurn = useCallback((turn: TranscriptDataMessage) => {
+    transcriptTurnsRef.current.push(turn);
+  }, []);
 
   // Clear LiveKit connection state (does NOT trigger evaluation)
   const clearConnection = useCallback(() => {
@@ -421,11 +472,72 @@ export default function VoiceTrainingView({
     setEvalElapsed(0);
 
     try {
-      const result = await requestEvaluationWithRetry(sessionId, userId, (phase, elapsed) => {
-        setEvalPhase(phase);
-        if (elapsed !== undefined) setEvalElapsed(elapsed);
-      });
-      setEvaluation(result);
+      // Fast path: client persists transcript directly, skipping agent shutdown wait
+      const turns = transcriptTurnsRef.current;
+      let persisted = false;
+
+      if (turns.length >= 2) {
+        const start = Date.now();
+        try {
+          const response = await fetch(`/api/sessions/${sessionId}/transcript`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-user-id": userId,
+            },
+            body: JSON.stringify({
+              turns: turns.map((t) => ({
+                role: t.role,
+                content: t.content,
+                turnOrder: t.turnOrder,
+              })),
+            }),
+          });
+          persisted = response.ok;
+          const ms = Date.now() - start;
+          console.log(
+            `[Voice] Client transcript persist: ${turns.length} turns, ${ms}ms, status=${response.status}`
+          );
+        } catch (err) {
+          console.log("[Voice] Client persist failed, falling back to polling", err);
+        }
+      }
+
+      if (persisted) {
+        // Fast path: transcripts in DB, call evaluate directly
+        setEvalPhase("evaluating");
+        const response = await fetch(`/api/sessions/${sessionId}/evaluate`, {
+          method: "POST",
+          headers: { "x-user-id": userId },
+        });
+
+        if (response.status === 425) {
+          // Unexpected: transcripts not found despite persist success. Fall back.
+          console.log("[Voice] Got 425 after persist, falling back to polling");
+          const result = await requestEvaluationWithRetry(sessionId, userId, (phase, elapsed) => {
+            setEvalPhase(phase);
+            if (elapsed !== undefined) setEvalElapsed(elapsed);
+          });
+          setEvaluation(result);
+        } else if (!response.ok) {
+          const errorData = await response.json().catch(() => null);
+          throw new Error(errorData?.error?.message || "Evaluation request failed");
+        } else {
+          const data = await response.json();
+          if (data.ok && data.data) {
+            setEvaluation({
+              evaluation: data.data.evaluation?.evaluation ?? data.data.evaluation,
+            });
+          }
+        }
+      } else {
+        // Slow path: unchanged, uses existing requestEvaluationWithRetry
+        const result = await requestEvaluationWithRetry(sessionId, userId, (phase, elapsed) => {
+          setEvalPhase(phase);
+          if (elapsed !== undefined) setEvalElapsed(elapsed);
+        });
+        setEvaluation(result);
+      }
     } catch (evalError) {
       setError(evalError instanceof Error ? evalError.message : "Evaluation failed");
     } finally {
@@ -450,8 +562,12 @@ export default function VoiceTrainingView({
     triggerEvaluation();
   }, [sessionId, stopAndUploadRecording, clearConnection, triggerEvaluation, handleConnect]);
 
-  // "End Session & Get Feedback" button — explicit user action
+  // "End Session & Get Feedback" button — explicit user action.
+  // Set evaluationTriggered FIRST to prevent double-eval if React flushes
+  // a render between clearConnection() and triggerEvaluation().
   const handleGetFeedback = useCallback(async () => {
+    if (evaluationTriggered.current) return;
+    evaluationTriggered.current = true;
     await stopAndUploadRecording();
     clearConnection();
     triggerEvaluation();
@@ -614,6 +730,7 @@ export default function VoiceTrainingView({
           onError={setError}
           onGetFeedback={handleGetFeedback}
           onStopRecording={(fn) => { stopRecordingRef.current = fn; }}
+          onTranscriptTurn={handleTranscriptTurn}
         />
       </LiveKitRoom>
     </div>

@@ -55,6 +55,13 @@ interface TranscriptTurn {
   content: string;
 }
 
+/** Must match counterpart in src/components/voice-training-view.tsx */
+interface TranscriptDataMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  turnOrder: number; // 1-based, matches transcripts.length after push
+}
+
 // Environment
 const getAppUrl = () => process.env.NEXT_APP_URL ?? 'http://localhost:3003';
 const getServiceKey = () => process.env.INTERNAL_SERVICE_KEY ?? '';
@@ -69,6 +76,7 @@ async function fetchScenarioPrompt(scenarioId: string): Promise<string | null> {
       headers: {
         'X-Internal-Service-Key': getServiceKey(),
       },
+      signal: AbortSignal.timeout(10000),
     });
     if (!response.ok) {
       console.error(`[Agent] Failed to fetch scenario ${scenarioId}: ${response.status}`);
@@ -107,6 +115,7 @@ async function createDbSession(
           'X-Internal-Service-Key': getServiceKey(),
         },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10000),
       });
 
       if (response.ok) {
@@ -168,6 +177,7 @@ async function persistTranscripts(
             'X-Internal-Service-Key': getServiceKey(),
           },
           body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(10000),
         },
       );
 
@@ -188,6 +198,22 @@ async function persistTranscripts(
       );
     }
   }
+}
+
+/** Publish a transcript turn to the client via data channel (fire-and-forget). */
+function publishTranscriptTurn(
+  ctx: JobContext,
+  role: 'user' | 'assistant',
+  content: string,
+  turnOrder: number,
+): void {
+  const msg: TranscriptDataMessage = { role, content, turnOrder };
+  ctx.room.localParticipant
+    ?.publishData(new TextEncoder().encode(JSON.stringify(msg)), {
+      reliable: true,
+      topic: 'transcript',
+    })
+    .catch((err) => console.warn('[Agent] Data channel publish failed:', err));
 }
 
 export default defineAgent({
@@ -254,6 +280,7 @@ export default defineAgent({
       if (event.isFinal && event.transcript) {
         transcripts.push({ role: 'user', content: event.transcript });
         console.log(`[Transcript] User: ${event.transcript.substring(0, 60)}...`);
+        publishTranscriptTurn(ctx, 'user', event.transcript, transcripts.length);
       }
     });
 
@@ -262,6 +289,7 @@ export default defineAgent({
       if (event.item.role === 'assistant' && event.item.textContent) {
         transcripts.push({ role: 'assistant', content: event.item.textContent });
         console.log(`[Transcript] Assistant: ${event.item.textContent.substring(0, 60)}...`);
+        publishTranscriptTurn(ctx, 'assistant', event.item.textContent, transcripts.length);
       }
     });
 

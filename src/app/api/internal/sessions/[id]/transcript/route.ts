@@ -12,7 +12,7 @@ const bulkTranscriptSchema = z.object({
   turns: z.array(z.object({
     role: z.enum(['user', 'assistant']),
     content: z.string().min(1).max(50000),
-    turnOrder: z.number().int().positive(),
+    turnOrder: z.number().int().min(0),
     attemptNumber: z.number().int().positive().optional(),
   })).min(1).max(500),
 })
@@ -47,7 +47,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const defaultAttemptNumber = session.currentAttempt ?? 1
 
     // Idempotent: delete existing turns for this attempt, then bulk insert.
-    // This prevents duplicates if the agent retries the persist call.
+    // "Most turns wins" — skip overwrite if existing transcript is more complete.
+    // Both client (fast path) and agent (shutdown) may persist; keep the longer one.
     const turnData = data.turns.map((turn) => ({
       sessionId: id,
       role: turn.role,
@@ -57,6 +58,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }))
 
     const result = await prisma.$transaction(async (tx) => {
+      const existingCount = await tx.transcriptTurn.count({
+        where: { sessionId: id, attemptNumber: defaultAttemptNumber },
+      })
+
+      if (existingCount > turnData.length) {
+        return { count: existingCount }
+      }
+
       await tx.transcriptTurn.deleteMany({
         where: { sessionId: id, attemptNumber: defaultAttemptNumber },
       })
