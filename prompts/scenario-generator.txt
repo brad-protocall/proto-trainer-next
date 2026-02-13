@@ -65,7 +65,7 @@ Select the most appropriate category from this list, or null if none clearly fit
 - tap
 - supervisors
 
-For most crisis counseling complaints, "cohort_training" or "expert_skill_path" will be appropriate. Use null if genuinely uncertain.
+Always use null. Category assignment is the supervisor's responsibility — they will set it after reviewing the generated scenario.
 
 6. SKILLS (1-5 from this list)
 Select the most relevant skills practiced in this scenario:

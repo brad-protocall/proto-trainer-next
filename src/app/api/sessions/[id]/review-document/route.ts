@@ -107,8 +107,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Build LLM prompt
     const systemPrompt = loadPrompt('document-reviewer.txt')
+    const guidelinesText = loadPrompt('protocall-documentation-guidelines.txt', '')
     const scenario = session.assignment?.scenario ?? session.scenario
     let userMessage = ''
+    if (guidelinesText) {
+      userMessage += `## PROTOCALL DOCUMENTATION GUIDELINES\n\n${guidelinesText}\n\n`
+    }
     if (scenario?.prompt) {
       userMessage += `## SCENARIO CONTEXT\n${scenario.prompt}\n\n`
     }

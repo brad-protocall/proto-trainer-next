@@ -18,12 +18,19 @@ How accurately does the documentation reflect what actually happened in the sess
 - Are caller demographics (age, name, situation) correct?
 
 ### 2. Guidelines Compliance (0-100)
-Does the documentation follow professional documentation standards?
-- Proper formatting and organization
-- Required sections present (date/time, duration, disposition, summary)
-- Professional, objective language (no slang, no judgmental terms)
-- Appropriate level of detail (not too brief, not excessively verbose)
-- Required fields completed
+Does the documentation follow Protocall's Documentation Principles and Guidelines?
+Score against the PROTOCALL DOCUMENTATION GUIDELINES provided in the user message. Key areas:
+- Follows the 9 Documentation Principles (readable, concise, minimal redundancy, clarity, jargon-free, account-specific procedures, work done on call, call taker's perspective, recovery oriented)
+- Lead sentence summarizes the interaction clearly (not too vague, not too detailed)
+- Written from the counselor's assessment perspective, NOT chronological transcription
+- Free of jargon (no SI, HI, ISI, Tx, Hx, Rx, or Protocall-internal terms like PIC, SCA)
+- Risk assessments are thorough when indicated (all required fields documented with specifics, not just "yes/no")
+- Clinical justification provides rationale with specific supporting factors
+- Caller's Plan sections are complete per Level of Care requirements
+- Intervention documentation shows intentional use of least invasive options
+- Consultation documented with name, title, what was discussed, and what was decided
+- No overuse of caller quotations or "Caller reports" narrative style
+- Recovery oriented, non-judgmental, person-first language
 
 ### 3. Overall Score (0-100)
 Holistic assessment of documentation quality:

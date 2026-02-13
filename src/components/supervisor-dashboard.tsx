@@ -34,13 +34,18 @@ const FLAG_TYPE_LABELS: Record<string, string> = {
   unauthorized_elements: "Unauthorized Elements",
 };
 
-export default function SupervisorDashboard() {
+interface SupervisorDashboardProps {
+  supervisorId?: string | null;
+}
+
+export default function SupervisorDashboard({ supervisorId: propSupervisorId }: SupervisorDashboardProps) {
   const [activeTab, setActiveTab] = useState<"scenarios" | "assignments" | "flags">("scenarios");
   const [error, setError] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState("");
 
   // Shared reference data
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [allSupervisors, setAllSupervisors] = useState<User[]>([]);
   const [counselors, setCounselors] = useState<User[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [globalScenarios, setGlobalScenarios] = useState<Scenario[]>([]);
@@ -81,6 +86,12 @@ export default function SupervisorDashboard() {
     }
   }, [currentUser, authFetch]);
 
+  const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+
+  const handleSupervisorChange = (supervisorId: string) => {
+    window.location.href = `/supervisor?supervisorId=${supervisorId}`;
+  };
+
   // Load supervisor user, accounts, counselors on mount
   useEffect(() => {
     const loadSupervisorUser = async () => {
@@ -88,7 +99,18 @@ export default function SupervisorDashboard() {
         const response = await fetch("/api/users?role=supervisor");
         const data: ApiResponse<User[]> = await response.json();
         if (data.ok && data.data.length > 0) {
-          setCurrentUser(data.data[0]);
+          const supervisors = data.data;
+          setAllSupervisors(supervisors);
+
+          // Select from URL param or default to first
+          let selectedUser: User | undefined;
+          if (propSupervisorId) {
+            selectedUser = supervisors.find(s => s.id === propSupervisorId);
+          }
+          if (!selectedUser) {
+            selectedUser = supervisors[0];
+          }
+          setCurrentUser(selectedUser);
         }
       } catch (err) {
         console.error("Failed to load supervisor user:", err);
@@ -118,7 +140,7 @@ export default function SupervisorDashboard() {
     loadSupervisorUser();
     loadAccounts();
     loadCounselors();
-  }, []);
+  }, [propSupervisorId]);
 
   // Load global scenarios once user is available
   useEffect(() => {
@@ -145,6 +167,32 @@ export default function SupervisorDashboard() {
       <h1 className="text-2xl font-marfa font-bold text-white mb-6 text-center">
         Supervisor Dashboard
       </h1>
+
+      {/* Demo mode supervisor selector */}
+      {isDemoMode && allSupervisors.length > 1 ? (
+        <div className="mb-6 border-2 border-yellow-500 rounded-lg p-4 text-center">
+          <label className="block text-sm text-gray-300 mb-1">
+            <span className="text-yellow-500 font-bold">[DEMO]</span> Switch supervisor:
+          </label>
+          <select
+            value={currentUser?.id || ""}
+            onChange={(e) => handleSupervisorChange(e.target.value)}
+            className="bg-gray-800 border border-gray-600 rounded-lg px-4 py-2 text-white max-w-xs"
+          >
+            {allSupervisors.map((supervisor) => (
+              <option key={supervisor.id} value={supervisor.id}>
+                {supervisor.displayName}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : currentUser ? (
+        <div className="mb-6">
+          <p className="text-sm text-gray-400">
+            Logged in as: <span className="text-white">{currentUser.displayName}</span>
+          </p>
+        </div>
+      ) : null}
 
       {/* Error display */}
       {error && (
@@ -202,10 +250,10 @@ export default function SupervisorDashboard() {
       </div>
 
       {/* Scenarios Tab */}
-      {activeTab === "scenarios" && (
+      {activeTab === "scenarios" && currentUser && (
         <ScenarioTab
           authFetch={authFetch}
-          userId={currentUser?.id}
+          userId={currentUser.id}
           counselors={counselors}
           accounts={accounts}
           categoryFilter={categoryFilter}
@@ -214,7 +262,7 @@ export default function SupervisorDashboard() {
       )}
 
       {/* Assignments Tab */}
-      {activeTab === "assignments" && (
+      {activeTab === "assignments" && currentUser && (
         <AssignmentTab
           authFetch={authFetch}
           counselors={counselors}

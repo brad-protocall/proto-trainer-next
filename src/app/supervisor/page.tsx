@@ -1,27 +1,22 @@
-"use client";
+import SupervisorPageClient from "./client";
 
-import { useRouter } from "next/navigation";
-import Header from "@/components/header";
-import SupervisorDashboard from "@/components/supervisor-dashboard";
-import { UserRole } from "@/types";
+interface PageProps {
+  searchParams: Promise<{ supervisorId?: string }>;
+}
 
-export default function SupervisorPage() {
-  const router = useRouter();
+/**
+ * Supervisor Dashboard Page
+ *
+ * Authorization model (prototype):
+ * - No server-side auth (uses client-side role selection)
+ * - If ?supervisorId=X is provided, selects that supervisor in demo mode
+ * - Without param, defaults to first supervisor
+ *
+ * Note: For production, implement proper session-based auth.
+ */
+export default async function SupervisorPage({ searchParams }: PageProps) {
+  const params = await searchParams;
+  const targetSupervisorId = params.supervisorId || null;
 
-  const handleRoleChange = (role: UserRole) => {
-    router.push(`/${role}`);
-  };
-
-  return (
-    <main className="min-h-screen bg-slate-700">
-      <div className="max-w-6xl mx-auto px-4">
-        <Header
-          title="Supervisor Dashboard"
-          role="supervisor"
-          onRoleChange={handleRoleChange}
-        />
-        <SupervisorDashboard />
-      </div>
-    </main>
-  );
+  return <SupervisorPageClient supervisorId={targetSupervisorId} />;
 }

@@ -354,7 +354,8 @@ export async function generateScenarioFromComplaint(
     throw new ScenarioGenerationError('parse_failure', 'Failed to parse structured response from model')
   }
 
-  return message.parsed
+  // Category is always null from generation — supervisors assign it after review
+  return { ...message.parsed, category: null }
 }
 
 /**

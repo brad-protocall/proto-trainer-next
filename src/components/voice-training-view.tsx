@@ -563,11 +563,11 @@ export default function VoiceTrainingView({
   }, [sessionId, stopAndUploadRecording, clearConnection, triggerEvaluation, handleConnect]);
 
   // "End Session & Get Feedback" button — explicit user action.
-  // Set evaluationTriggered FIRST to prevent double-eval if React flushes
-  // a render between clearConnection() and triggerEvaluation().
+  // Note: evaluationTriggered is set inside triggerEvaluation(), not here,
+  // because triggerEvaluation checks it as a guard. The re-entry guard here
+  // prevents double-clicks; triggerEvaluation handles the race with onDisconnected.
   const handleGetFeedback = useCallback(async () => {
     if (evaluationTriggered.current) return;
-    evaluationTriggered.current = true;
     await stopAndUploadRecording();
     clearConnection();
     triggerEvaluation();

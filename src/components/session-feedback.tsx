@@ -47,6 +47,7 @@ export default function SessionFeedback({
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isOther, setIsOther] = useState(false);
 
   const isLight = variant === "light";
 
@@ -55,8 +56,21 @@ export default function SessionFeedback({
       setSelectedType(null);
       setDetails("");
     } else {
+      setIsOther(false);
       setSelectedType(type);
       setDetails(defaultDetails);
+    }
+  };
+
+  const handleOther = () => {
+    if (isOther) {
+      setIsOther(false);
+      setSelectedType(null);
+      setDetails("");
+    } else {
+      setIsOther(true);
+      setSelectedType("user_feedback");
+      setDetails("");
     }
   };
 
@@ -116,7 +130,7 @@ export default function SessionFeedback({
             key={option.type}
             onClick={() => handleSelect(option.type, option.defaultDetails)}
             className={`text-xs px-3 py-1.5 rounded-full font-marfa transition-colors ${
-              selectedType === option.type
+              selectedType === option.type && !isOther
                 ? option.isCritical
                   ? "bg-red-600 text-white"
                   : "bg-yellow-600 text-white"
@@ -128,14 +142,26 @@ export default function SessionFeedback({
             {option.label}
           </button>
         ))}
+        <button
+          onClick={handleOther}
+          className={`text-xs px-3 py-1.5 rounded-full font-marfa transition-colors ${
+            isOther
+              ? "bg-yellow-600 text-white"
+              : isLight
+                ? "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+          }`}
+        >
+          Other
+        </button>
       </div>
 
-      {selectedType && (
+      {(selectedType || isOther) && (
         <div className="space-y-2">
           <textarea
             value={details}
             onChange={(e) => setDetails(e.target.value)}
-            placeholder="Tell us more (optional)..."
+            placeholder={isOther ? "Describe the issue..." : "Tell us more (optional)..."}
             maxLength={1000}
             rows={2}
             className={`w-full border rounded px-3 py-2 text-sm font-marfa focus:outline-none focus:border-brand-orange ${

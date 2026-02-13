@@ -1,0 +1,264 @@
+PROTOCALL DOCUMENTATION PRINCIPLES AND GUIDELINES (2024)
+=========================================================
+
+This reference document contains Protocall's official standards for crisis counseling documentation.
+Use these standards when evaluating the Guidelines Compliance dimension.
+
+## KEY TERMINOLOGY
+
+- Call Taker: Any staff person answering inbound calls
+- Chext: Chat and text modality of service
+- Visitor: A person who reaches out via chat or text rather than phone
+- Clinical Assessment Section: A section embedded as part of a Service Request Form
+- Clinical Specialist (CS): Masters-level licensed counselor; performs crisis assessment and intervention on all accounts
+- Crisis and Access Specialist (CAS): Bachelor-level counselor; performs crisis assessment and intervention on most accounts
+- Person in Charge (PIC): Individual designated with providing consultation and support to counselors
+- Proteus: The call handling application used to document and process interactions
+- Least Invasive Intervention (LII): A person-centered collaborative approach to meet the consumer's needs before implementing ascending levels of interventions
+- Macros: Structured documentation prompts that aid the call taker in addressing all components of an assessment
+- Declined: Information was requested but caller chose not to provide it
+- Denied: Caller affirms something to be untrue (e.g., denies suicidal thoughts). "Denies" language is not used independently after macros.
+- Unable to Assess: Clinical assessment information is unavailable to the call taker
+- Did not ask: Information was not asked (applicable to surveys/caller information)
+
+## THE NINE DOCUMENTATION PRINCIPLES
+
+### Principle 1: The Document is Readable
+Documentation is reviewed within this framework:
+- The reader can quickly ascertain the nature of the interaction
+- The reader will know what to do next to support the consumer and/or situation
+- The reader will clearly understand the reason behind actions taken
+- The reader will understand the disposition of the interaction
+
+### Principle 2: The Document is Concise
+Documentation contains information relevant to the consumer's request, the counselor's actions, and what further actions are needed to serve the consumer.
+
+### Principle 3: The Document Contains Minimal Redundancy
+Redundancy is the repetition of ideas, words, or phrases which do not add depth or insight. Repetition as part of clinical justification may be necessary to summarize interventions and actions.
+
+BAD EXAMPLE: Copying "I was unable to assess due to the emergent nature of the situation" in all narrative fields, when it can be stated once in a justification/rationale.
+
+### Principle 4: The Document Provides Clarity
+Documentation is written in simple, direct, and transparent language. It should be accurate and easily understood.
+
+Clear documentation includes:
+- Professional grammar and spelling
+- Clear and unambiguous use of pronouns
+- Use of names rather than "caller," "visitor," or "person of concern" when referring to multiple parties
+- Clinically descriptive language ("Caller appears...as evidenced by...")
+- Consistency across all fields (level of distress matches level of care)
+
+Clear documentation does NOT include:
+- Technical/professional jargon (SI, HI, ISI)
+- Protocall-specific terminology (PIC, SCA, SCAS, SCS, Mentor)
+- Abbreviations (Tx, Hx, Rx, Dec, DNA, Unkn)
+
+### Principle 5: The Document is Free of Jargon
+Jargon is technical shorthand understood by a specific profession but not by all readers.
+
+BAD: "Endorses baseline suicidal ideation with a plan and no intent."
+GOOD (use lay person's terms):
+- DESCRIBE THOUGHTS: thinks about death frequently
+- ACTIONS ALREADY TAKEN: none
+- METHOD/HOW: considers jumping from balcony, thinks about leaning over the balcony edge until he almost falls
+- DESIRE/COMMITMENT TO ACT: says he would never jump from the balcony
+
+### Principle 6: The Document References Account-Specific Procedures
+Documentation demonstrates that account procedures are followed, specifically:
+- When providing referrals
+- Transferring to a secondary service
+- Rationale when procedures are not followed
+
+### Principle 7: The Document Includes Work Done on the Call
+Document all relevant work completed on the call. Do not document work not yet completed (e.g., documenting responses before questions are asked, checking intervention boxes before performing them).
+
+Documentation is driven by the work the counselor performed, not length of time on a call.
+
+### Principle 8: The Document is Written from the Call Taker's Perspective
+Documentation is based on the counselor's assessment and determination, not transcribing what the caller said. The counselor does not transcribe the specific order of what was said.
+
+BAD (chronological/play-by-play): "Caller reports thinking about suicide and has access to a firearm. I advised the caller to put the firearm in another location. The caller did not agree and I told him I would need to request a welfare check."
+GOOD: Assessment information in the suicide assessment macro; interventions in the additional interventions field.
+
+BAD (overuse of caller quotations): "Caller reports 'thinking about suicide'. Caller reports having a plan 'to overdose on Tylenol'. Caller states that 'work problems and financial issues' are contributing."
+GOOD: "Caller is thinking about overdosing on Tylenol because of stress at work and financial concerns."
+
+BAD (overuse of caller narrative): Using "Caller reports" before every field entry (Type of Substance: Caller reports using alcohol, Frequency: Caller reports daily, etc.)
+GOOD: State facts directly (Type of Substance: alcohol, Frequency: daily, etc.)
+
+### Principle 9: The Document is Recovery Oriented and Includes the Minimum Necessary
+All narrative sections are recovery focused, non-judgmental, and as objective as possible. Person-first language is essential. Recovery documentation highlights the strengths, abilities, and personal resources of the caller.
+
+Extraneous information is not included, particularly medical diagnoses. Particular care is taken not to document HIV/AIDS diagnoses due to stigma and legal protections.
+
+## LEAD SENTENCE (Presenting Problem/Overview)
+
+The Lead sentence provides a brief summary of the call content and what to expect in the rest of the document. Demographic descriptors (age, gender, marital status) are usually not needed unless they support clarity.
+
+GOOD examples:
+- "Caller presents with anxiety secondary to continued conflict with her estranged husband."
+- "Adult male seeks support for frustration over continued conflict with his estranged wife."
+- "Caller is seeking immediate support reporting thoughts of suicide precipitated by a recent job loss and financial stresses."
+- "Jane is requesting a referral for services on behalf of her 29-year-old son, John, to address his alcohol use after he received a DUI."
+
+BAD examples:
+- "Caller is seeking counseling." (too vague)
+- "Caller wants to talk." (too vague)
+- "Caller is a 47-year-old female, identifying as single but living with a partner, with 5 children, homeless for 10 months, seeking counseling services to address depression." (too much demographic detail)
+- "Caller is seeking immediate support for anxiety related to his academic performance. Caller has a therapist but has not been to appointments in three months because he is busy. Caller is also depressed. Caller's dog died last week." (too many topics, not a summary)
+
+## INTERVENTION DOCUMENTATION
+
+An intervention is a process to de-escalate, stabilize, or assist a person in moving through crisis and to facilitate access to mental health services.
+
+General Principles for Documenting Interventions:
+- Demonstrates application of a Solution Focused, Here and Now model
+- Reflective of Protocall Services Policies and Standard Operating Procedures
+- Supports the Level of Care assessment
+- Exhibits the principles of Lesser Invasive Options/Interventions
+- Indicates account procedures were followed
+- Reflects understanding of the Liaison Role as related to different account types
+- Shows intentionality in using appropriate interventions based on level of care
+
+Use check boxes when applicable. Only check a box AFTER the intervention has been used. Additional detail goes in the "Additional Intervention Details" field.
+
+## CLINICAL JUSTIFICATION AND RATIONALE
+
+Justification and Rationale provide context for the clinical thought process supporting intervention strategies, Level of Care assessment, and call outcome.
+
+A complete Justification/Rationale includes one of:
+- Rationale for assessment that less invasive interventions are sufficient
+- Rationale for assessment that higher levels of interventions were necessary
+
+GOOD examples:
+- "No further intervention is warranted as the Caller does not have a plan, means or immediate intention to end his life. Caller agrees to a safety and contingency plan and to follow up with all of the referrals provided for ongoing support."
+- "This call is assessed as emergent due to the caller engaging in a suicide attempt by standing on a bridge with intention to jump off."
+- "This call is assessed as urgent due to the caller's noticeable compromise in their ability to care for themselves as evidenced by the significant decline in their hygiene, having very limited food over a long period of time, and mild confusion in the day/time."
+- "No additional interventions are needed due to the caller not having intentions to end their life or harm anyone else, was able to engage in means reduction by involving a third party, has positive engagement with the counselor, future oriented thinking, engagement in ongoing services, and agreement to a safety and contingency plan."
+
+BAD examples:
+- "Call is high risk due to functional status." (not complete, missing specific factors)
+- "This call is routine due to baseline presentation." (doesn't explain why, includes jargon)
+- "No further intervention needed due to the person alert saying abuse has already been reported." (missing supporting information about current risk assessment)
+
+## RISK ASSESSMENT DOCUMENTATION
+
+### Suicide Risk Assessment (when risk is indicated):
+- Describe Thoughts: what are they expressing about suicide?
+- Actions Already Taken: has the caller taken steps towards acting?
+- Method/How: how the caller is going to take their life
+- Access to Identified Method: described access to means
+- Access to Lethal Means: any access to potentially lethal means (weapons, medication, sharps, ropes, keys, etc.)
+- Desire/Commitment to Act: preparations and/or behaviors, timeline
+- Precipitating Event: what brought on the thoughts/actions
+- Present Physical Circumstances: physical location, alone or with others
+- History of Attempts: when was the last attempt, what means were used
+- Impairment due to Substances or Cognitive: how did these impact risk
+- Reasons for Living: future-focused thinking or things of importance
+- Credibility/Reliability Considerations: factors influencing ability to safety plan
+
+### Substance Use Assessment (when use is indicated, for each substance):
+- Name of substance(s) used
+- Frequency of use
+- Amount used (typical quantity)
+- Duration of use
+- Last use (including current)
+- Current symptoms (sober, acute intoxication, withdrawals, etc.)
+- Impact on reliability and credibility
+
+### Threat of Violence Assessment (when risk is indicated):
+- Describe thoughts about harm to others
+- Method/how and potential lethality
+- Access to identified method and lethal means
+- Desire/Commitment to Act
+- History of violence or impulsive behavior
+- Intended victim information (name, address, DOB)
+
+### Interpersonal Violence Assessment (when risk is indicated):
+- Nature of the interpersonal risk (physical, verbal, emotional, threats, financial)
+- Current danger or need for medical attention
+
+### Abuse Related Assessment (for Vulnerable Populations):
+- Nature of abuse/neglect
+- Current danger
+- When and where abuse occurred (location, state, age, dates)
+- Demographic information of offender and survivor
+- Current need for medical attention
+- Considerations for reporting/not reporting
+
+## CALLER'S PLAN DOCUMENTATION
+
+The Caller's Plan documents what the caller/person of concern will do after the call.
+
+By Level of Care:
+- Urgent or Emergent: Required to complete ALL sections
+- Routine: Expected to complete coping strategies, distractions, and supports. Warning signs, risk mitigation, and contingency may be N/A if not discussed.
+
+Plan Sections:
+- SELF CARE: Coping strategies the caller identifies as helpful. Includes WHEN they will use them. (Note: reaching out to a referral is NOT self-care; that goes under follow-up expectations.)
+- RISK MITIGATION: How the caller will protect themselves from risk factors. When access to lethal means is endorsed, must address means elimination/restriction.
+- WARNING SIGNS: What the individual thinks, feels, or does as thoughts of risk start to develop.
+- CONTINGENCY: What the caller will do if the plan fails or things escalate. Who will they reach out to?
+
+## CONSULTATION DOCUMENTATION
+
+Documentation includes the details and outcome (what was considered/discussed and decided), the name, job title, degree and/or license status of the person consulted.
+
+GOOD: "I consulted Senior Crisis and Access Specialist, Jose Esperanza, and we agreed to connecting the caller to 911 given the caller's thoughts of suicide and the caller's inability to safety plan paired with assessed intent."
+
+BAD (not descriptive): "I consulted with Supervisor Fabuki Sho, and we agreed that caller could be safety planned with."
+
+GOOD (descriptive): "I consulted Supervisor Fabuki Sho, and we agreed that safety planning was appropriate as the caller did not have intent and was willing to limit access to means by having her mother hold onto her pills for her."
+
+Protocall-specific references (PIC, Person in Charge, Protocall Supervisor) should NOT be used in documentation.
+
+## CHAT AND TEXT (CHEXT) DOCUMENTATION
+
+Chat/text interactions are documented differently. The chext assessment is primarily based around thoughts of suicide. Other risk areas are assessed if they arise or become required due to risk of suicide or homicide.
+
+Required on ALL chext interactions:
+- Suicide risk assessment
+- Required prompt questions: "Have you had any thoughts of suicide today or recently?" and "Have you taken any action to harm yourself today?"
+
+When client endorses current/recent thoughts of suicide, these are also required:
+- Full suicide risk assessment
+- Assessing buffers
+- Intentional self-injury assessment
+- Substance use assessment
+- Psychiatric medication assessment
+
+## MACRO USE PRINCIPLES
+
+Macros are written from the perspective of the assessor, not a direct record of caller responses.
+- Do not delete macros
+- Full sentences are not required
+- The writer indicates their assessment (avoid use of "denies")
+- Additional elaboration goes below the macro
+
+GOOD macro use example (Suicide Risk Assessment):
+- DESCRIBE THOUGHTS: overdose on pills
+- ACTIONS ALREADY TAKEN: poured pills into hand
+- METHOD/HOW: swallow all the pills from Costco size bottle of Tylenol
+- ACCESS TO IDENTIFIED METHOD: bathroom cabinet
+- ACCESS TO LETHAL MEANS: no firearms, has access to pills
+- DESIRE/COMMITMENT TO ACT: waves of intense desire
+- PRECIPITATING EVENT: terminated from employment 6 days ago
+- CURRENT PHYSICAL CIRCUMSTANCES: in bedroom at home, alone
+- HISTORY OF ATTEMPTS: 10 years ago bought rope to hang self, went to tree, treated in hospital
+- IMPAIRMENT DUE TO SUBSTANCES OR COGNITIVE: currently sober, drinking has increased in last 3 days
+- REASONS FOR LIVING: expecting grandson to be born in September
+- CREDIBILITY/RELIABILITY CONSIDERATIONS: forthcoming and cooperative presentation
+
+BAD macro use example:
+- DESCRIBE THOUGHTS: Caller is thinking about overdosing on pills
+- ACTIONS ALREADY TAKEN: yes
+- METHOD/HOW: yes
+- ACCESS TO IDENTIFIED METHOD: yes
+- ACCESS TO LETHAL MEANS: denies
+- DESIRE/COMMITMENT TO ACT: intent
+- PRECIPITATING EVENT: Caller was terminated from employment 6 days ago.
+- CURRENT PHYSICAL CIRCUMSTANCES: home
+- HISTORY OF ATTEMPTS: 1 past attempt
+- IMPAIRMENT DUE TO SUBSTANCES OR COGNITIVE: no
+- REASONS FOR LIVING: yes, several
+- CREDIBILITY/RELIABILITY CONSIDERATIONS: n/a
