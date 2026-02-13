@@ -131,28 +131,49 @@ async function findOrCreateVectorStore(name: string) {
 }
 
 /**
- * Upload a policy file to OpenAI and add it to a vector store for the account
+ * Upload a policy file to OpenAI and add it to a vector store for the account.
+ * Uses safe replace semantics: upload new file FIRST, then remove old files.
+ * Accepts optional existingVectorStoreId to avoid listing all stores.
  */
 export async function uploadPolicyToVectorStore(
   accountId: string,
-  filePath: string
-): Promise<{ fileId: string; vectorStoreId: string }> {
-  // 1. Upload to OpenAI Files API
-  const file = await openai.files.create({
+  filePath: string,
+  existingVectorStoreId?: string | null
+): Promise<{ fileId: string; vectorStoreId: string; status: string }> {
+  // 1. Resolve vector store — use existing ID if available (avoids listing all stores)
+  let vectorStoreId: string
+  if (existingVectorStoreId) {
+    try {
+      const existing = await openai.vectorStores.retrieve(existingVectorStoreId)
+      vectorStoreId = existing.id
+    } catch {
+      // Stale ID — create new store
+      const created = await findOrCreateVectorStore(`account-${accountId}-policies`)
+      vectorStoreId = created.id
+    }
+  } else {
+    const created = await findOrCreateVectorStore(`account-${accountId}-policies`)
+    vectorStoreId = created.id
+  }
+
+  // 2. Upload new file FIRST (safe: old file still exists if this fails)
+  const uploadedFile = await openai.files.create({
     file: fs.createReadStream(filePath),
     purpose: 'assistants',
   })
-
-  // 2. Create or get vector store
-  const vectorStoreName = `account-${accountId}-policies`
-  const vectorStore = await findOrCreateVectorStore(vectorStoreName)
-
-  // 3. Add file to vector store
-  await openai.vectorStores.files.create(vectorStore.id, {
-    file_id: file.id,
+  const vsFile = await openai.vectorStores.files.create(vectorStoreId, {
+    file_id: uploadedFile.id,
   })
 
-  return { fileId: file.id, vectorStoreId: vectorStore.id }
+  // 3. THEN remove old files (safe: new file already in store)
+  const existingFiles = await openai.vectorStores.files.list(vectorStoreId)
+  for (const file of existingFiles.data) {
+    if (file.id === uploadedFile.id) continue // Skip the one we just added
+    await openai.vectorStores.files.del(vectorStoreId, file.id)
+    await openai.files.del(file.id).catch(() => {}) // Best-effort cleanup
+  }
+
+  return { fileId: uploadedFile.id, vectorStoreId, status: vsFile.status }
 }
 
 /**
@@ -236,22 +257,29 @@ function stripFlagsSection(evaluation: string): string {
 /**
  * Process raw LLM evaluation output: parse flags, strip flags section, extract grade.
  */
-function processRawEvaluation(rawEvaluation: string): EvaluationResponse {
+function processRawEvaluation(rawEvaluation: string): Omit<EvaluationResponse, 'usedFileSearch'> {
   const flags = parseFlags(rawEvaluation)
   const evaluation = stripFlagsSection(rawEvaluation)
   const grade = extractGrade(evaluation)
   return { evaluation, grade, numericScore: gradeToScore(grade), flags }
 }
 
-// Helper for generating evaluation (for session evaluate route)
-export async function generateEvaluation(options: {
+/** Options for generating an evaluation */
+export interface GenerateEvaluationOptions {
   scenarioTitle: string
   scenarioDescription: string | null
   scenarioEvaluatorContext?: string | null
+  relevantPolicySections?: string | null
   transcript: TranscriptTurn[]
   vectorStoreId?: string
-}): Promise<EvaluationResponse> {
-  const { scenarioTitle, scenarioDescription, scenarioEvaluatorContext, transcript, vectorStoreId } = options
+}
+
+// Helper for generating evaluation (for session evaluate route)
+export async function generateEvaluation(options: GenerateEvaluationOptions): Promise<EvaluationResponse> {
+  const {
+    scenarioTitle, scenarioDescription, scenarioEvaluatorContext,
+    relevantPolicySections, transcript, vectorStoreId,
+  } = options
 
   // Load evaluator prompt from file
   const systemPrompt = loadPrompt(getEvaluatorPromptFile())
@@ -271,28 +299,47 @@ export async function generateEvaluation(options: {
     userMessage += '\n'
   }
 
+  // Add relevant procedure sections guidance
+  if (relevantPolicySections) {
+    userMessage += '## RELEVANT PROCEDURES\n'
+    userMessage += 'The following procedure sections are most relevant to this evaluation. '
+    userMessage += 'Use file_search to retrieve these sections and assess compliance:\n'
+    userMessage += relevantPolicySections + '\n\n'
+  }
+
   // Add transcript
   userMessage += `## TRANSCRIPT\n\n${transcriptText}`
 
   // Use Responses API with file_search tool when vector store exists
   if (vectorStoreId) {
-    const response = await openai.responses.create({
-      model: process.env.EVALUATOR_MODEL ?? 'gpt-4.1',
-      instructions: systemPrompt,
-      input: userMessage,
-      tools: [
-        {
-          type: 'file_search',
-          vector_store_ids: [vectorStoreId],
-        },
-      ],
-      temperature: 0.3,
-    })
+    try {
+      const response = await openai.responses.create({
+        model: process.env.EVALUATOR_MODEL ?? 'gpt-4.1',
+        instructions: systemPrompt,
+        input: userMessage,
+        tools: [
+          {
+            type: 'file_search',
+            vector_store_ids: [vectorStoreId],
+          },
+        ],
+        temperature: 0.3,
+        max_output_tokens: 3000,
+      })
 
-    return processRawEvaluation(response.output_text ?? '')
+      const result = processRawEvaluation(response.output_text ?? '')
+      return { ...result, usedFileSearch: true }
+    } catch (error) {
+      console.error(
+        `[WARN] file_search failed for vectorStore ${vectorStoreId}, ` +
+        `scenario "${scenarioTitle}". Falling back to standard evaluation:`,
+        error
+      )
+      // Fall through to Chat Completions path
+    }
   }
 
-  // Standard chat completion when no vector store
+  // Standard chat completion when no vector store (or file_search failed)
   const response = await openai.chat.completions.create({
     model: process.env.EVALUATOR_MODEL ?? 'gpt-4.1',
     messages: [
@@ -303,7 +350,8 @@ export async function generateEvaluation(options: {
     max_tokens: 3000,
   })
 
-  return processRawEvaluation(response.choices[0].message.content ?? '')
+  const result = processRawEvaluation(response.choices[0].message.content ?? '')
+  return { ...result, usedFileSearch: false }
 }
 
 /**

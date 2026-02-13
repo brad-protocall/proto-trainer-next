@@ -106,12 +106,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
     }
     const vectorStoreId = scenario?.account?.vectorStoreId ?? undefined
+    const relevantPolicySections = scenario?.relevantPolicySections ?? null
 
     // Generate evaluation using OpenAI
     const evaluationResult = await generateEvaluation({
       scenarioTitle,
       scenarioDescription,
       scenarioEvaluatorContext,
+      relevantPolicySections,
       transcript: transcriptForEval,
       vectorStoreId,
     })

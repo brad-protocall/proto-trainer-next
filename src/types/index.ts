@@ -50,11 +50,18 @@ export interface User {
   updatedAt: string;
 }
 
+export interface ProcedureHistoryEntry {
+  filename: string;
+  uploadedAt: string;
+  uploadedBy: string;
+}
+
 export interface Account {
   id: string;
   name: string;
   policiesProceduresPath: string | null;
   vectorStoreId: string | null;
+  procedureHistory: ProcedureHistoryEntry[] | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -291,6 +298,8 @@ export interface EvaluationResponse {
   numericScore: number;
   /** Flags parsed from evaluation markdown (empty if no issues) */
   flags: EvaluationFlag[];
+  /** Whether file_search was used for procedure-based grading */
+  usedFileSearch: boolean;
 }
 
 // Session list item (from GET /api/sessions)

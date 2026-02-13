@@ -8,6 +8,7 @@ import {
   ScenarioCategory,
   ScenarioMode,
   ApiResponse,
+  ProcedureHistoryEntry,
 } from "@/types";
 import type { AuthFetchFn } from "@/lib/fetch";
 import { formatCategoryLabel, CATEGORY_OPTIONS } from "@/lib/labels";
@@ -16,6 +17,117 @@ import { formatSkillLabel } from "@/lib/labels";
 import { getUserDisplayName } from "@/lib/format";
 import BulkImportModal from "../bulk-import-modal";
 import GenerateScenarioModal from "../generate-scenario-modal";
+
+/** Inline component for uploading/viewing account procedure PDFs */
+function AccountProceduresUpload({
+  accountId,
+  accounts,
+  authFetch,
+}: {
+  accountId: string;
+  accounts: Account[];
+  authFetch: AuthFetchFn;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+
+  const account = accounts.find((a) => a.id === accountId);
+  if (!account) return null;
+
+  const history = (account.procedureHistory ?? []) as ProcedureHistoryEntry[];
+  const latestUpload = history.length > 0 ? history[history.length - 1] : null;
+
+  const handleUpload = async (file: File) => {
+    setUploading(true);
+    setUploadError(null);
+    setUploadSuccess(null);
+
+    try {
+      const form = new FormData();
+      form.append("policiesFile", file);
+
+      const response = await authFetch(`/api/accounts/${accountId}`, {
+        method: "PATCH",
+        body: form,
+      });
+
+      const data: ApiResponse<Account> = await response.json();
+      if (!data.ok) throw new Error(data.error.message);
+
+      setUploadSuccess(`Uploaded ${file.name}`);
+      // Update the account in the parent's accounts array by mutating — simple for prototype
+      if (account) {
+        account.vectorStoreId = data.data.vectorStoreId;
+        account.policiesProceduresPath = data.data.policiesProceduresPath;
+        account.procedureHistory = data.data.procedureHistory;
+      }
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-gray-300">
+          {latestUpload ? (
+            <span>
+              <span className="text-green-400">&#9679;</span>{" "}
+              {latestUpload.filename} &middot;{" "}
+              {new Date(latestUpload.uploadedAt).toLocaleDateString()}
+            </span>
+          ) : (
+            <span className="text-gray-500">No procedures uploaded</span>
+          )}
+        </div>
+        <label
+          className={`cursor-pointer px-3 py-1 text-xs rounded font-marfa ${
+            uploading
+              ? "bg-gray-600 text-gray-400 cursor-wait"
+              : "bg-blue-600 hover:bg-blue-500 text-white"
+          }`}
+        >
+          {uploading ? "Uploading..." : latestUpload ? "Replace PDF" : "Upload Procedures PDF"}
+          <input
+            type="file"
+            accept=".pdf,.txt,.md"
+            disabled={uploading}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleUpload(file);
+              e.target.value = ""; // Reset to allow re-upload of same file
+            }}
+            className="hidden"
+          />
+        </label>
+      </div>
+      {uploadError && (
+        <p className="text-xs text-red-400 mt-2">{uploadError}</p>
+      )}
+      {uploadSuccess && (
+        <p className="text-xs text-green-400 mt-2">{uploadSuccess}</p>
+      )}
+      {history.length > 1 && (
+        <details className="mt-2">
+          <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-400">
+            Upload history ({history.length} uploads)
+          </summary>
+          <ul className="mt-1 space-y-1">
+            {[...history].reverse().map((entry, i) => (
+              <li key={i} className="text-xs text-gray-500">
+                {entry.filename} &middot;{" "}
+                {new Date(entry.uploadedAt).toLocaleDateString()}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
 
 interface ScenarioFormData {
   title: string;
@@ -713,66 +825,71 @@ export default function ScenarioTab({
                 )}
               </div>
 
-              {/* Organization Account - hidden for one-time variant */}
-              {formVariant !== "one-time" && (
-                <>
-                  <div>
-                    <label className="block text-gray-300 text-sm font-marfa mb-1">
-                      Organization Account (Optional)
-                    </label>
-                    <div className="flex gap-2">
-                      <select
-                        value={formData.account_id || ""}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            account_id: e.target.value || null,
-                          })
-                        }
-                        className="flex-1 bg-gray-800 border border-gray-600 rounded px-3 py-2
-                                   text-white font-marfa focus:outline-none focus:border-brand-orange"
-                      >
-                        <option value="">No account</option>
-                        {accounts.map((account) => (
-                          <option key={account.id} value={account.id}>
-                            {account.name}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm"
-                        onClick={() => {
-                          alert("Account creation coming soon");
-                        }}
-                      >
-                        + New
-                      </button>
-                    </div>
-                  </div>
+              {/* Organization Account */}
+              <div>
+                <label className="block text-gray-300 text-sm font-marfa mb-1">
+                  Organization Account {formVariant === "one-time" ? "(Optional)" : "(Optional)"}
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    value={formData.account_id || ""}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        account_id: e.target.value || null,
+                      })
+                    }
+                    className="flex-1 bg-gray-800 border border-gray-600 rounded px-3 py-2
+                               text-white font-marfa focus:outline-none focus:border-brand-orange"
+                  >
+                    <option value="">No account</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm"
+                    onClick={() => {
+                      alert("Account creation coming soon");
+                    }}
+                  >
+                    + New
+                  </button>
+                </div>
+              </div>
 
-                  {/* Relevant Procedures Sections - only show when account is selected */}
-                  {formData.account_id && (
-                    <div>
-                      <label className="block text-gray-300 text-sm font-marfa mb-1">
-                        Relevant Procedures Sections
-                      </label>
-                      <textarea
-                        value={formData.relevant_policy_sections}
-                        onChange={(e) =>
-                          setFormData({ ...formData, relevant_policy_sections: e.target.value })
-                        }
-                        rows={2}
-                        className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2
-                                   text-white font-marfa focus:outline-none focus:border-brand-orange"
-                        placeholder="e.g., Crisis De-escalation Protocol, Section 4.2"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        Help the evaluator focus on specific procedures sections relevant to this scenario
-                      </p>
-                    </div>
-                  )}
-                </>
+              {/* Account Procedures Upload — inline when account is selected */}
+              {formData.account_id && (
+                <AccountProceduresUpload
+                  accountId={formData.account_id}
+                  accounts={accounts}
+                  authFetch={authFetch}
+                />
+              )}
+
+              {/* Relevant Procedures Sections — only show when account is selected */}
+              {formData.account_id && (
+                <div>
+                  <label className="block text-gray-300 text-sm font-marfa mb-1">
+                    Relevant Procedures Sections
+                  </label>
+                  <textarea
+                    value={formData.relevant_policy_sections}
+                    onChange={(e) =>
+                      setFormData({ ...formData, relevant_policy_sections: e.target.value })
+                    }
+                    rows={2}
+                    className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2
+                               text-white font-marfa focus:outline-none focus:border-brand-orange"
+                    placeholder="e.g., 6100 Suicide Risk Assessment, 2751 Abuse Reporting"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Help the evaluator focus on specific procedure sections relevant to this scenario
+                  </p>
+                </div>
               )}
 
               <div className="flex justify-end gap-3 pt-4">
