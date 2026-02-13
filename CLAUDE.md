@@ -518,28 +518,80 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ---
 
-## Resume Context (2026-02-12)
+## Resume Context (2026-02-13)
 
-### Current State: All caught up. Supervisor dashboard decomposed, deployed to Pi.
+### Current State: Plan complete for Account Procedures for Evaluator feature. Previous uncommitted changes still pending commit + deploy.
 
-**Branch:** `main` at `b36d0d3`
-**Status:** Clean. PR #47 merged. Supervisor dashboard decomposed (`fe7016d`). Deployed to Pi. All checks pass.
+**Branch:** `main` (uncommitted changes from prior sessions + new plan file)
+**Status:** Plan reviewed by 4 agents, approved with modifications applied. Ready for implementation in next session.
 
-### What Just Happened
+### What Just Happened (This Session — 2026-02-13 Morning)
 
-1. **PR #47 merged** — One-Time Scenario Workflow (5 commits).
-2. **Supervisor dashboard decomposed** (`fe7016d`) — 1,616-line monolith split into 3 files:
-   - `supervisor-dashboard.tsx` (277 lines): tabs, user init, shared data, flags inline
-   - `supervisor/scenario-tab.tsx` (833 lines): scenario list + form modal + import/generate
-   - `supervisor/assignment-tab.tsx` (588 lines): assignment list + bulk assignment modal
-3. **Type safety fixes**: `AuthFetchFn` exported, `getUserDisplayName` replaces `any`-typed helper, `BulkAssignmentResponse` used instead of inline type.
-4. **Deployed to Pi** — All migrations applied, build clean, service restarted.
-5. **Decision doc** for PTG legacy: `docs/supervisor-dashboard-decomposition.md`
+1. **Planned "Account Procedures for Evaluator" feature** — Full plan with research, 4-agent review, stakeholder input.
+   - Plan file: `plans/2026-02-13-feat-account-procedures-for-evaluator-plan.md`
+   - Reviewed by: DHH-style, Kieran-TypeScript, Code-Simplicity, Key-Choices-Summarizer
+   - Original 3-phase plan → collapsed to single phase per review consensus
+   - Phase 3 (complaint generator auto-suggests procedure sections) deferred as follow-up
+
+2. **Key architecture decisions made:**
+   - Per-account vector stores (not shared) — auto-created on first PDF upload
+   - Raw PDF upload to OpenAI (they handle parsing/chunking)
+   - Upload-first, delete-second replacement order (safe — never leaves store empty)
+   - Account number validation on upload (hard block if PDF doesn't match account)
+   - `procedureHistory` JSON field on Account for audit trail (requires small migration)
+   - `usedFileSearch` flag on evaluation response (visible indicator when procedures used/not used)
+   - Existing fields (`Account.vectorStoreId`, `Account.policiesProceduresPath`, `Scenario.relevantPolicySections`) finally get wired up
+
+3. **Review findings incorporated:**
+   - DHH: Cut Phase 3, fix `findOrCreateVectorStore` pagination, reverse delete/upload order, log session context on fallback
+   - Kieran: Extract `GenerateEvaluationOptions` interface, add `usedFileSearch`, cleanup on failure
+   - Simplicity: Merge phases, drop CSV column and char limit increase (YAGNI)
+   - Key Choices: Add upload audit trail, add visible indicator when procedure grading unavailable
+
+4. **Operational context captured:**
+   - 25-50 accounts expected to have procedures (out of hundreds)
+   - Procedure PDFs are 200+ pages, 4-5 MB (example: "717 Procedure Set" at 4.6 MB)
+   - Supervisors re-upload procedures frequently — always want current version for evaluation
+   - Procedures contain account numbers — can validate on upload
+   - One PDF per account covers everything
+   - Existing OpenAI vector store "Proto Training Guide - Account Policies" (`vs_695c6bd...b19`) exists but is empty — will use per-account stores instead
+   - New convention (future): scenario titles should start with account number
+
+### Uncommitted Files (from prior sessions — still need commit + deploy)
+
+- `src/components/session-feedback.tsx` — "Other" button for free-form feedback
+- `src/components/voice-training-view.tsx` — Voice evaluation regression fix
+- `src/app/api/sessions/[id]/transcript/route.ts` — Idempotent delete+insert
+- `src/app/supervisor/page.tsx` — Supervisor currentUser guard fix
+- `src/components/supervisor-dashboard.tsx` — Supervisor dropdown centering + currentUser guards
+- `livekit-agent/src/main.ts` — Data channel transcript publishing
+- `prompts/document-reviewer.txt` — Protocall-specific guidelines compliance scoring
+- `src/app/api/sessions/[id]/review-document/route.ts` — Guidelines injection into LLM prompt
+- `prompts/protocall-documentation-guidelines.txt` — NEW: curated Protocall documentation standards
+- `prompts/Documentation Principles and Guidelines 2024.pdf` — NEW: source PDF (45 pages)
+- `prompts/scenario-generator.txt` — Modified
+- `src/lib/openai.ts` — Modified
+- `virginia-scenarios-import.csv` — NEW: 4 Virginia scenarios ready for bulk upload
+- `Virginia Scenarios for upload.md` — Source markdown (can be deleted after import)
+- `plans/2026-02-13-feat-account-procedures-for-evaluator-plan.md` — NEW: reviewed plan
+
+### What Needs to Happen Next
+
+1. **Commit** all prior uncommitted changes (group into logical commits or one large commit)
+2. **Deploy to Pi**: `npm run deploy:pi:full` (Next.js), then `cd livekit-agent && lk agent deploy` (agent — for data channel)
+3. **E2E test** voice session — verify data channel transcript + fast evaluation path
+4. **Bulk upload** Virginia scenarios via supervisor dashboard
+5. **Implement Account Procedures feature** — follow plan at `plans/2026-02-13-feat-account-procedures-for-evaluator-plan.md`
+   - 8 sub-steps in single phase
+   - One small migration (`procedureHistory` JSON field)
+   - Key files: `accounts/[id]/route.ts`, `openai.ts`, `evaluate/route.ts`, `scenario-tab.tsx`, `evaluator-v1.txt`
 
 ### Backlog (deferred, not blocking)
 
+- Complaint generator auto-suggests `relevantPolicySections` (deferred from procedures plan Phase 3)
+- Account selector in complaint generation modal
+- Account number prefix convention for scenario titles
 - LiveKit Egress for server-side voice recording
-- Agent transcript persistence via data channel (eliminate 30-40s feedback wait)
 - Rename `/counselor` route to `/learner` (cosmetic)
 - Force re-analysis param, catch `SessionAnalysisError` specifically, filter `analysis_clean` from badge count
 
@@ -549,6 +601,9 @@ Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-sess
 
 ### Previous Sessions
 
+- **2026-02-13 (Morning)**: Planned Account Procedures for Evaluator feature. 4-agent review. Plan v2 with stakeholder input. Single-phase implementation ready.
+- **2026-02-12 (Late evening)**: Bug fixes deployed. Session feedback "Other" button. Protocall documentation guidelines integrated into document reviewer. Virginia scenarios converted to CSV.
+- **2026-02-12 (Evening)**: Implemented real-time transcript data channel (3 files). Type check + lint clean. Not yet committed/deployed.
 - **2026-02-12 (Afternoon)**: Decomposed supervisor-dashboard.tsx (3 files). Deployed to Pi. Wrote PTG legacy decision doc.
 - **2026-02-12 (Morning)**: Reviewed PR #47 with 7-agent parallel review. Fixed `isOneTime` URL param bug. Addressed all 11 findings in single pass. Compounded learnings.
 - **2026-02-12 (Night)**: Implemented One-Time Scenario Workflow (6 changes). E2E tested (6/6 pass). PR #47 created.
@@ -572,8 +627,8 @@ Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-sess
 
 ### Git Status
 
-- Main at `b36d0d3` (supervisor dashboard decomposition + docs)
-- Pi deployed 2026-02-12 with all features including decomposition.
+- Main at `94fece6` + many uncommitted changes across multiple tasks + new plan file
+- Pi deployed 2026-02-12 with bug fixes (voice eval, supervisor 401, dropdown). Does NOT include data channel, feedback "Other" button, document review guidelines, or Virginia scenarios yet.
 
 ---
 
@@ -586,6 +641,8 @@ Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-sess
 **Unified Governance (#40)**: Evaluator prompt includes safety + consistency checks (0 additional LLM calls). `parseFlags()` extracts flags from `## Flags` section. Flags saved in same transaction as evaluation. `SessionFeedback` shared component with dark/light variants + `mode` prop. Console log + email notification on every flag.
 
 **Post-Session Analysis (Defense-in-Depth)**: Separate LLM pass (gpt-4.1-mini) runs after every evaluation via fire-and-forget. Shared helper `src/lib/analysis.ts` used by both automatic trigger and manual `POST /api/sessions/[id]/analyze`. `source` field on SessionFlag distinguishes origin (`evaluation` | `analysis` | `user_feedback`). Idempotent + creates `analysis_clean` audit trail. Manual endpoint: supervisor-only, rate-limited (5/session/hour).
+
+**Real-Time Transcript via Data Channel**: Agent publishes each transcript turn via `publishData()` on topic `'transcript'` during the call. Client subscribes via `useDataChannel`, accumulates in `useRef`, POSTs to `/api/sessions/[id]/transcript` on disconnect, then calls evaluate directly (fast path). Falls back to existing `requestEvaluationWithRetry` polling if data channel fails or < 2 turns received. Transcript endpoint uses idempotent delete+insert so both client and agent can persist without duplicates. `TranscriptDataMessage` interface mirrored in both `main.ts` and `voice-training-view.tsx`.
 
 **Document Consistency Review**: Learner uploads PDF after evaluation → `unpdf` extracts text → LLM scores against transcript. `DocumentReview` model with unique session FK. Three scores (0-100) + typed gaps with severity. OpenAI `zodResponseFormat` with flat schema. PDF validation (magic bytes, 10MB limit). Transcript truncated to 30k chars (~$0.03/review). `<label>` wrapping hidden file input for modal compatibility.
 
