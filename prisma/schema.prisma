@@ -27,6 +27,7 @@ model User {
 model Account {
   id                     String   @id @default(uuid())
   name                   String
+  accountNumber          String?  @map("account_number")
   policiesProceduresPath String?  @map("policies_procedures_path")
   vectorStoreId          String?  @map("vector_store_id")
   procedureHistory       Json?    @map("procedure_history")

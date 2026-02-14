@@ -59,6 +59,7 @@ export interface ProcedureHistoryEntry {
 export interface Account {
   id: string;
   name: string;
+  accountNumber: string | null;
   policiesProceduresPath: string | null;
   vectorStoreId: string | null;
   procedureHistory: ProcedureHistoryEntry[] | null;

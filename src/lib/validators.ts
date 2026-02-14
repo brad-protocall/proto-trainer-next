@@ -48,6 +48,7 @@ export const updateUserSchema = z.object({
 // Account validation
 export const createAccountSchema = z.object({
   name: z.string().min(1).max(255),
+  accountNumber: z.string().max(20).regex(/^[a-zA-Z0-9\-]+$/, 'Account number must be alphanumeric').optional(),
   policiesProceduresPath: z.string().optional(),
 })
 

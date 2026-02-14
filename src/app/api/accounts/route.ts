@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
     const account = await prisma.account.create({
       data: {
         name: result.data.name,
+        accountNumber: result.data.accountNumber,
         policiesProceduresPath: result.data.policiesProceduresPath,
       },
     })

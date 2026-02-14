@@ -327,7 +327,7 @@ grep -r "oldName" src/    # Zero results for renamed things
 
 ### Bug Prevention Patterns
 
-> **Before writing new API routes, database queries, file uploads, or Prisma schema changes**: consult `docs/solutions/prevention-strategies/bug-prevention-patterns.md` for 8 documented patterns with code examples. Patterns 5-8 cover fire-and-forget helpers, hot-reload gotchas, file pickers in modals, and Prisma client regeneration.
+> **Before writing new API routes, database queries, file uploads, or Prisma schema changes**: consult `docs/solutions/prevention-strategies/bug-prevention-patterns.md` for documented patterns with code examples. Patterns 5-8 cover fire-and-forget helpers, hot-reload gotchas, file pickers in modals, and Prisma client regeneration. Patterns 11-13 cover component deduplication, useMemo for derived state, and Prisma shadow DB workarounds.
 
 #### 1. Category/Enum Validation Mismatch
 
@@ -456,6 +456,60 @@ const result = baseSchema.safeParse(body)
 
 **Prevention**: Extract display label logic to a shared module (`src/lib/labels.ts`) that derives from the Zod schema values. Components import, never define their own maps.
 
+#### 11. Duplicate Component Extraction
+
+**Problem**: `AccountProceduresUpload` was defined inline in both `scenario-tab.tsx` and `generate-scenario-modal.tsx` (~100 lines each). When code review found issues (typing, mutation patterns), both copies needed fixing independently.
+
+**Prevention**: When a UI widget is needed in 2+ places, extract to a shared component immediately. Don't copy-paste "for now" — the copies will drift. Pattern:
+```typescript
+// GOOD: Shared component in its own file
+// src/components/supervisor/account-procedures-upload.tsx
+export default function AccountProceduresUpload({
+  account, authFetch, onAccountsChanged, showHistory = true,
+}: AccountProceduresUploadProps) { ... }
+
+// BAD: Inline component duplicated across files
+function AccountProceduresUploadInline({ ... }) { ... } // in file A
+function AccountProceduresUpload({ ... }) { ... }       // in file B (drifted copy)
+```
+
+#### 12. useMemo for Derived State Instead of Redundant useState
+
+**Problem**: `accountDetectionMessage` was a `useState` that was set in a `useEffect` whenever `detectedInfo` or `selectedAccountId` changed. This created an extra state variable, a stale `setAccountDetectionMessage(null)` call in `resetState()`, and a potential for the derived value to be out of sync.
+
+**Prevention**: If a value is purely derived from other state, use `useMemo` instead of `useState` + `useEffect`:
+```typescript
+// GOOD: Derived with useMemo — always in sync, no setter to clean up
+const message = useMemo(() => {
+  if (!detectedInfo) return null;
+  return selectedAccountId ? `Detected: ${detectedInfo.name}` : `Not found: ${detectedInfo.name}`;
+}, [detectedInfo, selectedAccountId]);
+
+// BAD: Redundant useState synced via useEffect
+const [message, setMessage] = useState<string | null>(null);
+useEffect(() => { setMessage(derive()); }, [deps]);
+// Now you have a setter to clean up in resetState(), and a render lag
+```
+
+#### 13. Prisma Shadow Database Permission Error (SQLite)
+
+**Problem**: `npx prisma migrate dev --name add_account_number` failed with P3014 shadow database error on SQLite. Prisma needs to create/destroy a temporary shadow database for migration diffing.
+
+**Prevention**: Create the migration manually when `prisma migrate dev` fails:
+```bash
+# 1. Create migration directory manually
+mkdir -p prisma/migrations/20260213000000_add_account_number
+
+# 2. Write the SQL
+echo 'ALTER TABLE "accounts" ADD COLUMN "account_number" TEXT;' > prisma/migrations/20260213000000_add_account_number/migration.sql
+
+# 3. Apply with deploy (doesn't need shadow DB)
+npx prisma migrate deploy
+
+# 4. Regenerate client
+npx prisma generate
+```
+
 ### Migration Script Best Practices
 
 Scripts in `scripts/` that modify database records should follow these patterns:
@@ -520,81 +574,52 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ## Resume Context (2026-02-13)
 
-### Current State: Account Procedures feature implemented, reviewed, deployed to Pi. Clean working tree.
+### Current State: Account Procedures UX Improvements implemented. PR #48 open. Ready for merge + Pi deploy.
 
-**Branch:** `main` at `2905b0c`
-**Status:** All committed and pushed. Deployed to Pi. Migration needs to be applied on Pi (`npx prisma migrate deploy`).
+**Branch:** `feat/account-procedures-ux` at `7727a67` (4 commits ahead of main). PR #48 open.
+**Status:** Implementation complete. 4-agent code review done. All findings fixed. Type check + lint clean.
 
-### What Just Happened (This Session — 2026-02-13 Afternoon)
+### What Just Happened (This Session — 2026-02-13)
 
-1. **Committed prior uncommitted changes** — 3 logical commits:
-   - Code changes (session feedback, voice eval fix, transcript data channel, document review, supervisor fixes)
-   - Plans/docs (account procedures plan, Virginia scenarios, documentation guidelines)
-   - CLAUDE.md resume context
-
-2. **Deployed prior changes to Pi** — `npm run deploy:pi:full`
-
-3. **Implemented Account Procedures for Evaluator** — All 8 sub-steps from plan:
-   - Prisma migration: `procedureHistory` JSON field on Account
-   - PDF upload in `accounts/[id]/route.ts` (magic bytes, size, account name validation via unpdf)
-   - Vector store upload/replace in `openai.ts` (safe replace: upload first, delete old second)
-   - Evaluation uses Responses API with file_search when vectorStoreId exists, graceful fallback to Chat Completions
-   - `usedFileSearch` flag on evaluation response
-   - `GenerateEvaluationOptions` named interface extracted
-   - Upload UI in supervisor scenario-tab with history display
-   - Evaluator prompt updated for procedure-aware Tier 2/3 grading
-
-4. **6-agent code review** — security-sentinel, kieran-typescript, resilience, code-simplicity, secrets-exposure, production-ready
-   - **P0 fixed**: Removed hardcoded secrets from 5 files (CLAUDE.md, docs, plans, todos)
-   - **HIGH fixed (4)**: Path traversal, instanceof File, best-effort old file deletion, usedFileSearch in response
-   - **MEDIUM fixed (6)**: Removed findOrCreateVectorStore pagination bug, Zod on JSON path, orphan file cleanup, extraction failure rejection, OpenAI timeouts, typed procedure history
-   - **LOW deferred (10)**: Server path in response, React state mutation, frontend upload timeout, concurrent upload guard, rate limiting, etc.
-
-5. **E2E tested locally** — 10 tests all pass:
-   - Validation: non-PDF extension, fake magic bytes, counselor auth block, Zod empty name, 404 non-existent account, wrong account name
-   - Happy path: full upload creates vector store + indexes file, re-upload replaces file + appends history
-   - Evaluation: `usedFileSearch: true`, Knowledge Base Alignment section references procedures
-
-6. **Deployed feature to Pi** — `npm run deploy:pi:full` succeeded. **Migration still needs to be applied on Pi.**
-
-### Key Files Changed
-
-| File | Change |
-|------|--------|
-| `prisma/schema.prisma` | Added `procedureHistory` JSON field on Account |
-| `prisma/migrations/20260213000000_add_procedure_history/` | New migration |
-| `src/app/api/accounts/[id]/route.ts` | PDF upload with full validation pipeline |
-| `src/lib/openai.ts` | `uploadPolicyToVectorStore`, `GenerateEvaluationOptions`, file_search fallback |
-| `src/app/api/sessions/[id]/evaluate/route.ts` | Passes `relevantPolicySections` + returns `usedFileSearch` |
-| `src/components/supervisor/scenario-tab.tsx` | `AccountProceduresUpload` component + shows fields for all variants |
-| `src/types/index.ts` | `ProcedureHistoryEntry`, `usedFileSearch` on `EvaluationResponse` |
-| `prompts/evaluator-v1.txt` | Tier 2/3 updated for RELEVANT PROCEDURES |
+1. **Plan review** — 4-agent review (DHH, Kieran TS, simplicity, key-choices) of Account Procedures UX plan
+2. **Plan revision** — Incorporated user business context (~700 accounts, template-based complaints). Dropped silent auto-creation. Added searchable dropdown with `accountNumber` search. Revised from 4 phases to 3.
+3. **Implementation** — 3 phases on `feat/account-procedures-ux` branch:
+   - Phase 1: Foundation (lift `loadAccounts` to `useCallback`, add `accountNumber` to DB, fix mutation, fix file accept, switch to `authFetch`)
+   - Phase 2: `AccountSearchDropdown` component + inline account creation via "+ New"
+   - Phase 3: Complaint generator account support (auth unification, auto-detect pre-select, procedure upload, `accountId` in save)
+4. **E2E testing** — API tests via curl + browser tests via Playwright. All passing.
+5. **Code review** — 4-agent review (security sentinel, simplicity, Kieran TS, secrets guardian). All findings fixed:
+   - Extracted shared `AccountProceduresUpload` component
+   - Fixed `onAccountsChanged` typing, made required
+   - Replaced useState with useMemo for derived state
+   - Added truncation + format validation
+   - Fixed useEffect dependency
+6. **PR #48 created** — https://github.com/brad-protocall/proto-trainer-next/pull/48
 
 ### What Needs to Happen Next
 
-1. **Apply migration on Pi**: `ssh brad@pai-hub.local` then `cd ~/apps/proto-trainer-next && npx prisma migrate deploy`
-2. **Rotate secrets on Pi** — database password and internal service key were in git history (now removed from files, but still in git history)
-3. **Deploy LiveKit agent** — `cd livekit-agent && lk agent deploy` (for data channel transcript from prior session)
-4. **E2E test on Pi** — upload a real procedure PDF via supervisor dashboard, run evaluation
-5. **Bulk upload Virginia scenarios** via supervisor dashboard (CSV ready: `virginia-scenarios-import.csv`)
-6. **Phase 5: Compound** — capture learnings from this implementation session
+1. **Merge PR #48** — Account Procedures UX
+2. **Deploy to Pi** — `npm run deploy:pi:full` after merge, then test with real complaint documents
+3. **Bulk upload Virginia scenarios** — via supervisor dashboard (CSV ready, user can do this independently)
+4. **Test voice session on Pi** — verify data channel transcript fast path (agent redeployed last session)
 
 ### Backlog (deferred, not blocking)
 
 - Complaint generator auto-suggests `relevantPolicySections` (deferred from procedures plan Phase 3)
-- Account selector in complaint generation modal
-- Account number prefix convention for scenario titles
 - LiveKit Egress for server-side voice recording
 - Rename `/counselor` route to `/learner` (cosmetic)
 - Force re-analysis param, catch `SessionAnalysisError` specifically, filter `analysis_clean` from badge count
-- LOW review items: server path in API response, React state mutation in upload component, frontend upload timeout, concurrent upload guard, rate limiting on upload
+- LOW review items: server path in API response, frontend upload timeout, concurrent upload guard, rate limiting on upload
 
 ### GitHub Issues
 
 Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-session analysis), #12/PR#44 (scenario generation), PR#45 (analysis scanning), PR#46 (document consistency review), PR#47 (one-time scenario workflow)
+Open: PR#48 (account procedures UX improvements)
 
 ### Previous Sessions
 
+- **2026-02-13 (This session)**: Plan review + revision + full implementation + E2E + code review + fixes for Account Procedures UX. PR #48.
+- **2026-02-14**: Confirmed Pi deployment + E2E. Redeployed LiveKit agent (data channel). Updated scenario generator prompt (account prefix). Planned Account Procedures UX Improvements.
 - **2026-02-13 (Afternoon)**: Implemented + reviewed + deployed Account Procedures feature. 6-agent review. 10/10 E2E tests pass. Secrets removed from files.
 - **2026-02-13 (Morning)**: Planned Account Procedures for Evaluator feature. 4-agent review. Plan v2 with stakeholder input.
 - **2026-02-12 (Late evening)**: Bug fixes deployed. Session feedback "Other" button. Protocall documentation guidelines. Virginia scenarios CSV.
@@ -616,12 +641,13 @@ Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-sess
 7. No UUID validation on `id` URL params (invalid IDs cause 500 instead of 400)
 8. Unhandled JSON parse error in flag route (500 instead of 400)
 9. `parseFlags()` validation now skips invalid LLM output silently — could log warnings
-10. Secrets in git history need rotation (database password, internal service key)
+10. ~~Secrets in git history~~ — Decided no rotation needed; private repo, secrets removed from files, git history access is limited
 
 ### Git Status
 
-- Main at `2905b0c`, clean working tree, pushed to origin
-- Pi deployed 2026-02-13 with all features. Migration pending on Pi.
+- Feature branch `feat/account-procedures-ux` at `7727a67`, PR #48 open
+- Main at `2905b0c` + uncommitted changes (CLAUDE.md, prompt file, plan file)
+- Pi deployed 2026-02-14 with all features including migration. LiveKit agent redeployed.
 
 ---
 
@@ -638,6 +664,8 @@ Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-sess
 **Real-Time Transcript via Data Channel**: Agent publishes each transcript turn via `publishData()` on topic `'transcript'` during the call. Client subscribes via `useDataChannel`, accumulates in `useRef`, POSTs to `/api/sessions/[id]/transcript` on disconnect, then calls evaluate directly (fast path). Falls back to existing `requestEvaluationWithRetry` polling if data channel fails or < 2 turns received. Transcript endpoint uses idempotent delete+insert so both client and agent can persist without duplicates. `TranscriptDataMessage` interface mirrored in both `main.ts` and `voice-training-view.tsx`.
 
 **Account Procedures for Evaluator**: Per-account OpenAI vector stores, auto-created on first PDF upload. `uploadPolicyToVectorStore()` in `openai.ts` handles create/replace with safe order (upload new, then delete old). Evaluation uses Responses API with `file_search` tool when `vectorStoreId` exists on the scenario's account; graceful fallback to Chat Completions API if Responses API fails. `usedFileSearch` boolean on `EvaluationResponse`. PDF upload validates: extension, magic bytes, file size (20MB), account name match via `unpdf` text extraction. `procedureHistory` JSON field on Account for audit trail. `relevantPolicySections` on Scenario passed to evaluator prompt as Tier 2 context.
+
+**Account Procedures UX (PR #48)**: Searchable `AccountSearchDropdown` component with type-to-filter by name or `accountNumber`, keyboard navigation, click-outside-to-close. Inline account creation via "+ New" button (POST + auto-select). Complaint generator auto-detects account from template text via `extractAccountInfo()` regex, pre-selects in dropdown (no auto-creation — explicit "+ New" required to prevent orphans). Shared `AccountProceduresUpload` component (`src/components/supervisor/account-procedures-upload.tsx`) used in both scenario-tab and complaint generator review phase. `onAccountsChanged` callback pattern lifts `loadAccounts` from supervisor-dashboard → ScenarioTab → modals for data freshness. `accountNumber` nullable string on Account model for search support.
 
 **Document Consistency Review**: Learner uploads PDF after evaluation → `unpdf` extracts text → LLM scores against transcript. `DocumentReview` model with unique session FK. Three scores (0-100) + typed gaps with severity. OpenAI `zodResponseFormat` with flat schema. PDF validation (magic bytes, 10MB limit). Transcript truncated to 30k chars (~$0.03/review). `<label>` wrapping hidden file input for modal compatibility.
 
