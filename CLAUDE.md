@@ -520,71 +520,64 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ## Resume Context (2026-02-13)
 
-### Current State: Plan complete for Account Procedures for Evaluator feature. Previous uncommitted changes still pending commit + deploy.
+### Current State: Account Procedures feature implemented, reviewed, deployed to Pi. Clean working tree.
 
-**Branch:** `main` (uncommitted changes from prior sessions + new plan file)
-**Status:** Plan reviewed by 4 agents, approved with modifications applied. Ready for implementation in next session.
+**Branch:** `main` at `2905b0c`
+**Status:** All committed and pushed. Deployed to Pi. Migration needs to be applied on Pi (`npx prisma migrate deploy`).
 
-### What Just Happened (This Session — 2026-02-13 Morning)
+### What Just Happened (This Session — 2026-02-13 Afternoon)
 
-1. **Planned "Account Procedures for Evaluator" feature** — Full plan with research, 4-agent review, stakeholder input.
-   - Plan file: `plans/2026-02-13-feat-account-procedures-for-evaluator-plan.md`
-   - Reviewed by: DHH-style, Kieran-TypeScript, Code-Simplicity, Key-Choices-Summarizer
-   - Original 3-phase plan → collapsed to single phase per review consensus
-   - Phase 3 (complaint generator auto-suggests procedure sections) deferred as follow-up
+1. **Committed prior uncommitted changes** — 3 logical commits:
+   - Code changes (session feedback, voice eval fix, transcript data channel, document review, supervisor fixes)
+   - Plans/docs (account procedures plan, Virginia scenarios, documentation guidelines)
+   - CLAUDE.md resume context
 
-2. **Key architecture decisions made:**
-   - Per-account vector stores (not shared) — auto-created on first PDF upload
-   - Raw PDF upload to OpenAI (they handle parsing/chunking)
-   - Upload-first, delete-second replacement order (safe — never leaves store empty)
-   - Account number validation on upload (hard block if PDF doesn't match account)
-   - `procedureHistory` JSON field on Account for audit trail (requires small migration)
-   - `usedFileSearch` flag on evaluation response (visible indicator when procedures used/not used)
-   - Existing fields (`Account.vectorStoreId`, `Account.policiesProceduresPath`, `Scenario.relevantPolicySections`) finally get wired up
+2. **Deployed prior changes to Pi** — `npm run deploy:pi:full`
 
-3. **Review findings incorporated:**
-   - DHH: Cut Phase 3, fix `findOrCreateVectorStore` pagination, reverse delete/upload order, log session context on fallback
-   - Kieran: Extract `GenerateEvaluationOptions` interface, add `usedFileSearch`, cleanup on failure
-   - Simplicity: Merge phases, drop CSV column and char limit increase (YAGNI)
-   - Key Choices: Add upload audit trail, add visible indicator when procedure grading unavailable
+3. **Implemented Account Procedures for Evaluator** — All 8 sub-steps from plan:
+   - Prisma migration: `procedureHistory` JSON field on Account
+   - PDF upload in `accounts/[id]/route.ts` (magic bytes, size, account name validation via unpdf)
+   - Vector store upload/replace in `openai.ts` (safe replace: upload first, delete old second)
+   - Evaluation uses Responses API with file_search when vectorStoreId exists, graceful fallback to Chat Completions
+   - `usedFileSearch` flag on evaluation response
+   - `GenerateEvaluationOptions` named interface extracted
+   - Upload UI in supervisor scenario-tab with history display
+   - Evaluator prompt updated for procedure-aware Tier 2/3 grading
 
-4. **Operational context captured:**
-   - 25-50 accounts expected to have procedures (out of hundreds)
-   - Procedure PDFs are 200+ pages, 4-5 MB (example: "717 Procedure Set" at 4.6 MB)
-   - Supervisors re-upload procedures frequently — always want current version for evaluation
-   - Procedures contain account numbers — can validate on upload
-   - One PDF per account covers everything
-   - Existing OpenAI vector store "Proto Training Guide - Account Policies" exists but is empty — will use per-account stores instead
-   - New convention (future): scenario titles should start with account number
+4. **6-agent code review** — security-sentinel, kieran-typescript, resilience, code-simplicity, secrets-exposure, production-ready
+   - **P0 fixed**: Removed hardcoded secrets from 5 files (CLAUDE.md, docs, plans, todos)
+   - **HIGH fixed (4)**: Path traversal, instanceof File, best-effort old file deletion, usedFileSearch in response
+   - **MEDIUM fixed (6)**: Removed findOrCreateVectorStore pagination bug, Zod on JSON path, orphan file cleanup, extraction failure rejection, OpenAI timeouts, typed procedure history
+   - **LOW deferred (10)**: Server path in response, React state mutation, frontend upload timeout, concurrent upload guard, rate limiting, etc.
 
-### Uncommitted Files (from prior sessions — still need commit + deploy)
+5. **E2E tested locally** — 10 tests all pass:
+   - Validation: non-PDF extension, fake magic bytes, counselor auth block, Zod empty name, 404 non-existent account, wrong account name
+   - Happy path: full upload creates vector store + indexes file, re-upload replaces file + appends history
+   - Evaluation: `usedFileSearch: true`, Knowledge Base Alignment section references procedures
 
-- `src/components/session-feedback.tsx` — "Other" button for free-form feedback
-- `src/components/voice-training-view.tsx` — Voice evaluation regression fix
-- `src/app/api/sessions/[id]/transcript/route.ts` — Idempotent delete+insert
-- `src/app/supervisor/page.tsx` — Supervisor currentUser guard fix
-- `src/components/supervisor-dashboard.tsx` — Supervisor dropdown centering + currentUser guards
-- `livekit-agent/src/main.ts` — Data channel transcript publishing
-- `prompts/document-reviewer.txt` — Protocall-specific guidelines compliance scoring
-- `src/app/api/sessions/[id]/review-document/route.ts` — Guidelines injection into LLM prompt
-- `prompts/protocall-documentation-guidelines.txt` — NEW: curated Protocall documentation standards
-- `prompts/Documentation Principles and Guidelines 2024.pdf` — NEW: source PDF (45 pages)
-- `prompts/scenario-generator.txt` — Modified
-- `src/lib/openai.ts` — Modified
-- `virginia-scenarios-import.csv` — NEW: 4 Virginia scenarios ready for bulk upload
-- `Virginia Scenarios for upload.md` — Source markdown (can be deleted after import)
-- `plans/2026-02-13-feat-account-procedures-for-evaluator-plan.md` — NEW: reviewed plan
+6. **Deployed feature to Pi** — `npm run deploy:pi:full` succeeded. **Migration still needs to be applied on Pi.**
+
+### Key Files Changed
+
+| File | Change |
+|------|--------|
+| `prisma/schema.prisma` | Added `procedureHistory` JSON field on Account |
+| `prisma/migrations/20260213000000_add_procedure_history/` | New migration |
+| `src/app/api/accounts/[id]/route.ts` | PDF upload with full validation pipeline |
+| `src/lib/openai.ts` | `uploadPolicyToVectorStore`, `GenerateEvaluationOptions`, file_search fallback |
+| `src/app/api/sessions/[id]/evaluate/route.ts` | Passes `relevantPolicySections` + returns `usedFileSearch` |
+| `src/components/supervisor/scenario-tab.tsx` | `AccountProceduresUpload` component + shows fields for all variants |
+| `src/types/index.ts` | `ProcedureHistoryEntry`, `usedFileSearch` on `EvaluationResponse` |
+| `prompts/evaluator-v1.txt` | Tier 2/3 updated for RELEVANT PROCEDURES |
 
 ### What Needs to Happen Next
 
-1. **Commit** all prior uncommitted changes (group into logical commits or one large commit)
-2. **Deploy to Pi**: `npm run deploy:pi:full` (Next.js), then `cd livekit-agent && lk agent deploy` (agent — for data channel)
-3. **E2E test** voice session — verify data channel transcript + fast evaluation path
-4. **Bulk upload** Virginia scenarios via supervisor dashboard
-5. **Implement Account Procedures feature** — follow plan at `plans/2026-02-13-feat-account-procedures-for-evaluator-plan.md`
-   - 8 sub-steps in single phase
-   - One small migration (`procedureHistory` JSON field)
-   - Key files: `accounts/[id]/route.ts`, `openai.ts`, `evaluate/route.ts`, `scenario-tab.tsx`, `evaluator-v1.txt`
+1. **Apply migration on Pi**: `ssh brad@pai-hub.local` then `cd ~/apps/proto-trainer-next && npx prisma migrate deploy`
+2. **Rotate secrets on Pi** — database password and internal service key were in git history (now removed from files, but still in git history)
+3. **Deploy LiveKit agent** — `cd livekit-agent && lk agent deploy` (for data channel transcript from prior session)
+4. **E2E test on Pi** — upload a real procedure PDF via supervisor dashboard, run evaluation
+5. **Bulk upload Virginia scenarios** via supervisor dashboard (CSV ready: `virginia-scenarios-import.csv`)
+6. **Phase 5: Compound** — capture learnings from this implementation session
 
 ### Backlog (deferred, not blocking)
 
@@ -594,6 +587,7 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 - LiveKit Egress for server-side voice recording
 - Rename `/counselor` route to `/learner` (cosmetic)
 - Force re-analysis param, catch `SessionAnalysisError` specifically, filter `analysis_clean` from badge count
+- LOW review items: server path in API response, React state mutation in upload component, frontend upload timeout, concurrent upload guard, rate limiting on upload
 
 ### GitHub Issues
 
@@ -601,17 +595,15 @@ Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-sess
 
 ### Previous Sessions
 
-- **2026-02-13 (Morning)**: Planned Account Procedures for Evaluator feature. 4-agent review. Plan v2 with stakeholder input. Single-phase implementation ready.
-- **2026-02-12 (Late evening)**: Bug fixes deployed. Session feedback "Other" button. Protocall documentation guidelines integrated into document reviewer. Virginia scenarios converted to CSV.
-- **2026-02-12 (Evening)**: Implemented real-time transcript data channel (3 files). Type check + lint clean. Not yet committed/deployed.
-- **2026-02-12 (Afternoon)**: Decomposed supervisor-dashboard.tsx (3 files). Deployed to Pi. Wrote PTG legacy decision doc.
-- **2026-02-12 (Morning)**: Reviewed PR #47 with 7-agent parallel review. Fixed `isOneTime` URL param bug. Addressed all 11 findings in single pass. Compounded learnings.
-- **2026-02-12 (Night)**: Implemented One-Time Scenario Workflow (6 changes). E2E tested (6/6 pass). PR #47 created.
-- **2026-02-11 (Late evening)**: Planned One-Time Scenario Workflow. 3-agent review. Plan v2 ready.
-- **2026-02-11 (Evening)**: Document Consistency Review — PR #46 merged.
-- **2026-02-11 (Afternoon)**: Post-Session Analysis Scanning — PR #45 merged.
-- **2026-02-10 (Evening)**: Feature #12 scenario generation — PR #44 merged, deployed to Pi.
-- **2026-02-09 and earlier**: Voice UX, recording, Pi deployment, LiveKit migration, security hardening.
+- **2026-02-13 (Afternoon)**: Implemented + reviewed + deployed Account Procedures feature. 6-agent review. 10/10 E2E tests pass. Secrets removed from files.
+- **2026-02-13 (Morning)**: Planned Account Procedures for Evaluator feature. 4-agent review. Plan v2 with stakeholder input.
+- **2026-02-12 (Late evening)**: Bug fixes deployed. Session feedback "Other" button. Protocall documentation guidelines. Virginia scenarios CSV.
+- **2026-02-12 (Evening)**: Real-time transcript data channel (3 files).
+- **2026-02-12 (Afternoon)**: Decomposed supervisor-dashboard.tsx. Deployed to Pi.
+- **2026-02-12 (Morning)**: Reviewed PR #47. Fixed `isOneTime` URL param bug.
+- **2026-02-12 (Night)**: One-Time Scenario Workflow. PR #47.
+- **2026-02-11**: One-Time Scenario plan + Document Consistency Review + Analysis Scanning.
+- **2026-02-10 and earlier**: Scenario generation, voice UX, recording, Pi deployment, LiveKit migration, security hardening.
 
 ### P2 Items Deferred (fix before production)
 
@@ -624,11 +616,12 @@ Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-sess
 7. No UUID validation on `id` URL params (invalid IDs cause 500 instead of 400)
 8. Unhandled JSON parse error in flag route (500 instead of 400)
 9. `parseFlags()` validation now skips invalid LLM output silently — could log warnings
+10. Secrets in git history need rotation (database password, internal service key)
 
 ### Git Status
 
-- Main at `94fece6` + many uncommitted changes across multiple tasks + new plan file
-- Pi deployed 2026-02-12 with bug fixes (voice eval, supervisor 401, dropdown). Does NOT include data channel, feedback "Other" button, document review guidelines, or Virginia scenarios yet.
+- Main at `2905b0c`, clean working tree, pushed to origin
+- Pi deployed 2026-02-13 with all features. Migration pending on Pi.
 
 ---
 
@@ -643,6 +636,8 @@ Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-sess
 **Post-Session Analysis (Defense-in-Depth)**: Separate LLM pass (gpt-4.1-mini) runs after every evaluation via fire-and-forget. Shared helper `src/lib/analysis.ts` used by both automatic trigger and manual `POST /api/sessions/[id]/analyze`. `source` field on SessionFlag distinguishes origin (`evaluation` | `analysis` | `user_feedback`). Idempotent + creates `analysis_clean` audit trail. Manual endpoint: supervisor-only, rate-limited (5/session/hour).
 
 **Real-Time Transcript via Data Channel**: Agent publishes each transcript turn via `publishData()` on topic `'transcript'` during the call. Client subscribes via `useDataChannel`, accumulates in `useRef`, POSTs to `/api/sessions/[id]/transcript` on disconnect, then calls evaluate directly (fast path). Falls back to existing `requestEvaluationWithRetry` polling if data channel fails or < 2 turns received. Transcript endpoint uses idempotent delete+insert so both client and agent can persist without duplicates. `TranscriptDataMessage` interface mirrored in both `main.ts` and `voice-training-view.tsx`.
+
+**Account Procedures for Evaluator**: Per-account OpenAI vector stores, auto-created on first PDF upload. `uploadPolicyToVectorStore()` in `openai.ts` handles create/replace with safe order (upload new, then delete old). Evaluation uses Responses API with `file_search` tool when `vectorStoreId` exists on the scenario's account; graceful fallback to Chat Completions API if Responses API fails. `usedFileSearch` boolean on `EvaluationResponse`. PDF upload validates: extension, magic bytes, file size (20MB), account name match via `unpdf` text extraction. `procedureHistory` JSON field on Account for audit trail. `relevantPolicySections` on Scenario passed to evaluator prompt as Tier 2 context.
 
 **Document Consistency Review**: Learner uploads PDF after evaluation → `unpdf` extracts text → LLM scores against transcript. `DocumentReview` model with unique session FK. Three scores (0-100) + typed gaps with severity. OpenAI `zodResponseFormat` with flat schema. PDF validation (magic bytes, 10MB limit). Transcript truncated to 30k chars (~$0.03/review). `<label>` wrapping hidden file input for modal compatibility.
 
