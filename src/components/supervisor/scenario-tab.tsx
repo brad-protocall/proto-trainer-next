@@ -17,6 +17,7 @@ import { formatSkillLabel } from "@/lib/labels";
 import { getUserDisplayName } from "@/lib/format";
 import BulkImportModal from "../bulk-import-modal";
 import GenerateScenarioModal from "../generate-scenario-modal";
+import AccountSearchDropdown from "./account-search-dropdown";
 
 /** Inline component for uploading/viewing account procedure PDFs */
 function AccountProceduresUpload({
@@ -829,35 +830,15 @@ export default function ScenarioTab({
                 <label className="block text-gray-300 text-sm font-marfa mb-1">
                   Organization Account (Optional)
                 </label>
-                <div className="flex gap-2">
-                  <select
-                    value={formData.account_id || ""}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        account_id: e.target.value || null,
-                      })
-                    }
-                    className="flex-1 bg-gray-800 border border-gray-600 rounded px-3 py-2
-                               text-white font-marfa focus:outline-none focus:border-brand-orange"
-                  >
-                    <option value="">No account</option>
-                    {accounts.map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {account.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm"
-                    onClick={() => {
-                      alert("Account creation coming soon");
-                    }}
-                  >
-                    + New
-                  </button>
-                </div>
+                <AccountSearchDropdown
+                  accounts={accounts}
+                  selectedAccountId={formData.account_id}
+                  onSelect={(accountId) =>
+                    setFormData({ ...formData, account_id: accountId })
+                  }
+                  authFetch={authFetch}
+                  onAccountsChanged={onAccountsChanged}
+                />
               </div>
 
               {/* Account Procedures Upload — inline when account is selected */}
