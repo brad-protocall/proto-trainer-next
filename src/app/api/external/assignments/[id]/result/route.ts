@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import prisma from '@/lib/prisma'
-import { apiSuccess, handleApiError, notFound } from '@/lib/api'
+import { apiSuccess, handleApiError, notFound, invalidId } from '@/lib/api'
 import { requireExternalApiKey } from '@/lib/external-auth'
 
 interface RouteParams {
@@ -17,6 +17,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   try {
     const { id: assignmentId } = await params
+    const idError = invalidId(assignmentId)
+    if (idError) return idError
 
     // Get assignment with evaluation and learner info
     const assignment = await prisma.assignment.findUnique({

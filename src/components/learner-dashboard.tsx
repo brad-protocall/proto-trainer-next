@@ -229,6 +229,9 @@ export default function LearnerDashboard({
         `/api/sessions/${sessionId}/evaluate`,
         { method: "POST" }
       );
+      if (response.status === 429) {
+        throw new Error("Please wait before requesting another evaluation.");
+      }
       const data = await response.json();
       if (!data.ok) throw new Error(data.error?.message || "Failed to get feedback");
       setEvaluation({

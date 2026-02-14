@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import prisma from '@/lib/prisma'
-import { apiSuccess, apiError, handleApiError, notFound, forbidden } from '@/lib/api'
+import { apiSuccess, apiError, handleApiError, notFound, forbidden, invalidId } from '@/lib/api'
 import { updateUserSchema } from '@/lib/validators'
 import { requireAuth, requireSupervisor, canAccessResource } from '@/lib/auth'
 
@@ -15,6 +15,8 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params
+    const idError = invalidId(id)
+    if (idError) return idError
 
     const authResult = await requireAuth(request)
     if (authResult.error) return authResult.error
@@ -46,6 +48,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params
+    const idError = invalidId(id)
+    if (idError) return idError
 
     const authResult = await requireAuth(request)
     if (authResult.error) return authResult.error
@@ -101,6 +105,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params
+    const idError = invalidId(id)
+    if (idError) return idError
 
     const authResult = await requireSupervisor(request)
     if (authResult.error) return authResult.error

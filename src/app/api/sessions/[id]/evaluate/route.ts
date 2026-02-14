@@ -2,10 +2,11 @@ import { NextRequest } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { readFile } from 'fs/promises'
 import { prisma } from '@/lib/prisma'
-import { apiSuccess, apiError, handleApiError, notFound, conflict, forbidden } from '@/lib/api'
+import { apiSuccess, apiError, handleApiError, notFound, conflict, forbidden, invalidId } from '@/lib/api'
 import { generateEvaluation } from '@/lib/openai'
 import { requireAuth, canAccessResource } from '@/lib/auth'
 import { analyzeSession } from '@/lib/analysis'
+import { checkRateLimit } from '@/lib/rate-limit'
 import type { TranscriptTurn } from '@/types'
 
 interface RouteParams {
@@ -20,10 +21,18 @@ interface RouteParams {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params
+    const idError = invalidId(id)
+    if (idError) return idError
 
     const authResult = await requireAuth(request)
     if (authResult.error) return authResult.error
     const user = authResult.user
+
+    // Rate limit: 3 evaluations per session per hour (each call costs GPT-4 + GPT-4.1-mini)
+    const allowed = checkRateLimit(`evaluate:${id}`, 3, 3600000)
+    if (!allowed) {
+      return apiError({ type: 'RATE_LIMITED', message: 'Evaluation rate limit exceeded. Please wait before trying again.' }, 429)
+    }
 
     // Get session with scenario info first
     const session = await prisma.session.findUnique({
@@ -133,6 +142,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             feedbackJson: evaluationResult.evaluation,
             strengths: evaluationResult.grade ?? '',
             areasToImprove: '',
+            // TODO: rawResponse currently stores stripped eval (flags removed).
+            // For full audit trail, store the unprocessed LLM output here instead.
+            // Requires: return rawEvaluation from processRawEvaluation(), update this line.
             rawResponse: evaluationResult.evaluation,
           },
         })
@@ -186,6 +198,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       })
     } catch (error) {
       // P2002: Unique constraint violation — concurrent request already created the evaluation.
+      // Safe: both concurrent requests passed auth at handler top before reaching this transaction.
       // Transaction rolled back; the other request's commit left the session in "completed" state.
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         const existing = session.assignmentId

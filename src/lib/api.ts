@@ -31,6 +31,13 @@ export function badRequest(message: string): Response {
   return apiError({ type: 'VALIDATION_ERROR', message }, 400)
 }
 
+// UUID validation for route params — returns a 400 Response if invalid, undefined if valid
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export function invalidId(id: string): Response | undefined {
+  if (!UUID_RE.test(id)) return badRequest('Invalid ID format')
+}
+
 export function handleApiError(error: unknown): Response {
   console.error('API Error:', error)
 
@@ -41,10 +48,17 @@ export function handleApiError(error: unknown): Response {
     )
   }
 
+  if (error instanceof SyntaxError && error.message.includes('JSON')) {
+    return apiError({ type: 'VALIDATION_ERROR', message: 'Invalid JSON in request body' }, 400)
+  }
+
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     switch (error.code) {
-      case 'P2002':
-        return apiError({ type: 'CONFLICT', message: 'Already exists' }, 409)
+      case 'P2002': {
+        const meta = error.meta?.target
+        const target = Array.isArray(meta) ? meta.join(', ') : 'record'
+        return conflict(`${target} already exists`)
+      }
       case 'P2025':
         return apiError({ type: 'NOT_FOUND', message: 'Not found' }, 404)
     }

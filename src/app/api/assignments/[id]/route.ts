@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import prisma from '@/lib/prisma'
-import { apiSuccess, apiError, handleApiError, notFound, forbidden } from '@/lib/api'
+import { apiSuccess, apiError, handleApiError, notFound, forbidden, invalidId } from '@/lib/api'
 import { updateAssignmentSchema } from '@/lib/validators'
 import { requireAuth, requireSupervisor, canAccessResource } from '@/lib/auth'
 import { buildAssignmentResponse } from '@/lib/assignment-utils'
@@ -21,6 +21,9 @@ export async function GET(
 ) {
   try {
     const { id } = await params
+    const idError = invalidId(id)
+    if (idError) return idError
+
     const authResult = await requireAuth(request)
     if (authResult.error) return authResult.error
     const user = authResult.user
@@ -69,6 +72,9 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params
+    const idError = invalidId(id)
+    if (idError) return idError
+
     const authResult = await requireAuth(request)
     if (authResult.error) return authResult.error
     const user = authResult.user
@@ -179,6 +185,9 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
+    const idError = invalidId(id)
+    if (idError) return idError
+
     const authResult = await requireSupervisor(request)
     if (authResult.error) return authResult.error
 

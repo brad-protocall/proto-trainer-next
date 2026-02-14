@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client'
 import { zodResponseFormat } from 'openai/helpers/zod'
 import { extractText } from 'unpdf'
 import { prisma } from '@/lib/prisma'
-import { apiSuccess, apiError, handleApiError, notFound, conflict, forbidden, badRequest } from '@/lib/api'
+import { apiSuccess, apiError, handleApiError, notFound, conflict, forbidden, badRequest, invalidId } from '@/lib/api'
 import { requireAuth, canAccessResource } from '@/lib/auth'
 import { getOpenAI, formatTranscriptForLLM } from '@/lib/openai'
 import { loadPrompt } from '@/lib/prompts'
@@ -25,6 +25,8 @@ interface RouteParams {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params
+    const idError = invalidId(id)
+    if (idError) return idError
 
     const authResult = await requireAuth(request)
     if (authResult.error) return authResult.error
@@ -183,6 +185,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params
+    const idError = invalidId(id)
+    if (idError) return idError
 
     const authResult = await requireAuth(request)
     if (authResult.error) return authResult.error

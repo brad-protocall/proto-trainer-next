@@ -93,6 +93,9 @@ export default function SessionFeedback({
         }),
       });
 
+      if (response.status === 429) {
+        throw new Error("Please wait before submitting more feedback.");
+      }
       const data: ApiResponse<{ id: string }> = await response.json();
       if (!data.ok) throw new Error(data.error.message);
 
