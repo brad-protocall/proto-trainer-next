@@ -59,7 +59,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         status: true,
         currentAttempt: true,
         userId: true,
-        assignment: { select: { counselorId: true } },
+        assignment: { select: { learnerId: true } },
       },
     })
 
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Check ownership
-    const ownerId = session.assignment?.counselorId ?? session.userId
+    const ownerId = session.assignment?.learnerId ?? session.userId
     if (!ownerId || !canAccessResource(user, ownerId)) {
       return forbidden('Cannot save transcript to another user\'s session')
     }

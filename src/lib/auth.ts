@@ -82,7 +82,7 @@ export function canAccessResource(user: User, resourceOwnerId: string): boolean 
   if (user.role === 'supervisor') {
     return true
   }
-  // Counselors can only access their own resources
+  // Learners can only access their own resources
   return user.id === resourceOwnerId
 }
 

@@ -12,11 +12,11 @@ model User {
   externalId  String   @unique @map("external_id")
   displayName String?  @map("display_name")
   email       String?
-  role        String   @default("counselor") // UserRole: supervisor, counselor
+  role        String   @default("learner") // UserRole: supervisor, learner
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  counselorAssignments  Assignment[] @relation("CounselorAssignments")
+  learnerAssignments    Assignment[] @relation("LearnerAssignments")
   supervisorAssignments Assignment[] @relation("SupervisorAssignments")
   scenariosCreated      Scenario[]
   sessions              Session[]    @relation("UserSessions")
@@ -73,7 +73,7 @@ model Assignment {
   id               String    @id @default(uuid())
   accountId        String?   @map("account_id")
   scenarioId       String    @map("scenario_id")
-  counselorId      String    @map("counselor_id")
+  learnerId        String    @map("counselor_id")
   assignedBy       String    @map("assigned_by")
   status           String    @default("pending") // AssignmentStatus: pending, in_progress, completed
   createdAt        DateTime  @default(now()) @map("created_at")
@@ -85,12 +85,12 @@ model Assignment {
 
   account    Account?    @relation(fields: [accountId], references: [id], onDelete: SetNull)
   scenario   Scenario    @relation(fields: [scenarioId], references: [id], onDelete: Restrict)
-  counselor  User        @relation("CounselorAssignments", fields: [counselorId], references: [id], onDelete: Cascade)
+  learner    User        @relation("LearnerAssignments", fields: [learnerId], references: [id], onDelete: Cascade)
   supervisor User        @relation("SupervisorAssignments", fields: [assignedBy], references: [id], onDelete: Restrict)
   session    Session?
   evaluation Evaluation?
 
-  @@index([counselorId])
+  @@index([learnerId])
   @@index([scenarioId])
   @@index([status])
   @@map("assignments")

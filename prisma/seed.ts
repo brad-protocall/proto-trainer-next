@@ -55,8 +55,8 @@ async function main() {
   })
   console.log(`Supervisor: ${supervisor.displayName}`)
 
-  // Create multiple test counselors
-  const counselors = [
+  // Create multiple test learners
+  const learners = [
     {
       id: '32d86730-7a31-4a30-9b53-e6c238706bf6',
       externalId: 'test-counselor-001',
@@ -104,22 +104,22 @@ async function main() {
       update: {},
       create: {
         ...learner,
-        role: 'counselor',
+        role: 'learner',
       },
     })
     console.log(`PTG Learner: ${user.displayName}`)
   }
 
-  for (const counselor of counselors) {
+  for (const learner of learners) {
     const user = await prisma.user.upsert({
-      where: { id: counselor.id },
+      where: { id: learner.id },
       update: {},
       create: {
-        ...counselor,
-        role: 'counselor',
+        ...learner,
+        role: 'learner',
       },
     })
-    console.log(`Counselor: ${user.displayName}`)
+    console.log(`Learner: ${user.displayName}`)
   }
 
   // Create sample scenarios if none exist

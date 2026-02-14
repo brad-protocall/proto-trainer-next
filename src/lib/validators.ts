@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { VALID_SKILLS } from './skills'
 
 // Domain enum schemas as string literals (lowercase to match DB)
-const UserRoleSchema = z.enum(['supervisor', 'counselor'])
+const UserRoleSchema = z.enum(['supervisor', 'learner'])
 const ScenarioModeSchema = z.enum(['phone', 'chat'])
 
 // Single source of truth for category values - export for use in frontend validation
@@ -36,7 +36,7 @@ export const createUserSchema = z.object({
   externalId: z.string().min(1),
   displayName: z.string().optional(),
   email: z.string().email().optional(),
-  role: UserRoleSchema.default('counselor'),
+  role: UserRoleSchema.default('learner'),
 })
 
 export const updateUserSchema = z.object({
@@ -79,14 +79,14 @@ export const scenarioQuerySchema = z.object({
 // Assignment validation
 export const createAssignmentSchema = z.object({
   scenarioId: z.string().uuid(),
-  counselorId: z.string().uuid(),
+  learnerId: z.string().uuid(),
   dueDate: z.string().datetime().optional(),
   supervisorNotes: z.string().optional(),
 })
 
 export const bulkAssignmentSchema = z.object({
   scenarioIds: z.array(z.string().uuid()).min(1),
-  counselorIds: z.array(z.string().uuid()).min(1),
+  learnerIds: z.array(z.string().uuid()).min(1),
   dueDate: z.string().datetime().optional().nullable(),
   supervisorNotes: z.string().optional().nullable(),
   forceReassign: z.boolean().optional(),
@@ -99,7 +99,7 @@ export const updateAssignmentSchema = z.object({
 })
 
 export const assignmentQuerySchema = z.object({
-  counselorId: z.string().uuid().optional(),
+  learnerId: z.string().uuid().optional(),
   status: z.string().optional(),
   scenarioId: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
@@ -146,7 +146,7 @@ export const createLiveKitTokenSchema = z.object({
 
 // Flag type — exhaustive list across all governance features
 export const SessionFlagTypeValues = [
-  // Counselor-reported
+  // Learner-reported
   'user_feedback',
   'ai_guidance_concern',
   'voice_technical_issue',
@@ -181,7 +181,7 @@ export const FlagSourceValues = ['evaluation', 'analysis', 'user_feedback'] as c
 export const FlagSourceSchema = z.enum(FlagSourceValues)
 export type FlagSource = z.infer<typeof FlagSourceSchema>
 
-// Counselor feedback submission
+// Learner feedback submission
 export const createFlagSchema = z.object({
   type: z.enum(['user_feedback', 'ai_guidance_concern', 'voice_technical_issue']),
   details: z.string().min(1).max(1000),

@@ -34,7 +34,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           select: {
             userId: true,
             assignment: {
-              select: { counselorId: true },
+              select: { learnerId: true },
             },
           },
         },
@@ -45,8 +45,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return notFound('Recording not found')
     }
 
-    // Check authorization - counselors can only download their own recordings
-    const ownerId = recording.session.assignment?.counselorId ?? recording.session.userId
+    // Check authorization - learners can only download their own recordings
+    const ownerId = recording.session.assignment?.learnerId ?? recording.session.userId
     if (ownerId && !canAccessResource(user, ownerId)) {
       return forbidden('Access denied')
     }

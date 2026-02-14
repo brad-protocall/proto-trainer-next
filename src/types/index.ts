@@ -21,7 +21,7 @@ export type ApiResponse<T> =
   | { ok: false; error: ApiError };
 
 // Domain Enums
-export type UserRole = "counselor" | "supervisor" | "admin";
+export type UserRole = "learner" | "supervisor" | "admin";
 export type ScenarioMode = "phone" | "chat";
 // Must match ScenarioCategoryValues in src/lib/validators.ts
 export type ScenarioCategory =
@@ -97,7 +97,7 @@ export interface Scenario {
 export interface Assignment {
   id: string;
   scenarioId: string;
-  counselorId: string;
+  learnerId: string;
   status: AssignmentStatus;
   dueDate: string | null;
   completedAt: string | null;
@@ -107,11 +107,11 @@ export interface Assignment {
   createdAt: string;
   updatedAt: string;
   scenario?: Scenario;
-  counselor?: User;
+  learner?: User;
   // Computed fields for display
   scenarioTitle?: string;
   scenarioMode?: ScenarioMode;
-  counselorName?: string;
+  learnerName?: string;
   isOverdue?: boolean;
   hasTranscript?: boolean;
   // Additional fields from API
@@ -195,8 +195,8 @@ export interface AssignmentResponse {
   scenarioId: string;
   scenarioTitle: string;
   scenarioMode: ScenarioMode;
-  counselorId: string;
-  counselorName: string | null;
+  learnerId: string;
+  learnerName: string | null;
   assignedBy: string;
   assignedByName: string | null;
   status: AssignmentStatus;
@@ -216,8 +216,8 @@ export interface AssignmentResponse {
 export interface BulkAssignmentResponse {
   created: number;
   skipped: number;
-  blocked?: Array<{ scenarioId: string; counselorId: string; reason: string }>;
-  warnings?: Array<{ scenarioId: string; counselorId: string; reason: string }>;
+  blocked?: Array<{ scenarioId: string; learnerId: string; reason: string }>;
+  warnings?: Array<{ scenarioId: string; learnerId: string; reason: string }>;
   requiresConfirmation?: boolean;
   message?: string;
   assignments?: AssignmentResponse[];

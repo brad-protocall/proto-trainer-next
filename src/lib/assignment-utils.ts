@@ -7,7 +7,7 @@ export interface AssignmentWithRelations {
   id: string
   accountId: string | null
   scenarioId: string
-  counselorId: string
+  learnerId: string
   assignedBy: string
   status: string
   createdAt: Date
@@ -17,7 +17,7 @@ export interface AssignmentWithRelations {
   supervisorNotes: string | null
   requireRecording: boolean
   scenario: { title: string; mode: string }
-  counselor: { displayName: string | null }
+  learner: { displayName: string | null }
   supervisor: { displayName: string | null }
   session?: { id: string; recording?: { id: string } | null } | null
   evaluation?: { id: string } | null
@@ -41,8 +41,8 @@ export function buildAssignmentResponse(
     scenarioId: assignment.scenarioId,
     scenarioTitle: assignment.scenario.title,
     scenarioMode: assignment.scenario.mode as ScenarioMode,
-    counselorId: assignment.counselorId,
-    counselorName: assignment.counselor.displayName,
+    learnerId: assignment.learnerId,
+    learnerName: assignment.learner.displayName,
     assignedBy: assignment.assignedBy,
     assignedByName: assignment.supervisor.displayName,
     status: assignment.status as AssignmentStatus,

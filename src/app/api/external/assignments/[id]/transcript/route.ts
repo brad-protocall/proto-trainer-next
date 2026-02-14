@@ -29,7 +29,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       where: { id: assignmentId },
       include: {
         session: true,
-        counselor: {
+        learner: {
           select: {
             externalId: true,
           },
@@ -74,7 +74,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     return apiSuccess({
       assignmentId,
       sessionId: session.id,
-      counselorId: assignment.counselor.externalId,
+      learnerId: assignment.learner.externalId,
       scenarioId: assignment.scenario.id,
       scenarioTitle: assignment.scenario.title,
       attemptNumber,

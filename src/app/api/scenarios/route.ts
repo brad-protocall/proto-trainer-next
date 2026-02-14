@@ -108,11 +108,11 @@ export async function POST(request: NextRequest) {
     // Try one-time-with-assignment schema first
     const oneTimeResult = createOneTimeScenarioWithAssignmentSchema.safeParse(body)
     if (oneTimeResult.success) {
-      // Validate counselor exists and has correct role
-      const counselor = await prisma.user.findUnique({
+      // Validate learner exists and has correct role
+      const learner = await prisma.user.findUnique({
         where: { id: oneTimeResult.data.assignTo },
       })
-      if (!counselor || counselor.role !== 'counselor') {
+      if (!learner || learner.role !== 'learner') {
         return apiError({ type: 'VALIDATION_ERROR', message: 'Invalid learner selected' }, 400)
       }
 
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
         const assignment = await tx.assignment.create({
           data: {
             scenarioId: scenario.id,
-            counselorId: oneTimeResult.data.assignTo,
+            learnerId: oneTimeResult.data.assignTo,
             accountId: accountId!,
             assignedBy: user.id,
             status: 'pending',

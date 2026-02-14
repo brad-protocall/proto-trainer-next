@@ -7,9 +7,9 @@ import { requireAuth, requireSupervisor } from '@/lib/auth'
 /**
  * GET /api/users
  * List all users
- * - Filtering by role=counselor is public (needed for demo user switcher)
+ * - Filtering by role=learner is public (needed for demo user switcher)
  * - Other queries require authentication
- * Supports ?role=supervisor or ?role=counselor filter
+ * Supports ?role=supervisor or ?role=learner filter
  */
 export async function GET(request: NextRequest) {
   try {

@@ -16,7 +16,7 @@ const createRecordingSchema = z.object({
 
 /**
  * GET /api/recordings
- * List recordings - supervisors see all, counselors see their own
+ * List recordings - supervisors see all, learners see their own
  */
 export async function GET(request: NextRequest) {
   try {
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
               { userId: user.id },
               {
                 assignment: {
-                  counselorId: user.id,
+                  learnerId: user.id,
                 },
               },
             ],
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
             assignment: {
               select: {
                 id: true,
-                counselorId: true,
+                learnerId: true,
                 scenario: {
                   select: {
                     id: true,
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
         id: true,
         userId: true,
         assignment: {
-          select: { counselorId: true },
+          select: { learnerId: true },
         },
       },
     })

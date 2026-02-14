@@ -46,7 +46,7 @@ export default function SupervisorDashboard({ supervisorId: propSupervisorId }: 
   // Shared reference data
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [allSupervisors, setAllSupervisors] = useState<User[]>([]);
-  const [counselors, setCounselors] = useState<User[]>([]);
+  const [learners, setLearners] = useState<User[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [globalScenarios, setGlobalScenarios] = useState<Scenario[]>([]);
 
@@ -102,7 +102,7 @@ export default function SupervisorDashboard({ supervisorId: propSupervisorId }: 
     window.location.href = `/supervisor?supervisorId=${supervisorId}`;
   };
 
-  // Load supervisor user, accounts, counselors on mount
+  // Load supervisor user, accounts, learners on mount
   useEffect(() => {
     const loadSupervisorUser = async () => {
       try {
@@ -127,19 +127,19 @@ export default function SupervisorDashboard({ supervisorId: propSupervisorId }: 
       }
     };
 
-    const loadCounselors = async () => {
+    const loadLearners = async () => {
       try {
-        const response = await fetch("/api/users?role=counselor");
+        const response = await fetch("/api/users?role=learner");
         const data: ApiResponse<User[]> = await response.json();
-        if (data.ok) setCounselors(data.data);
+        if (data.ok) setLearners(data.data);
       } catch (err) {
-        console.error("Failed to load counselors", err);
+        console.error("Failed to load learners", err);
       }
     };
 
     loadSupervisorUser();
     loadAccounts();
-    loadCounselors();
+    loadLearners();
   }, [propSupervisorId, loadAccounts]);
 
   // Load global scenarios once user is available
@@ -254,7 +254,7 @@ export default function SupervisorDashboard({ supervisorId: propSupervisorId }: 
         <ScenarioTab
           authFetch={authFetch}
           userId={currentUser.id}
-          counselors={counselors}
+          learners={learners}
           accounts={accounts}
           categoryFilter={categoryFilter}
           onScenariosChanged={loadGlobalScenarios}
@@ -266,7 +266,7 @@ export default function SupervisorDashboard({ supervisorId: propSupervisorId }: 
       {activeTab === "assignments" && currentUser && (
         <AssignmentTab
           authFetch={authFetch}
-          counselors={counselors}
+          learners={learners}
           globalScenarios={globalScenarios}
           categoryFilter={categoryFilter}
           setCategoryFilter={setCategoryFilter}
@@ -305,7 +305,7 @@ export default function SupervisorDashboard({ supervisorId: propSupervisorId }: 
                             Scenario: {flag.session?.scenario?.title || "Free Practice"}
                           </span>
                           <span>
-                            Counselor: {flag.session?.user?.displayName || "Unknown"}
+                            Learner: {flag.session?.user?.displayName || "Unknown"}
                           </span>
                           <span>
                             {flag.session?.modelType === "phone" ? "Voice" : "Chat"}

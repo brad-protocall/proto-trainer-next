@@ -24,16 +24,16 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const { counselorId, status, scenarioId, limit } = queryResult.data
+    const { learnerId, status, scenarioId, limit } = queryResult.data
 
     // Build where clause based on role and filters
     const where: Record<string, unknown> = {}
 
-    // Counselors can only see their own assignments
-    if (user.role === 'counselor') {
-      where.counselorId = user.id
-    } else if (counselorId) {
-      where.counselorId = counselorId
+    // Learners can only see their own assignments
+    if (user.role === 'learner') {
+      where.learnerId = user.id
+    } else if (learnerId) {
+      where.learnerId = learnerId
     }
 
     if (status) {
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
       where,
       include: {
         scenario: { select: { title: true, mode: true } },
-        counselor: { select: { displayName: true } },
+        learner: { select: { displayName: true } },
         supervisor: { select: { displayName: true } },
         session: { select: { id: true, recording: { select: { id: true } } } },
         evaluation: { select: { id: true } },
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
 
     // Check if this is a bulk assignment request
-    if (Array.isArray(body.scenarioIds) || Array.isArray(body.counselorIds)) {
+    if (Array.isArray(body.scenarioIds) || Array.isArray(body.learnerIds)) {
       return handleBulkCreate(body, user.id)
     }
 
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { scenarioId, counselorId, dueDate, supervisorNotes } = result.data
+    const { scenarioId, learnerId, dueDate, supervisorNotes } = result.data
 
     const scenario = await prisma.scenario.findUnique({
       where: { id: scenarioId },
@@ -108,25 +108,25 @@ export async function POST(request: NextRequest) {
       return apiError({ type: 'NOT_FOUND', message: 'Scenario not found' }, 404)
     }
 
-    const counselor = await prisma.user.findUnique({
-      where: { id: counselorId },
+    const learner = await prisma.user.findUnique({
+      where: { id: learnerId },
     })
-    if (!counselor) {
-      return apiError({ type: 'NOT_FOUND', message: 'Counselor not found' }, 404)
+    if (!learner) {
+      return apiError({ type: 'NOT_FOUND', message: 'Learner not found' }, 404)
     }
-    if (counselor.role !== 'counselor') {
-      return apiError({ type: 'VALIDATION_ERROR', message: 'Validation failed', details: { counselorId: ['User is not a counselor'] } }, 400)
+    if (learner.role !== 'learner') {
+      return apiError({ type: 'VALIDATION_ERROR', message: 'Validation failed', details: { learnerId: ['User is not a learner'] } }, 400)
     }
 
     const existingActive = await prisma.assignment.findFirst({
       where: {
-        counselorId,
+        learnerId,
         scenarioId,
         status: { not: 'completed' },
       },
     })
     if (existingActive) {
-      return apiError({ type: 'CONFLICT', message: 'Active assignment already exists for this counselor and scenario' }, 409)
+      return apiError({ type: 'CONFLICT', message: 'Active assignment already exists for this learner and scenario' }, 409)
     }
 
     // Note: A partial unique index prevents race conditions at the DB level
@@ -135,14 +135,14 @@ export async function POST(request: NextRequest) {
         data: {
           accountId: scenario.accountId,
           scenarioId,
-          counselorId,
+          learnerId,
           assignedBy: user.id,
           dueDate: dueDate ? new Date(dueDate) : null,
           supervisorNotes,
         },
         include: {
           scenario: { select: { title: true, mode: true } },
-          counselor: { select: { displayName: true } },
+          learner: { select: { displayName: true } },
           supervisor: { select: { displayName: true } },
         },
       })
@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
         createError instanceof Error &&
         createError.message.includes('Unique constraint failed')
       ) {
-        return apiError({ type: 'CONFLICT', message: 'Active assignment already exists for this counselor and scenario' }, 409)
+        return apiError({ type: 'CONFLICT', message: 'Active assignment already exists for this learner and scenario' }, 409)
       }
       throw createError
     }
@@ -173,9 +173,9 @@ async function handleBulkCreate(body: unknown, userId: string): Promise<Response
     )
   }
 
-  const { scenarioIds, counselorIds, dueDate, supervisorNotes } = result.data
+  const { scenarioIds, learnerIds, dueDate, supervisorNotes } = result.data
 
-  const totalPairs = scenarioIds.length * counselorIds.length
+  const totalPairs = scenarioIds.length * learnerIds.length
   if (totalPairs > MAX_BULK_ASSIGNMENTS) {
     return apiError(
       { type: 'VALIDATION_ERROR', message: 'Validation failed', details: { bulk: [`Batch too large: maximum ${MAX_BULK_ASSIGNMENTS} assignments per request`] } },
@@ -183,15 +183,15 @@ async function handleBulkCreate(body: unknown, userId: string): Promise<Response
     )
   }
 
-  const counselors = await prisma.user.findMany({
+  const learners = await prisma.user.findMany({
     where: {
-      id: { in: counselorIds },
-      role: 'counselor',
+      id: { in: learnerIds },
+      role: 'learner',
     },
   })
-  if (counselors.length !== counselorIds.length) {
+  if (learners.length !== learnerIds.length) {
     return apiError(
-      { type: 'VALIDATION_ERROR', message: 'Validation failed', details: { counselorIds: ['One or more counselor IDs are invalid or not counselor role'] } },
+      { type: 'VALIDATION_ERROR', message: 'Validation failed', details: { learnerIds: ['One or more learner IDs are invalid or not learner role'] } },
       400
     )
   }
@@ -210,17 +210,17 @@ async function handleBulkCreate(body: unknown, userId: string): Promise<Response
   // Check for ALL existing assignments (both active and completed)
   const allExistingAssignments = await prisma.assignment.findMany({
     where: {
-      counselorId: { in: counselorIds },
+      learnerId: { in: learnerIds },
       scenarioId: { in: scenarioIds },
     },
-    select: { counselorId: true, scenarioId: true, status: true },
+    select: { learnerId: true, scenarioId: true, status: true },
   })
 
   // Separate active (pending/in_progress) from completed
   const activePairs = new Set<string>()
   const completedPairs = new Set<string>()
   for (const a of allExistingAssignments) {
-    const key = `${a.counselorId}:${a.scenarioId}`
+    const key = `${a.learnerId}:${a.scenarioId}`
     if (a.status === 'completed') {
       completedPairs.add(key)
     } else {
@@ -228,12 +228,12 @@ async function handleBulkCreate(body: unknown, userId: string): Promise<Response
     }
   }
 
-  const blockedPairs: Array<{ counselorId: string; scenarioId: string; reason: 'active' }> = []
-  const warningPairs: Array<{ counselorId: string; scenarioId: string; reason: 'completed' }> = []
+  const blockedPairs: Array<{ learnerId: string; scenarioId: string; reason: 'active' }> = []
+  const warningPairs: Array<{ learnerId: string; scenarioId: string; reason: 'completed' }> = []
   const assignmentsToCreate: Array<{
     accountId: string | null
     scenarioId: string
-    counselorId: string
+    learnerId: string
     assignedBy: string
     dueDate: Date | null
     supervisorNotes: string | null
@@ -243,23 +243,23 @@ async function handleBulkCreate(body: unknown, userId: string): Promise<Response
   // Check if forceReassign flag is set (allows reassigning completed scenarios)
   const forceReassign = (result.data as { forceReassign?: boolean }).forceReassign || false
 
-  for (const counselorId of counselorIds) {
+  for (const learnerId of learnerIds) {
     for (const scenarioId of scenarioIds) {
-      const key = `${counselorId}:${scenarioId}`
+      const key = `${learnerId}:${scenarioId}`
 
       if (activePairs.has(key)) {
         // Active assignment exists - always block
-        blockedPairs.push({ counselorId, scenarioId, reason: 'active' })
+        blockedPairs.push({ learnerId, scenarioId, reason: 'active' })
       } else if (completedPairs.has(key) && !forceReassign) {
         // Completed assignment exists - warn (but don't create unless forced)
-        warningPairs.push({ counselorId, scenarioId, reason: 'completed' })
+        warningPairs.push({ learnerId, scenarioId, reason: 'completed' })
       } else {
         // No conflict or force reassign enabled
         const scenario = scenarioMap.get(scenarioId)!
         assignmentsToCreate.push({
           accountId: scenario.accountId,
           scenarioId,
-          counselorId,
+          learnerId,
           assignedBy: userId,
           dueDate: dueDate ? new Date(dueDate) : null,
           supervisorNotes: supervisorNotes ?? null,
@@ -277,7 +277,7 @@ async function handleBulkCreate(body: unknown, userId: string): Promise<Response
       blocked: blockedPairs,
       warnings: warningPairs,
       requiresConfirmation: true,
-      message: 'Some counselors have already completed this scenario. Confirm to reassign.',
+      message: 'Some learners have already completed this scenario. Confirm to reassign.',
     }, 200)
   }
 

@@ -36,7 +36,7 @@ export default function HomePage() {
           Supervisor
         </button>
         <button
-          onClick={() => handleRoleSelect("counselor")}
+          onClick={() => handleRoleSelect("learner")}
           className="bg-blue-500 hover:bg-blue-600 text-white
                      font-marfa font-bold py-4 px-8 rounded-lg text-lg"
         >

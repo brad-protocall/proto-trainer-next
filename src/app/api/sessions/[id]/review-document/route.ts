@@ -46,7 +46,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     if (!session) return notFound('Session not found')
 
-    const ownerId = session.assignment?.counselorId ?? session.userId
+    const ownerId = session.assignment?.learnerId ?? session.userId
     if (!ownerId) return notFound('Session not found')
     if (!canAccessResource(user, ownerId)) return forbidden('Cannot review another user\'s session')
 
@@ -198,7 +198,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     if (!session) return notFound('Session not found')
 
-    const ownerId = session.assignment?.counselorId ?? session.userId
+    const ownerId = session.assignment?.learnerId ?? session.userId
     if (!ownerId) return notFound('Session not found')
     if (!canAccessResource(user, ownerId)) return forbidden('Cannot view another user\'s document review')
 

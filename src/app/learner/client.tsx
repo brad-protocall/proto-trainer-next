@@ -2,25 +2,25 @@
 
 import { useRouter } from "next/navigation";
 import Header from "@/components/header";
-import CounselorDashboard from "@/components/counselor-dashboard";
+import LearnerDashboard from "@/components/learner-dashboard";
 import { Assignment, UserRole } from "@/types";
 
-interface CounselorPageClientProps {
-  counselorId?: string | null;
+interface LearnerPageClientProps {
+  learnerId?: string | null;
   /** Hint that this might be a supervisor view (URL had userId param) */
   isSupervisorView: boolean;
 }
 
-export default function CounselorPageClient({
-  counselorId,
+export default function LearnerPageClient({
+  learnerId,
   isSupervisorView,
-}: CounselorPageClientProps) {
+}: LearnerPageClientProps) {
   const router = useRouter();
 
-  // For the prototype: if accessing /counselor (no param), user is a counselor
-  // If accessing /counselor?userId=X, they came from supervisor dashboard
+  // For the prototype: if accessing /learner (no param), user is a learner
+  // If accessing /learner?userId=X, they came from supervisor dashboard
   // The dashboard component will verify authorization via API
-  const viewerRole: UserRole = isSupervisorView ? "supervisor" : "counselor";
+  const viewerRole: UserRole = isSupervisorView ? "supervisor" : "learner";
 
   const handleStartTraining = (assignment: Assignment, userId?: string) => {
     const userParam = userId ? `?userId=${userId}` : "";
@@ -40,13 +40,13 @@ export default function CounselorPageClient({
     <main className="min-h-screen bg-slate-700">
       <div className="max-w-4xl mx-auto px-4">
         <Header
-          title="Counselor Dashboard"
-          role="counselor"
+          title="Learner Dashboard"
+          role="learner"
           onRoleChange={handleRoleChange}
         />
-        <CounselorDashboard
+        <LearnerDashboard
           onStartTraining={handleStartTraining}
-          counselorId={counselorId}
+          learnerId={learnerId}
           viewerRole={viewerRole}
         />
       </div>

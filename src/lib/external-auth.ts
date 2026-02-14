@@ -74,6 +74,6 @@ export async function getOrCreateExternalUser(externalId: string) {
   return prisma.user.upsert({
     where: { externalId },
     update: {},
-    create: { externalId, displayName, role: 'counselor' },
+    create: { externalId, displayName, role: 'learner' },
   })
 }

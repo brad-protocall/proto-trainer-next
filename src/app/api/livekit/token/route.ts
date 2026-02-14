@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
       const assignment = await prisma.assignment.findUnique({
         where: { id: data.assignmentId },
         select: {
-          counselorId: true,
+          learnerId: true,
           scenarioId: true,
           status: true,
         },
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
         return badRequest('Assignment not found')
       }
 
-      if (!canAccessResource(user, assignment.counselorId)) {
+      if (!canAccessResource(user, assignment.learnerId)) {
         return forbidden('Not your assignment')
       }
 

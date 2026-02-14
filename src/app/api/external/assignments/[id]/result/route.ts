@@ -18,12 +18,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { id: assignmentId } = await params
 
-    // Get assignment with evaluation and counselor info
+    // Get assignment with evaluation and learner info
     const assignment = await prisma.assignment.findUnique({
       where: { id: assignmentId },
       include: {
         evaluation: true,
-        counselor: {
+        learner: {
           select: {
             externalId: true,
           },
@@ -73,7 +73,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const result = {
       assignmentId: assignment.id,
       simulationId: assignment.scenario.id,
-      counselorId: assignment.counselor.externalId,
+      learnerId: assignment.learner.externalId,
       score: Math.round(evaluation.overallScore),
       feedback: evaluation.areasToImprove
         ? `Strengths: ${evaluation.strengths}\n\nAreas to Improve: ${evaluation.areasToImprove}`

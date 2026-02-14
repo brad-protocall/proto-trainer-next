@@ -33,7 +33,7 @@ function toExternalAssignment(assignment: {
 
 /**
  * GET /api/external/assignments?user_id={externalId}
- * List assignments for a counselor by their external ID
+ * List assignments for a learner by their external ID
  */
 export async function GET(request: NextRequest) {
   const authError = requireExternalApiKey(request)
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
     // Get assignments for this user
     const assignments = await prisma.assignment.findMany({
       where: {
-        counselorId: user.id,
+        learnerId: user.id,
       },
       include: {
         scenario: {
@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/external/assignments
- * Create a new assignment for a counselor
+ * Create a new assignment for a learner
  */
 export async function POST(request: NextRequest) {
   const authError = requireExternalApiKey(request)
@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
     // Check for existing active assignment (prevent duplicates)
     const existingActive = await prisma.assignment.findFirst({
       where: {
-        counselorId: user.id,
+        learnerId: user.id,
         scenarioId: scenarioId,
         status: { not: 'completed' },
       },
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
       return apiError(
         {
           type: 'CONFLICT',
-          message: `Active assignment already exists for this counselor and scenario`,
+          message: `Active assignment already exists for this learner and scenario`,
         },
         409
       )
@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
       const assignment = await prisma.assignment.create({
         data: {
           scenarioId: scenario.id,
-          counselorId: user.id,
+          learnerId: user.id,
           assignedBy: EXTERNAL_SYSTEM_USER_ID,
           accountId: EXTERNAL_ACCOUNT_ID,
           status: 'pending',
@@ -169,7 +169,7 @@ export async function POST(request: NextRequest) {
         return apiError(
           {
             type: 'CONFLICT',
-            message: 'Active assignment already exists for this counselor and scenario',
+            message: 'Active assignment already exists for this learner and scenario',
           },
           409
         )
