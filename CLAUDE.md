@@ -510,6 +510,14 @@ npx prisma migrate deploy
 npx prisma generate
 ```
 
+#### 14. Global Rename via Prisma @map + Types-First
+
+**Problem**: Need to rename a concept across 40+ files without DB column migration.
+
+**Prevention**: Use Prisma `@map("old_column")` to keep DB stable. Update types/validators first, let compiler surface all references. Distinguish domain terms (keep) from role terms (rename).
+
+See `docs/solutions/prevention-strategies/global-rename-with-prisma-map-pattern.md` for full playbook.
+
 ### Migration Script Best Practices
 
 Scripts in `scripts/` that modify database records should follow these patterns:
@@ -574,30 +582,34 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ## Resume Context (2026-02-13)
 
-### Current State: Account Procedures UX deployed to Pi. All features live. Ready for real-world testing.
+### Current State: Counselor → Learner rename complete. Deployed to Pi. Ready for Phase 5: Compound or next feature.
 
-**Branch:** `main` at `e1f0795` (PR #48 merged). Uncommitted: CLAUDE.md, prompt file, plan file, e2e-test.ts.bak.
-**Status:** All features deployed. Pi migration applied. Ready for next feature or testing.
+**Branch:** `main` at `8677a25` (PR #49 merged). Uncommitted: CLAUDE.md, prompt file, plan file, misc screenshots.
+**Status:** All features deployed including learner rename. Pi migration applied (11 learners, 2 supervisors, 0 counselor rows).
 
-### What Just Happened (This Session — 2026-02-13)
+### What Just Happened (This Session — 2026-02-13 Evening)
 
-1. **Plan review** — 4-agent review (DHH, Kieran TS, simplicity, key-choices) of Account Procedures UX plan
-2. **Plan revision** — Incorporated user business context (~700 accounts, template-based complaints). Dropped silent auto-creation. Added searchable dropdown with `accountNumber` search. Revised from 4 phases to 3.
-3. **Implementation** — 3 phases on `feat/account-procedures-ux` branch:
-   - Phase 1: Foundation (lift `loadAccounts` to `useCallback`, add `accountNumber` to DB, fix mutation, fix file accept, switch to `authFetch`)
-   - Phase 2: `AccountSearchDropdown` component + inline account creation via "+ New"
-   - Phase 3: Complaint generator account support (auth unification, auto-detect pre-select, procedure upload, `accountId` in save)
-4. **E2E testing** — API tests via curl + browser tests via Playwright. All passing.
-5. **Code review** — 4-agent review (security sentinel, simplicity, Kieran TS, secrets guardian). All findings fixed.
-6. **Merged PR #48** — https://github.com/brad-protocall/proto-trainer-next/pull/48
-7. **Deployed to Pi** — `npm run deploy:pi:full`, migration applied (`account_number` column added)
-8. **Phase 5: Compound** — Captured 3 new bug prevention patterns (#11-13) and architecture decision
+1. **Counselor → Learner global rename** — Full SME prototype cycle (Plan → Review → Work → Review → Merge → Deploy)
+2. **Plan** — `/workflows:plan` with PTG learnings as playbook. Key discovery: Prisma `@map("counselor_id")` means no column rename needed — only data migration (`UPDATE users SET role = 'learner'`).
+3. **Plan review** — 4-agent review (DHH, Kieran TS, simplicity, key-choices). Findings: add 301 redirect, use feature branch, verify LiveKit agent metadata, tighten grep patterns, keep seed externalIds, add rollback SQL, fix PPTA terminology.
+4. **Implementation** — 6 steps on `refactor/counselor-to-learner` branch, 45 files changed:
+   - Step 1: Prisma schema + manual data migration (Pattern #13)
+   - Step 2: TypeScript types + Zod validators (types-first approach)
+   - Step 3: Lib utilities (constants, notifications, auth, assignment-utils, external-auth)
+   - Step 4: 22 API route files (via subagent)
+   - Step 5: 11 component files + route directory rename + next.config.ts redirect (via subagent)
+   - Step 6: Seed data + CLAUDE.md + verification (0 tsc errors, 0 lint errors)
+5. **Code review** — 4-agent review (Kieran TS, secrets, simplicity, pattern recognition). All passed clean.
+6. **Merged PR #49** — https://github.com/brad-protocall/proto-trainer-next/pull/49
+7. **Deployed to Pi** — rsync + manual SSH: removed old counselor files, migration applied, rebuilt, restarted. Verified: 11 learner, 2 supervisor, 0 counselor rows.
+8. **Phase 5: Compound** — Deferred by user request. Should capture learnings next session.
 
 ### What Needs to Happen Next
 
-1. **Test with real complaint documents on Pi** — verify auto-detection, searchable dropdown, procedure upload in production
-2. **Bulk upload Virginia scenarios** — via supervisor dashboard (CSV ready, user can do this independently)
-3. **Test voice session on Pi** — verify data channel transcript fast path (agent redeployed prior session)
+1. ~~**Phase 5: Compound for learner rename**~~ — DONE. See `docs/solutions/prevention-strategies/global-rename-with-prisma-map-pattern.md` + Pattern #14 in CLAUDE.md
+2. **Test with real complaint documents on Pi** — verify auto-detection, searchable dropdown, procedure upload in production
+3. **Bulk upload Virginia scenarios** — via supervisor dashboard (CSV ready, user can do this independently)
+4. **Test voice session on Pi** — verify data channel transcript fast path (agent redeployed prior session)
 
 ### Backlog (deferred, not blocking)
 
@@ -608,11 +620,12 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ### GitHub Issues
 
-Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-session analysis), #12/PR#44 (scenario generation), PR#45 (analysis scanning), PR#46 (document consistency review), PR#47 (one-time scenario workflow), PR#48 (account procedures UX)
+Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-session analysis), #12/PR#44 (scenario generation), PR#45 (analysis scanning), PR#46 (document consistency review), PR#47 (one-time scenario workflow), PR#48 (account procedures UX), PR#49 (counselor → learner rename)
 
 ### Previous Sessions
 
-- **2026-02-13 (This session)**: Full cycle — plan review, revision, implementation, E2E, code review, fixes, PR #48, merge, deploy to Pi. Account Procedures UX complete.
+- **2026-02-13 (Evening — this session)**: Counselor → Learner global rename. Plan + 4-agent review + implementation (45 files) + 4-agent code review + PR #49 merge + Pi deploy. Phase 5: Compound deferred.
+- **2026-02-13 (Earlier)**: Account Procedures UX — plan review, revision, 3-phase implementation, E2E, code review, PR #48 merge, Pi deploy. Compound captured patterns #11-13.
 - **2026-02-14**: Confirmed Pi deployment + E2E. Redeployed LiveKit agent (data channel). Updated scenario generator prompt (account prefix). Planned Account Procedures UX Improvements.
 - **2026-02-13 (Afternoon)**: Implemented + reviewed + deployed Account Procedures feature. 6-agent review. 10/10 E2E tests pass. Secrets removed from files.
 - **2026-02-13 (Morning)**: Planned Account Procedures for Evaluator feature. 4-agent review. Plan v2 with stakeholder input.
@@ -635,8 +648,8 @@ Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-sess
 
 ### Git Status
 
-- Main at `e1f0795` (PR #48 merged), uncommitted changes (CLAUDE.md, prompt file, plan file, e2e-test.ts.bak)
-- Pi deployed and migrated 2026-02-13 with all features including account procedures UX. LiveKit agent redeployed prior session.
+- Main at `8677a25` (PR #49 merged), uncommitted changes (CLAUDE.md, prompt file, plan file, misc screenshots)
+- Pi deployed and migrated 2026-02-13 with all features including learner rename. LiveKit agent redeployed prior session.
 
 ### Cleanup Note
 
@@ -659,6 +672,8 @@ Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-sess
 **Account Procedures for Evaluator**: Per-account OpenAI vector stores, auto-created on first PDF upload. `uploadPolicyToVectorStore()` in `openai.ts` handles create/replace with safe order (upload new, then delete old). Evaluation uses Responses API with `file_search` tool when `vectorStoreId` exists on the scenario's account; graceful fallback to Chat Completions API if Responses API fails. `usedFileSearch` boolean on `EvaluationResponse`. PDF upload validates: extension, magic bytes, file size (20MB), account name match via `unpdf` text extraction. `procedureHistory` JSON field on Account for audit trail. `relevantPolicySections` on Scenario passed to evaluator prompt as Tier 2 context.
 
 **Account Procedures UX (PR #48)**: Searchable `AccountSearchDropdown` component with type-to-filter by name or `accountNumber`, keyboard navigation, click-outside-to-close. Inline account creation via "+ New" button (POST + auto-select). Complaint generator auto-detects account from template text via `extractAccountInfo()` regex, pre-selects in dropdown (no auto-creation — explicit "+ New" required to prevent orphans). Shared `AccountProceduresUpload` component (`src/components/supervisor/account-procedures-upload.tsx`) used in both scenario-tab and complaint generator review phase. `onAccountsChanged` callback pattern lifts `loadAccounts` from supervisor-dashboard → ScenarioTab → modals for data freshness. `accountNumber` nullable string on Account model for search support.
+
+**Counselor → Learner Rename (PR #49)**: Prisma `@map("counselor_id")` preserves DB column name while exposing `learnerId` in TypeScript — no column rename migration needed, only a data migration (`UPDATE users SET role = 'learner' WHERE role = 'counselor'`). Domain references preserved: AI prompts use "crisis counselor" (profession), transcript labels show "Counselor"/"Caller" (conversation roles), scenario descriptions reference counseling. Only user-role references changed. Types-first approach: update `src/types/index.ts` + `validators.ts` first, let compiler surface all downstream references. 301 redirect `/counselor` → `/learner` in `next.config.ts`. External API (PPTA) now expects `learnerId`/`learnerName`. Seed `externalId` values kept as-is (`test-counselor-001`) since they're opaque identifiers.
 
 **Document Consistency Review**: Learner uploads PDF after evaluation → `unpdf` extracts text → LLM scores against transcript. `DocumentReview` model with unique session FK. Three scores (0-100) + typed gaps with severity. OpenAI `zodResponseFormat` with flat schema. PDF validation (magic bytes, 10MB limit). Transcript truncated to 30k chars (~$0.03/review). `<label>` wrapping hidden file input for modal compatibility.
 
