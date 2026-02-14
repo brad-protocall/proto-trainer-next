@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { ScenarioCategory, ScenarioMode, User } from "@/types";
+import { useState, useEffect } from "react";
+import { Account, ScenarioCategory, ScenarioMode, User, ApiResponse, ProcedureHistoryEntry } from "@/types";
 import type { GeneratedScenario } from "@/lib/validators";
 import { VALID_SKILLS, type CrisisSkill } from "@/lib/skills";
-import { authFetch } from "@/lib/fetch";
+import type { AuthFetchFn } from "@/lib/fetch";
 import { formatSkillLabel, CATEGORY_OPTIONS } from "@/lib/labels";
+import AccountSearchDropdown from "./supervisor/account-search-dropdown";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -13,18 +14,38 @@ interface GenerateScenarioModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  userId?: string;
+  authFetch: AuthFetchFn;
   counselors?: User[];
+  accounts?: Account[];
+  onAccountsChanged?: () => void;
 }
 
 type EditableScenario = GeneratedScenario & { mode: ScenarioMode };
+
+interface ExtractedAccountInfo {
+  name: string;
+  number: string | null;
+}
+
+/** Extract account name and number from complaint text (template-based, consistent format) */
+function extractAccountInfo(text: string): ExtractedAccountInfo | null {
+  const nameMatch = text.match(/Account\s*Name:\s*(.+)/i);
+  if (!nameMatch) return null;
+  const numberMatch = text.match(/Account\s*(?:Number|#|No\.?):\s*(\d{4,})/i);
+  return {
+    name: nameMatch[1].trim(),
+    number: numberMatch?.[1] ?? null,
+  };
+}
 
 export default function GenerateScenarioModal({
   isOpen,
   onClose,
   onSuccess,
-  userId,
+  authFetch,
   counselors = [],
+  accounts = [],
+  onAccountsChanged,
 }: GenerateScenarioModalProps) {
   // Input phase state
   const [complaintText, setComplaintText] = useState("");
@@ -33,6 +54,11 @@ export default function GenerateScenarioModal({
   // File upload state
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
+
+  // Account detection state
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const [detectedInfo, setDetectedInfo] = useState<ExtractedAccountInfo | null>(null);
+  const [accountDetectionMessage, setAccountDetectionMessage] = useState<string | null>(null);
 
   // Generation/editing state
   const [generatedScenario, setGeneratedScenario] =
@@ -43,6 +69,42 @@ export default function GenerateScenarioModal({
   // Learner assignment state
   const [assignTo, setAssignTo] = useState("");
 
+  // Auto-detect account from complaint text
+  useEffect(() => {
+    if (!complaintText || complaintText.length < 20) {
+      setDetectedInfo(null);
+      setAccountDetectionMessage(null);
+      return;
+    }
+
+    const info = extractAccountInfo(complaintText);
+    setDetectedInfo(info);
+
+    if (!info) {
+      setAccountDetectionMessage(null);
+      // Don't clear selectedAccountId — user may have manually selected
+      return;
+    }
+
+    // Try to match against existing accounts (case-insensitive exact match on name)
+    const match = accounts.find(
+      (a) => a.name.toLowerCase() === info.name.toLowerCase()
+    );
+
+    if (match) {
+      setSelectedAccountId(match.id);
+      const label = info.number ? `${info.name} [${info.number}]` : info.name;
+      setAccountDetectionMessage(`Account detected: ${label}`);
+    } else {
+      // Don't auto-select — user must use + New
+      setSelectedAccountId(null);
+      const label = info.number ? `${info.name} [${info.number}]` : info.name;
+      setAccountDetectionMessage(
+        `Account "${label}" not found — use + New to create it`
+      );
+    }
+  }, [complaintText, accounts]);
+
   const resetState = () => {
     setComplaintText("");
     setAdditionalInstructions("");
@@ -52,6 +114,9 @@ export default function GenerateScenarioModal({
     setIsLoading(false);
     setError(null);
     setAssignTo("");
+    setSelectedAccountId(null);
+    setDetectedInfo(null);
+    setAccountDetectionMessage(null);
   };
 
   const handleClose = () => {
@@ -104,7 +169,6 @@ export default function GenerateScenarioModal({
 
         const response = await authFetch("/api/scenarios/extract-text", {
           method: "POST",
-          userId,
           body: formData,
         });
 
@@ -138,7 +202,6 @@ export default function GenerateScenarioModal({
     try {
       const response = await authFetch("/api/scenarios/generate", {
         method: "POST",
-        userId,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sourceText: complaintText,
@@ -165,7 +228,7 @@ export default function GenerateScenarioModal({
     setGeneratedScenario(null);
     setError(null);
     setAssignTo("");
-    // Keep complaintText and additionalInstructions preserved
+    // Keep complaintText, additionalInstructions, and account selection preserved
   };
 
   const handleSave = async () => {
@@ -186,6 +249,11 @@ export default function GenerateScenarioModal({
         isOneTime: true,
       };
 
+      // Include accountId if an account is selected
+      if (selectedAccountId) {
+        body.accountId = selectedAccountId;
+      }
+
       // Include assignTo if a learner is selected (triggers one-time+assignment transaction)
       if (assignTo) {
         body.assignTo = assignTo;
@@ -193,7 +261,6 @@ export default function GenerateScenarioModal({
 
       const response = await authFetch("/api/scenarios", {
         method: "POST",
-        userId,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
@@ -239,6 +306,9 @@ export default function GenerateScenarioModal({
 
   const canGenerate = complaintText.length >= 50;
 
+  // For procedure upload in review phase
+  const selectedAccount = accounts.find((a) => a.id === selectedAccountId) ?? null;
+
   if (!isOpen) return null;
 
   return (
@@ -256,7 +326,7 @@ export default function GenerateScenarioModal({
             className="text-gray-400 hover:text-white text-xl"
             aria-label="Close"
           >
-            ✕
+            &#10005;
           </button>
         </div>
 
@@ -296,6 +366,19 @@ export default function GenerateScenarioModal({
               </div>
             </div>
 
+            {/* Account detection banner */}
+            {accountDetectionMessage && (
+              <div
+                className={`text-sm font-marfa px-3 py-2 rounded border ${
+                  selectedAccountId
+                    ? "bg-green-900/30 border-green-700 text-green-300"
+                    : "bg-yellow-900/30 border-yellow-700 text-yellow-300"
+                }`}
+              >
+                {accountDetectionMessage}
+              </div>
+            )}
+
             {/* File Upload */}
             <div>
               <div className="flex items-center gap-2">
@@ -330,7 +413,7 @@ export default function GenerateScenarioModal({
                       className="text-gray-500 hover:text-red-400 ml-1"
                       title="Clear uploaded file"
                     >
-                      ✕
+                      &#10005;
                     </button>
                   </span>
                 )}
@@ -466,6 +549,36 @@ export default function GenerateScenarioModal({
               </select>
             </div>
 
+            {/* Organization Account */}
+            <div>
+              <label className="block text-gray-300 text-sm font-marfa mb-1">
+                Organization Account
+              </label>
+              <AccountSearchDropdown
+                accounts={accounts}
+                selectedAccountId={selectedAccountId}
+                onSelect={setSelectedAccountId}
+                authFetch={authFetch}
+                onAccountsChanged={onAccountsChanged ?? (() => {})}
+              />
+              {/* Account detection info in review phase */}
+              {detectedInfo && !selectedAccountId && (
+                <p className="text-xs text-yellow-400 mt-1">
+                  Account &ldquo;{detectedInfo.name}&rdquo; detected in complaint text but not found. Use + New to create it.
+                </p>
+              )}
+            </div>
+
+            {/* Account Procedures Upload — when account is selected */}
+            {selectedAccountId && selectedAccount && onAccountsChanged && (
+              <AccountProceduresUploadInline
+                accountId={selectedAccountId}
+                account={selectedAccount}
+                authFetch={authFetch}
+                onAccountsChanged={onAccountsChanged}
+              />
+            )}
+
             {/* Assign to Learner */}
             <div>
               <label className="block text-gray-300 text-sm font-marfa mb-1">
@@ -558,7 +671,7 @@ export default function GenerateScenarioModal({
                 disabled={isSaving}
                 className="px-4 py-2 text-gray-300 hover:text-white font-marfa disabled:opacity-50"
               >
-                ← Start Over
+                &#8592; Start Over
               </button>
               <div className="flex gap-2">
                 <button
@@ -587,6 +700,96 @@ export default function GenerateScenarioModal({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Lightweight procedure upload widget for the complaint generator review phase */
+function AccountProceduresUploadInline({
+  accountId,
+  account,
+  authFetch,
+  onAccountsChanged,
+}: {
+  accountId: string;
+  account: Account;
+  authFetch: AuthFetchFn;
+  onAccountsChanged: () => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+
+  const history = (account.procedureHistory ?? []) as ProcedureHistoryEntry[];
+  const latestUpload = history.length > 0 ? history[history.length - 1] : null;
+
+  const handleUpload = async (file: File) => {
+    setUploading(true);
+    setUploadError(null);
+    setUploadSuccess(null);
+
+    try {
+      const form = new FormData();
+      form.append("policiesFile", file);
+
+      const response = await authFetch(`/api/accounts/${accountId}`, {
+        method: "PATCH",
+        body: form,
+      });
+
+      const data: ApiResponse<Account> = await response.json();
+      if (!data.ok) throw new Error(data.error.message);
+
+      setUploadSuccess(`Uploaded ${file.name}`);
+      onAccountsChanged();
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-gray-300">
+          {latestUpload ? (
+            <span>
+              <span className="text-green-400">&#9679;</span>{" "}
+              {latestUpload.filename} &middot;{" "}
+              {new Date(latestUpload.uploadedAt).toLocaleDateString()}
+            </span>
+          ) : (
+            <span className="text-gray-500">No procedures uploaded</span>
+          )}
+        </div>
+        <label
+          className={`cursor-pointer px-3 py-1 text-xs rounded font-marfa ${
+            uploading
+              ? "bg-gray-600 text-gray-400 cursor-wait"
+              : "bg-blue-600 hover:bg-blue-500 text-white"
+          }`}
+        >
+          {uploading ? "Uploading..." : latestUpload ? "Replace PDF" : "Upload Procedures PDF"}
+          <input
+            type="file"
+            accept=".pdf"
+            disabled={uploading}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleUpload(file);
+              e.target.value = "";
+            }}
+            className="hidden"
+          />
+        </label>
+      </div>
+      {uploadError && (
+        <p className="text-xs text-red-400 mt-2">{uploadError}</p>
+      )}
+      {uploadSuccess && (
+        <p className="text-xs text-green-400 mt-2">{uploadSuccess}</p>
+      )}
     </div>
   );
 }

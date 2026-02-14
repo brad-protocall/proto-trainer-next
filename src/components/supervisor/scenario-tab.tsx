@@ -923,8 +923,10 @@ export default function ScenarioTab({
           loadScenarios();
           onScenariosChanged();
         }}
-        userId={userId}
+        authFetch={authFetch}
         counselors={counselors}
+        accounts={accounts}
+        onAccountsChanged={onAccountsChanged}
       />
     </div>
   );
