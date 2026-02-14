@@ -178,6 +178,7 @@ model SessionFlag {
   status    String   @default("pending") // FlagStatus: pending, reviewed, dismissed
   source    String   @default("evaluation") @map("source") // FlagSource: evaluation, analysis, user_feedback
   createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 

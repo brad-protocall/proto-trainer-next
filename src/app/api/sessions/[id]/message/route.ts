@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { apiSuccess, handleApiError, notFound, conflict, forbidden } from '@/lib/api'
+import { apiSuccess, handleApiError, notFound, conflict, forbidden, invalidId } from '@/lib/api'
 import { sendMessageSchema } from '@/lib/validators'
 import { getChatCompletion, getDefaultChextPrompt } from '@/lib/openai'
 import { requireAuth, canAccessResource } from '@/lib/auth'
@@ -19,6 +19,8 @@ interface RouteParams {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params
+    const idError = invalidId(id)
+    if (idError) return idError
 
     const authResult = await requireAuth(request)
     if (authResult.error) return authResult.error

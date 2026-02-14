@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { apiSuccess, apiError, handleApiError, notFound } from '@/lib/api'
+import { apiSuccess, apiError, handleApiError, notFound, invalidId } from '@/lib/api'
 import { requireSupervisor } from '@/lib/auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { analyzeSession } from '@/lib/analysis'
@@ -18,6 +18,8 @@ interface RouteParams {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params
+    const idError = invalidId(id)
+    if (idError) return idError
 
     // Auth: only supervisors can trigger manual analysis
     const authResult = await requireSupervisor(request)

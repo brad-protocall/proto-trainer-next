@@ -3,6 +3,8 @@
  * Suitable for single-instance deployments (no Redis needed).
  */
 
+// TODO: Production — add periodic eviction of expired keys (windows.size > 10000)
+// Current in-memory approach is fine for single-instance Pi deployment
 const windows = new Map<string, number[]>()
 
 /**

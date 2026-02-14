@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { badRequest, notFound, forbidden, handleApiError } from '@/lib/api'
+import { badRequest, notFound, forbidden, handleApiError, invalidId } from '@/lib/api'
 import { requireAuth, canAccessResource } from '@/lib/auth'
 import { createReadStream, statSync } from 'fs'
 import path from 'path'
@@ -20,6 +20,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const user = authResult.user
 
     const { id } = await params
+    const idError = invalidId(id)
+    if (idError) return idError
 
     // Validate id is a UUID (prevents Content-Disposition header injection)
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {

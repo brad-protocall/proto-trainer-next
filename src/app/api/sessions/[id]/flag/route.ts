@@ -1,9 +1,10 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { apiSuccess, handleApiError, notFound, forbidden } from '@/lib/api'
+import { apiSuccess, apiError, handleApiError, notFound, forbidden, invalidId } from '@/lib/api'
 import { requireAuth, canAccessResource } from '@/lib/auth'
 import { createFlagSchema } from '@/lib/validators'
 import { notifyFlag } from '@/lib/notifications'
+import { checkRateLimit } from '@/lib/rate-limit'
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -17,10 +18,18 @@ interface RouteParams {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params
+    const idError = invalidId(id)
+    if (idError) return idError
 
     const authResult = await requireAuth(request)
     if (authResult.error) return authResult.error
     const user = authResult.user
+
+    // Rate limit: 10 flags per session per user per hour
+    const allowed = checkRateLimit(`flag:${id}:${user.id}`, 10, 3600000)
+    if (!allowed) {
+      return apiError({ type: 'RATE_LIMITED', message: 'Too many flags for this session. Please wait before trying again.' }, 429)
+    }
 
     // Validate request body
     const body = await request.json()

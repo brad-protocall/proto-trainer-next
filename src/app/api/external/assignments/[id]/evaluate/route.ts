@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import prisma from '@/lib/prisma'
-import { apiSuccess, handleApiError, notFound, conflict } from '@/lib/api'
+import { apiSuccess, handleApiError, notFound, conflict, invalidId } from '@/lib/api'
 import { generateEvaluation } from '@/lib/openai'
 import { requireExternalApiKey } from '@/lib/external-auth'
 import type { TranscriptTurn } from '@/types'
@@ -22,6 +22,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   try {
     const { id: assignmentId } = await params
+    const idError = invalidId(assignmentId)
+    if (idError) return idError
 
     // Get assignment with session and scenario info
     const assignment = await prisma.assignment.findUnique({

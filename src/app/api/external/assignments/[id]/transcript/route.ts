@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import prisma from '@/lib/prisma'
-import { apiSuccess, apiError, handleApiError, notFound, conflict } from '@/lib/api'
+import { apiSuccess, apiError, handleApiError, notFound, conflict, invalidId } from '@/lib/api'
 import { requireExternalApiKey } from '@/lib/external-auth'
 
 interface RouteParams {
@@ -21,6 +21,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   try {
     const { id: assignmentId } = await params
+    const idError = invalidId(assignmentId)
+    if (idError) return idError
+
     const { searchParams } = new URL(request.url)
     const attemptParam = searchParams.get('attempt')
 

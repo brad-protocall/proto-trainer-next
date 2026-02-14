@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { apiSuccess, apiError, handleApiError, notFound } from '@/lib/api'
+import { apiSuccess, apiError, handleApiError, notFound, invalidId } from '@/lib/api'
 import { requireAuth } from '@/lib/auth'
 import { readFile } from 'fs/promises'
 import { existsSync } from 'fs'
@@ -17,6 +17,8 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params
+    const idError = invalidId(id)
+    if (idError) return idError
 
     const authResult = await requireAuth(request)
     if (authResult.error) return authResult.error

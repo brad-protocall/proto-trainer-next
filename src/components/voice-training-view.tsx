@@ -148,6 +148,10 @@ async function requestEvaluationWithRetry(
       continue;
     }
 
+    if (response.status === 429) {
+      throw new Error("Please wait before requesting another evaluation.");
+    }
+
     if (!response.ok) {
       const errorData = await response.json().catch(() => null);
       throw new Error(errorData?.error?.message || "Evaluation request failed");
@@ -519,6 +523,8 @@ export default function VoiceTrainingView({
             if (elapsed !== undefined) setEvalElapsed(elapsed);
           });
           setEvaluation(result);
+        } else if (response.status === 429) {
+          throw new Error("Please wait before requesting another evaluation.");
         } else if (!response.ok) {
           const errorData = await response.json().catch(() => null);
           throw new Error(errorData?.error?.message || "Evaluation request failed");
