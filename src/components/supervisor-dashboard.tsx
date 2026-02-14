@@ -86,6 +86,16 @@ export default function SupervisorDashboard({ supervisorId: propSupervisorId }: 
     }
   }, [currentUser, authFetch]);
 
+  const loadAccounts = useCallback(async () => {
+    try {
+      const response = await authFetch("/api/accounts");
+      const data: ApiResponse<Account[]> = await response.json();
+      if (data.ok) setAccounts(data.data);
+    } catch (err) {
+      console.error("Failed to load accounts", err);
+    }
+  }, [authFetch]);
+
   const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
   const handleSupervisorChange = (supervisorId: string) => {
@@ -117,16 +127,6 @@ export default function SupervisorDashboard({ supervisorId: propSupervisorId }: 
       }
     };
 
-    const loadAccounts = async () => {
-      try {
-        const response = await fetch("/api/accounts");
-        const data: ApiResponse<Account[]> = await response.json();
-        if (data.ok) setAccounts(data.data);
-      } catch (err) {
-        console.error("Failed to load accounts", err);
-      }
-    };
-
     const loadCounselors = async () => {
       try {
         const response = await fetch("/api/users?role=counselor");
@@ -140,7 +140,7 @@ export default function SupervisorDashboard({ supervisorId: propSupervisorId }: 
     loadSupervisorUser();
     loadAccounts();
     loadCounselors();
-  }, [propSupervisorId]);
+  }, [propSupervisorId, loadAccounts]);
 
   // Load global scenarios once user is available
   useEffect(() => {
@@ -258,6 +258,7 @@ export default function SupervisorDashboard({ supervisorId: propSupervisorId }: 
           accounts={accounts}
           categoryFilter={categoryFilter}
           onScenariosChanged={loadGlobalScenarios}
+          onAccountsChanged={loadAccounts}
         />
       )}
 

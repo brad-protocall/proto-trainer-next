@@ -23,10 +23,12 @@ function AccountProceduresUpload({
   accountId,
   accounts,
   authFetch,
+  onAccountsChanged,
 }: {
   accountId: string;
   accounts: Account[];
   authFetch: AuthFetchFn;
+  onAccountsChanged: () => void;
 }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -56,12 +58,7 @@ function AccountProceduresUpload({
       if (!data.ok) throw new Error(data.error.message);
 
       setUploadSuccess(`Uploaded ${file.name}`);
-      // Update the account in the parent's accounts array by mutating — simple for prototype
-      if (account) {
-        account.vectorStoreId = data.data.vectorStoreId;
-        account.policiesProceduresPath = data.data.policiesProceduresPath;
-        account.procedureHistory = data.data.procedureHistory;
-      }
+      onAccountsChanged();
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -93,7 +90,7 @@ function AccountProceduresUpload({
           {uploading ? "Uploading..." : latestUpload ? "Replace PDF" : "Upload Procedures PDF"}
           <input
             type="file"
-            accept=".pdf,.txt,.md"
+            accept=".pdf"
             disabled={uploading}
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -148,6 +145,7 @@ export interface ScenarioTabProps {
   accounts: Account[];
   categoryFilter: string;
   onScenariosChanged: () => void;
+  onAccountsChanged: () => void;
 }
 
 export default function ScenarioTab({
@@ -157,6 +155,7 @@ export default function ScenarioTab({
   accounts,
   categoryFilter,
   onScenariosChanged,
+  onAccountsChanged,
 }: ScenarioTabProps) {
   // Scenario data state
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
@@ -867,6 +866,7 @@ export default function ScenarioTab({
                   accountId={formData.account_id}
                   accounts={accounts}
                   authFetch={authFetch}
+                  onAccountsChanged={onAccountsChanged}
                 />
               )}
 
