@@ -21,8 +21,8 @@ export default function VoiceTrainingPage() {
   useEffect(() => {
     async function fetchData() {
       try {
-        // Fetch current user (counselor)
-        const userRes = await fetch("/api/users?role=counselor");
+        // Fetch current user (learner)
+        const userRes = await fetch("/api/users?role=learner");
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const userData: ApiResponse<any[]> = await userRes.json();
         let user = null;
@@ -75,7 +75,7 @@ export default function VoiceTrainingPage() {
   }, [assignmentId, userIdParam]);
 
   const handleComplete = () => {
-    router.push("/counselor");
+    router.push("/learner");
   };
 
   if (loading) {
@@ -88,7 +88,7 @@ export default function VoiceTrainingPage() {
         <div className="text-center">
           <p className="text-red-400 mb-4">{error}</p>
           <button
-            onClick={() => router.push("/counselor")}
+            onClick={() => router.push("/learner")}
             className="text-brand-orange hover:underline"
           >
             Return to Dashboard

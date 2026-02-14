@@ -96,7 +96,7 @@ proto-trainer-next/
 │   │   │   ├── livekit/   # LiveKit token generation
 │   │   │   └── external/  # External API (X-API-Key auth)
 │   │   ├── supervisor/  # Supervisor dashboard
-│   │   ├── counselor/   # Counselor dashboard
+│   │   ├── learner/     # Learner dashboard
 │   │   └── page.tsx     # Home (role selector)
 │   ├── components/      # React components
 │   ├── hooks/           # Custom React hooks
@@ -143,7 +143,7 @@ proto-trainer-next/
 | `/api/external/scenarios` | GET | List reusable scenarios |
 | `/api/external/scenarios` | POST | Create scenario (supports one-time and reusable) |
 | `/api/external/assignments` | GET | List assignments by `?user_id` (external ID) |
-| `/api/external/assignments` | POST | Create assignment for counselor |
+| `/api/external/assignments` | POST | Create assignment for learner |
 | `/api/external/assignments/[id]/result` | GET | Get evaluation result |
 | `/api/external/assignments/[id]/evaluate` | POST | Trigger evaluation for assignment |
 | `/api/external/assignments/[id]/transcript` | GET | Get transcript (optional `?attempt=N`) |
@@ -172,10 +172,10 @@ Create scenarios programmatically (e.g., from Personalized Training Guide):
 
 ## Database Models
 
-- **User**: Supervisors and counselors
+- **User**: Supervisors and learners
 - **Account**: Organization accounts
 - **Scenario**: Training scenarios with prompts
-- **Assignment**: Scenario assigned to counselor
+- **Assignment**: Scenario assigned to learner
 - **Session**: Chat training session
 - **TranscriptTurn**: Conversation turns
 - **Evaluation**: AI-generated evaluation
@@ -195,7 +195,7 @@ These features exist for demo/prototype purposes and **MUST be addressed before 
 
 | Feature | Location | Action Required |
 |---------|----------|-----------------|
-| **User Switching** | `counselor-dashboard.tsx` | Gated by `NEXT_PUBLIC_DEMO_MODE`. Set to `false` or remove entirely. Replace with proper session-based auth. |
+| **User Switching** | `learner-dashboard.tsx` | Gated by `NEXT_PUBLIC_DEMO_MODE`. Set to `false` or remove entirely. Replace with proper session-based auth. |
 | **No Real Auth** | Throughout | Uses `x-user-id` header. Replace with JWT/session auth. |
 | **Seeded Test Users** | `prisma/seed.ts` | Remove test data seeding for production. |
 | **No CSRF Protection** | All API routes | Custom `x-user-id` header provides implicit CSRF protection, but implement explicit CSRF tokens for production. |
@@ -212,11 +212,11 @@ These features exist for demo/prototype purposes and **MUST be addressed before 
 **Effort**: 4 hours
 
 When `NEXT_PUBLIC_DEMO_MODE=true`:
-- Counselor dashboard shows a user selector (yellow border, "[DEMO]" label)
+- Learner dashboard shows a user selector (yellow border, "[DEMO]" label)
 - Any user can view any other user's assignments (for demos)
 
 When `NEXT_PUBLIC_DEMO_MODE=false` (production):
-- Counselor dashboard shows current user name only (read-only)
+- Learner dashboard shows current user name only (read-only)
 - User switching is disabled
 
 ## Commands
@@ -434,7 +434,7 @@ analyzeSession(id, scenario, transcript).catch(...)
 
 #### 9. Dual-Schema Fallthrough Creates Orphan Data
 
-**Problem**: `POST /api/scenarios` tried an extended Zod schema first (one-time + assignment), fell through to the base schema on failure. Sending `isOneTime: true` without valid `assignTo` silently created an orphan one-time scenario with no assignment — invisible on the global tab and unreachable by counselors.
+**Problem**: `POST /api/scenarios` tried an extended Zod schema first (one-time + assignment), fell through to the base schema on failure. Sending `isOneTime: true` without valid `assignTo` silently created an orphan one-time scenario with no assignment — invisible on the global tab and unreachable by learners.
 
 **Prevention**: When using a try-first/fall-through schema pattern, add an explicit guard to reject requests that clearly intended the extended path:
 ```typescript
@@ -574,10 +574,10 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
 
 ## Resume Context (2026-02-13)
 
-### Current State: Account Procedures UX Improvements implemented. PR #48 open. Ready for merge + Pi deploy.
+### Current State: Account Procedures UX deployed to Pi. All features live. Ready for real-world testing.
 
-**Branch:** `feat/account-procedures-ux` at `7727a67` (4 commits ahead of main). PR #48 open.
-**Status:** Implementation complete. 4-agent code review done. All findings fixed. Type check + lint clean.
+**Branch:** `main` at `e1f0795` (PR #48 merged). Uncommitted: CLAUDE.md, prompt file, plan file, e2e-test.ts.bak.
+**Status:** All features deployed. Pi migration applied. Ready for next feature or testing.
 
 ### What Just Happened (This Session — 2026-02-13)
 
@@ -588,45 +588,35 @@ See `scripts/backfill-scenario-metadata.ts` and `scripts/migrate-skill-to-array.
    - Phase 2: `AccountSearchDropdown` component + inline account creation via "+ New"
    - Phase 3: Complaint generator account support (auth unification, auto-detect pre-select, procedure upload, `accountId` in save)
 4. **E2E testing** — API tests via curl + browser tests via Playwright. All passing.
-5. **Code review** — 4-agent review (security sentinel, simplicity, Kieran TS, secrets guardian). All findings fixed:
-   - Extracted shared `AccountProceduresUpload` component
-   - Fixed `onAccountsChanged` typing, made required
-   - Replaced useState with useMemo for derived state
-   - Added truncation + format validation
-   - Fixed useEffect dependency
-6. **PR #48 created** — https://github.com/brad-protocall/proto-trainer-next/pull/48
+5. **Code review** — 4-agent review (security sentinel, simplicity, Kieran TS, secrets guardian). All findings fixed.
+6. **Merged PR #48** — https://github.com/brad-protocall/proto-trainer-next/pull/48
+7. **Deployed to Pi** — `npm run deploy:pi:full`, migration applied (`account_number` column added)
+8. **Phase 5: Compound** — Captured 3 new bug prevention patterns (#11-13) and architecture decision
 
 ### What Needs to Happen Next
 
-1. **Merge PR #48** — Account Procedures UX
-2. **Deploy to Pi** — `npm run deploy:pi:full` after merge, then test with real complaint documents
-3. **Bulk upload Virginia scenarios** — via supervisor dashboard (CSV ready, user can do this independently)
-4. **Test voice session on Pi** — verify data channel transcript fast path (agent redeployed last session)
+1. **Test with real complaint documents on Pi** — verify auto-detection, searchable dropdown, procedure upload in production
+2. **Bulk upload Virginia scenarios** — via supervisor dashboard (CSV ready, user can do this independently)
+3. **Test voice session on Pi** — verify data channel transcript fast path (agent redeployed prior session)
 
 ### Backlog (deferred, not blocking)
 
 - Complaint generator auto-suggests `relevantPolicySections` (deferred from procedures plan Phase 3)
 - LiveKit Egress for server-side voice recording
-- Rename `/counselor` route to `/learner` (cosmetic)
 - Force re-analysis param, catch `SessionAnalysisError` specifically, filter `analysis_clean` from badge count
 - LOW review items: server path in API response, frontend upload timeout, concurrent upload guard, rate limiting on upload
 
 ### GitHub Issues
 
-Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-session analysis), #12/PR#44 (scenario generation), PR#45 (analysis scanning), PR#46 (document consistency review), PR#47 (one-time scenario workflow)
-Open: PR#48 (account procedures UX improvements)
+Completed: #38 (free practice), #39 (dashboard visibility), #40/PR#43 (post-session analysis), #12/PR#44 (scenario generation), PR#45 (analysis scanning), PR#46 (document consistency review), PR#47 (one-time scenario workflow), PR#48 (account procedures UX)
 
 ### Previous Sessions
 
-- **2026-02-13 (This session)**: Plan review + revision + full implementation + E2E + code review + fixes for Account Procedures UX. PR #48.
+- **2026-02-13 (This session)**: Full cycle — plan review, revision, implementation, E2E, code review, fixes, PR #48, merge, deploy to Pi. Account Procedures UX complete.
 - **2026-02-14**: Confirmed Pi deployment + E2E. Redeployed LiveKit agent (data channel). Updated scenario generator prompt (account prefix). Planned Account Procedures UX Improvements.
 - **2026-02-13 (Afternoon)**: Implemented + reviewed + deployed Account Procedures feature. 6-agent review. 10/10 E2E tests pass. Secrets removed from files.
 - **2026-02-13 (Morning)**: Planned Account Procedures for Evaluator feature. 4-agent review. Plan v2 with stakeholder input.
-- **2026-02-12 (Late evening)**: Bug fixes deployed. Session feedback "Other" button. Protocall documentation guidelines. Virginia scenarios CSV.
-- **2026-02-12 (Evening)**: Real-time transcript data channel (3 files).
-- **2026-02-12 (Afternoon)**: Decomposed supervisor-dashboard.tsx. Deployed to Pi.
-- **2026-02-12 (Morning)**: Reviewed PR #47. Fixed `isOneTime` URL param bug.
-- **2026-02-12 (Night)**: One-Time Scenario Workflow. PR #47.
+- **2026-02-12**: Real-time transcript data channel. Decomposed supervisor-dashboard.tsx. One-Time Scenario Workflow (PR #47). Bug fixes. Virginia scenarios CSV.
 - **2026-02-11**: One-Time Scenario plan + Document Consistency Review + Analysis Scanning.
 - **2026-02-10 and earlier**: Scenario generation, voice UX, recording, Pi deployment, LiveKit migration, security hardening.
 
@@ -645,9 +635,12 @@ Open: PR#48 (account procedures UX improvements)
 
 ### Git Status
 
-- Feature branch `feat/account-procedures-ux` at `7727a67`, PR #48 open
-- Main at `2905b0c` + uncommitted changes (CLAUDE.md, prompt file, plan file)
-- Pi deployed 2026-02-14 with all features including migration. LiveKit agent redeployed.
+- Main at `e1f0795` (PR #48 merged), uncommitted changes (CLAUDE.md, prompt file, plan file, e2e-test.ts.bak)
+- Pi deployed and migrated 2026-02-13 with all features including account procedures UX. LiveKit agent redeployed prior session.
+
+### Cleanup Note
+
+- `e2e-test.ts.bak` in project root — leftover from E2E testing session. Safe to delete. Also exists on Pi — delete with `ssh brad@pai-hub.local 'rm -f ~/apps/proto-trainer-next/e2e-test.ts.bak'`
 
 ---
 

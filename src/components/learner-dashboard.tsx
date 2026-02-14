@@ -12,18 +12,18 @@ import { createAuthFetch } from "@/lib/fetch";
 import { formatDate, getDaysUntilDue, getStatusColor, getStatusIcon } from "@/lib/format";
 import EvaluationResults from "./evaluation-results";
 
-interface CounselorDashboardProps {
+interface LearnerDashboardProps {
   onStartTraining: (assignment: Assignment, userId?: string) => void;
-  counselorId?: string | null;
-  /** Role of the viewing user - supervisors can switch between counselors */
-  viewerRole?: "counselor" | "supervisor" | "admin";
+  learnerId?: string | null;
+  /** Role of the viewing user - supervisors can switch between learners */
+  viewerRole?: "learner" | "supervisor" | "admin";
 }
 
-export default function CounselorDashboard({
+export default function LearnerDashboard({
   onStartTraining,
-  counselorId: propCounselorId,
-  viewerRole = "counselor",
-}: CounselorDashboardProps) {
+  learnerId: propLearnerId,
+  viewerRole = "learner",
+}: LearnerDashboardProps) {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +33,7 @@ export default function CounselorDashboard({
   const [loadingFeedback, setLoadingFeedback] = useState<string | null>(null);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [allCounselors, setAllCounselors] = useState<User[]>([]);
+  const [allLearners, setAllLearners] = useState<User[]>([]);
   const [detailModal, setDetailModal] = useState<{
     type: "scenario" | "evaluator" | "transcript" | "evalContext";
     content: string;
@@ -67,25 +67,25 @@ export default function CounselorDashboard({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Fetch counselor user on mount
+  // Fetch learner user on mount
   useEffect(() => {
-    const loadCounselorUser = async () => {
+    const loadLearnerUser = async () => {
       try {
-        const response = await fetch("/api/users?role=counselor");
+        const response = await fetch("/api/users?role=learner");
         const data: ApiResponse<User[]> = await response.json();
         if (data.ok && data.data.length > 0) {
           const users = data.data;
 
-          // Store all counselors for the selector
-          setAllCounselors(users);
+          // Store all learners for the selector
+          setAllLearners(users);
 
           let selectedUser;
-          if (propCounselorId) {
-            // Use the provided counselor ID from URL
-            selectedUser = users.find((c: User) => c.id === propCounselorId);
+          if (propLearnerId) {
+            // Use the provided learner ID from URL
+            selectedUser = users.find((c: User) => c.id === propLearnerId);
           }
           if (!selectedUser) {
-            // Fall back to Test Counselor or first counselor
+            // Fall back to Test Counselor or first learner
             selectedUser = users.find(
               (c: User) => c.displayName === "Test Counselor"
             ) || users[0];
@@ -93,11 +93,11 @@ export default function CounselorDashboard({
           setCurrentUser(selectedUser);
         }
       } catch (err) {
-        console.error("Failed to load counselor user:", err);
+        console.error("Failed to load learner user:", err);
       }
     };
-    loadCounselorUser();
-  }, [propCounselorId]);
+    loadLearnerUser();
+  }, [propLearnerId]);
 
   const loadAssignments = useCallback(async () => {
     if (!currentUser) return;
@@ -367,19 +367,19 @@ export default function CounselorDashboard({
     }
   };
 
-  // Handle counselor selection change
-  const handleCounselorChange = (counselorId: string) => {
-    // Update URL with new counselor ID to trigger reload
-    window.location.href = `/counselor?userId=${counselorId}`;
+  // Handle learner selection change
+  const handleLearnerChange = (learnerId: string) => {
+    // Update URL with new learner ID to trigger reload
+    window.location.href = `/learner?userId=${learnerId}`;
   };
 
   // Demo mode enables user switching for testing
   const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
-  const showUserSelector = (viewerRole === "supervisor" || isDemoMode) && allCounselors.length > 1;
+  const showUserSelector = (viewerRole === "supervisor" || isDemoMode) && allLearners.length > 1;
 
   return (
     <div className="pb-8">
-      {/* Counselor Selector - for supervisors or demo mode */}
+      {/* Learner Selector - for supervisors or demo mode */}
       {showUserSelector ? (
         <div className={`flex flex-col items-center mb-6 ${isDemoMode ? "border-2 border-yellow-500 rounded-lg p-4" : ""}`}>
           <label className="text-gray-400 text-sm mb-2 font-marfa">
@@ -388,15 +388,15 @@ export default function CounselorDashboard({
           </label>
           <select
             value={currentUser?.id || ""}
-            onChange={(e) => handleCounselorChange(e.target.value)}
+            onChange={(e) => handleLearnerChange(e.target.value)}
             className="bg-gray-800 border border-gray-600 rounded-lg px-4 py-2
                        text-white font-marfa font-bold text-lg
                        focus:outline-none focus:border-brand-orange
                        cursor-pointer min-w-[200px] text-center"
           >
-            {allCounselors.map((counselor) => (
-              <option key={counselor.id} value={counselor.id}>
-                {counselor.displayName}
+            {allLearners.map((learner) => (
+              <option key={learner.id} value={learner.id}>
+                {learner.displayName}
               </option>
             ))}
           </select>
@@ -456,7 +456,7 @@ export default function CounselorDashboard({
                 scenarioId: "",
                 scenarioMode: "phone",
                 scenarioTitle: "Free Practice",
-                counselorId: currentUser?.id || "",
+                learnerId: currentUser?.id || "",
                 status: "in_progress",
                 dueDate: null,
                 completedAt: null,
@@ -479,7 +479,7 @@ export default function CounselorDashboard({
                 scenarioId: "",
                 scenarioMode: "chat",
                 scenarioTitle: "Free Practice",
-                counselorId: currentUser?.id || "",
+                learnerId: currentUser?.id || "",
                 status: "in_progress",
                 dueDate: null,
                 completedAt: null,

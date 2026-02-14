@@ -16,7 +16,7 @@ interface GenerateScenarioModalProps {
   onClose: () => void;
   onSuccess: () => void;
   authFetch: AuthFetchFn;
-  counselors?: User[];
+  learners?: User[];
   accounts?: Account[];
   onAccountsChanged: () => void | Promise<void>;
 }
@@ -48,7 +48,7 @@ export default function GenerateScenarioModal({
   onClose,
   onSuccess,
   authFetch,
-  counselors = [],
+  learners = [],
   accounts = [],
   onAccountsChanged,
 }: GenerateScenarioModalProps) {
@@ -594,10 +594,10 @@ export default function GenerateScenarioModal({
                            disabled:opacity-50"
               >
                 <option value="">-- Select Learner --</option>
-                {counselors.length === 0 ? (
+                {learners.length === 0 ? (
                   <option disabled>No learners available</option>
                 ) : (
-                  counselors.map((c) => (
+                  learners.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.displayName || c.email || "Unknown"}
                     </option>

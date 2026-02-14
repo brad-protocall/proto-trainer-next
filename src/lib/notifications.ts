@@ -19,7 +19,7 @@ interface FlagNotification {
   severity: string
   details: string
   sessionId: string
-  counselorName: string
+  learnerName: string
 }
 
 // Lazy-init transporter (only created once, only if SMTP is configured)
@@ -62,7 +62,7 @@ export async function notifyFlag(flag: FlagNotification): Promise<void> {
     ``,
     `Type: ${flag.type}`,
     `Severity: ${flag.severity}`,
-    `Counselor: ${flag.counselorName}`,
+    `Learner: ${flag.learnerName}`,
     `Session ID: ${flag.sessionId}`,
     ``,
     `Details:`,

@@ -62,7 +62,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
                 category: true,
               },
             },
-            counselor: {
+            learner: {
               select: {
                 id: true,
                 displayName: true,
@@ -85,8 +85,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return notFound('Session not found')
     }
 
-    // Check ownership - only the assigned counselor/session owner or supervisors can view
-    const ownerId = session.assignment?.counselorId ?? session.userId
+    // Check ownership - only the assigned learner/session owner or supervisors can view
+    const ownerId = session.assignment?.learnerId ?? session.userId
     if (!ownerId || !canAccessResource(user, ownerId)) {
       return forbidden('Cannot view another user\'s session')
     }
@@ -130,7 +130,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // Check ownership
-    const ownerId = session.assignment?.counselorId ?? session.userId
+    const ownerId = session.assignment?.learnerId ?? session.userId
     if (!ownerId || !canAccessResource(user, ownerId)) {
       return forbidden('Cannot modify another user\'s session')
     }

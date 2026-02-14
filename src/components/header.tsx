@@ -24,7 +24,7 @@ export default function Header({
                    rounded-md px-3 py-1.5 text-sm font-marfa
                    focus:outline-none focus:ring-2 focus:ring-brand-orange"
       >
-        <option value="counselor">Counselor</option>
+        <option value="learner">Learner</option>
         <option value="supervisor">Supervisor</option>
       </select>
 

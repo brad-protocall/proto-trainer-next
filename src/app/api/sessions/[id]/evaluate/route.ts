@@ -54,7 +54,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // For assignment-based sessions, check ownership via assignment
     // For free practice sessions, check via userId
-    const ownerId = session.assignment?.counselorId ?? session.userId
+    const ownerId = session.assignment?.learnerId ?? session.userId
     if (!ownerId) {
       return notFound('Session not found')
     }

@@ -29,7 +29,7 @@ export async function GET(
       where: { id },
       include: {
         scenario: { select: { title: true, mode: true } },
-        counselor: { select: { displayName: true } },
+        learner: { select: { displayName: true } },
         supervisor: { select: { displayName: true } },
         session: { select: { id: true, recording: { select: { id: true } } } },
         evaluation: { select: { id: true } },
@@ -40,8 +40,8 @@ export async function GET(
       return notFound('Assignment not found')
     }
 
-    // Counselors can only view their own assignments
-    if (!canAccessResource(user, assignment.counselorId)) {
+    // Learners can only view their own assignments
+    if (!canAccessResource(user, assignment.learnerId)) {
       return forbidden('Cannot view another user\'s assignment')
     }
 
@@ -87,7 +87,7 @@ export async function PATCH(
       where: { id },
       include: {
         scenario: { select: { title: true, mode: true } },
-        counselor: { select: { displayName: true } },
+        learner: { select: { displayName: true } },
         supervisor: { select: { displayName: true } },
         session: { select: { id: true, recording: { select: { id: true } } } },
         evaluation: { select: { id: true } },
@@ -99,13 +99,13 @@ export async function PATCH(
     }
 
     // Authorization check
-    if (user.role === 'counselor') {
-      if (assignment.counselorId !== user.id) {
+    if (user.role === 'learner') {
+      if (assignment.learnerId !== user.id) {
         return forbidden('Cannot update another user\'s assignment')
       }
-      // Counselors can only update status
+      // Learners can only update status
       if (result.data.dueDate !== undefined || result.data.supervisorNotes !== undefined) {
-        return forbidden('Counselors can only update status')
+        return forbidden('Learners can only update status')
       }
     }
 
@@ -159,7 +159,7 @@ export async function PATCH(
         data: updateData,
         include: {
           scenario: { select: { title: true, mode: true } },
-          counselor: { select: { displayName: true } },
+          learner: { select: { displayName: true } },
           supervisor: { select: { displayName: true } },
           session: { select: { id: true, recording: { select: { id: true } } } },
           evaluation: { select: { id: true } },

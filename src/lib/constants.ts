@@ -25,7 +25,7 @@ export const SCENARIO_CATEGORY_LABELS: Record<string, string> = {
 // User role display labels
 export const USER_ROLE_LABELS: Record<string, string> = {
   SUPERVISOR: 'Supervisor',
-  COUNSELOR: 'Counselor',
+  LEARNER: 'Learner',
 }
 
 // Audio settings

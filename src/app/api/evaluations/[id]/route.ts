@@ -25,7 +25,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         assignment: {
           select: {
             id: true,
-            counselorId: true,
+            learnerId: true,
             scenario: {
               select: {
                 id: true,
@@ -53,8 +53,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return notFound('Evaluation not found')
     }
 
-    // Check authorization - only the counselor/session owner or supervisors can view
-    const ownerId = evaluation.assignment?.counselorId ?? evaluation.session?.userId
+    // Check authorization - only the learner/session owner or supervisors can view
+    const ownerId = evaluation.assignment?.learnerId ?? evaluation.session?.userId
     if (!ownerId || !canAccessResource(user, ownerId)) {
       return forbidden('Access denied')
     }

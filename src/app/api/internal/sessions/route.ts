@@ -61,7 +61,7 @@ async function handleAssignmentSession(assignmentId: string, userId: string) {
   }
 
   // Verify the user owns this assignment (defense-in-depth)
-  if (assignment.counselorId !== userId) {
+  if (assignment.learnerId !== userId) {
     return conflict('User does not own this assignment')
   }
 

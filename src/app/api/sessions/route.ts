@@ -12,7 +12,7 @@ import type { User } from '@prisma/client'
  * List sessions for a user, defaults to completed free practice sessions
  *
  * Query params:
- *   userId - optional for supervisors, forced to own ID for counselors
+ *   userId - optional for supervisors, forced to own ID for learners
  *   status - optional, defaults to 'completed'
  *   type   - 'free_practice' (default) | 'assigned' | 'all'
  */
@@ -34,8 +34,8 @@ export async function GET(request: NextRequest) {
 
     const { userId, status, type } = queryResult.data
 
-    // Determine target user: counselors are auto-scoped to own sessions
-    const targetUserId = user.role === 'counselor' ? user.id : (userId ?? user.id)
+    // Determine target user: learners are auto-scoped to own sessions
+    const targetUserId = user.role === 'learner' ? user.id : (userId ?? user.id)
 
     // Build where clause with proper Prisma typing
     const where: Prisma.SessionWhereInput = {
@@ -44,11 +44,11 @@ export async function GET(request: NextRequest) {
 
     // Filter by session type (ownership path)
     if (type === 'assigned') {
-      where.assignment = { counselorId: targetUserId }
+      where.assignment = { learnerId: targetUserId }
     } else if (type === 'all') {
       where.OR = [
         { userId: targetUserId },
-        { assignment: { counselorId: targetUserId } },
+        { assignment: { learnerId: targetUserId } },
       ]
     } else {
       // Default: free_practice — sessions owned directly by user with no assignment
@@ -148,8 +148,8 @@ async function handleAssignmentSession(
     return notFound('Assignment not found')
   }
 
-  // Check ownership - only the assigned counselor can create a session
-  if (!canAccessResource(user, assignment.counselorId)) {
+  // Check ownership - only the assigned learner can create a session
+  if (!canAccessResource(user, assignment.learnerId)) {
     return forbidden('Cannot create session for another user\'s assignment')
   }
 

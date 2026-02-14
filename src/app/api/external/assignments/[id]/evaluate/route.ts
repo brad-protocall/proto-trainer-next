@@ -34,7 +34,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           },
         },
         evaluation: true,
-        counselor: {
+        learner: {
           select: {
             externalId: true,
           },
@@ -131,7 +131,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     return apiSuccess({
       assignmentId,
-      counselorId: assignment.counselor.externalId,
+      learnerId: assignment.learner.externalId,
       evaluation: {
         id: evaluation.id,
         score: evaluationResult.numericScore,

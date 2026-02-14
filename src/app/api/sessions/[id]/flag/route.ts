@@ -11,7 +11,7 @@ interface RouteParams {
 
 /**
  * POST /api/sessions/[id]/flag
- * Counselor submits feedback about a session.
+ * Learner submits feedback about a session.
  * Auto-escalation: ai_guidance_concern → severity: critical
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Auth: session owner or supervisor
-    const ownerId = session.assignment?.counselorId ?? session.userId
+    const ownerId = session.assignment?.learnerId ?? session.userId
     if (!ownerId) {
       return notFound('Session not found')
     }
@@ -64,10 +64,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     })
 
     // Console log + email notification (non-blocking)
-    const counselorName = user.displayName || user.externalId
+    const learnerName = user.displayName || user.externalId
     console.log(`\n🚩 SESSION FLAG CREATED`)
     console.log(`   Type: ${flag.type} | Severity: ${flag.severity}`)
-    console.log(`   Counselor: ${counselorName}`)
+    console.log(`   Learner: ${learnerName}`)
     console.log(`   Session: ${id}`)
     console.log(`   Details: ${flag.details}\n`)
 
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       severity: flag.severity,
       details: flag.details,
       sessionId: id,
-      counselorName,
+      learnerName,
     }).catch(err => console.error('Flag notification failed:', err))
 
     return apiSuccess({

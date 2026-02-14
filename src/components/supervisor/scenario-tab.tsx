@@ -34,7 +34,7 @@ interface ScenarioFormData {
 export interface ScenarioTabProps {
   authFetch: AuthFetchFn;
   userId: string | undefined;
-  counselors: User[];
+  learners: User[];
   accounts: Account[];
   categoryFilter: string;
   onScenariosChanged: () => void;
@@ -44,7 +44,7 @@ export interface ScenarioTabProps {
 export default function ScenarioTab({
   authFetch,
   userId,
-  counselors,
+  learners,
   accounts,
   categoryFilter,
   onScenariosChanged,
@@ -527,10 +527,10 @@ export default function ScenarioTab({
                                text-white font-marfa focus:outline-none focus:border-brand-orange"
                   >
                     <option value="">-- Select Learner --</option>
-                    {counselors.length === 0 ? (
+                    {learners.length === 0 ? (
                       <option disabled>No learners available</option>
                     ) : (
-                      counselors.map((c) => (
+                      learners.map((c) => (
                         <option key={c.id} value={c.id}>
                           {getUserDisplayName(c)}
                         </option>
@@ -815,7 +815,7 @@ export default function ScenarioTab({
           onScenariosChanged();
         }}
         authFetch={authFetch}
-        counselors={counselors}
+        learners={learners}
         accounts={accounts}
         onAccountsChanged={onAccountsChanged}
       />

@@ -14,7 +14,7 @@ import { formatCategoryLabel, CATEGORY_FILTER_OPTIONS } from "@/lib/labels";
 
 export interface AssignmentTabProps {
   authFetch: AuthFetchFn;
-  counselors: User[];
+  learners: User[];
   globalScenarios: Scenario[];
   categoryFilter: string;
   setCategoryFilter: (value: string) => void;
@@ -22,7 +22,7 @@ export interface AssignmentTabProps {
 
 export default function AssignmentTab({
   authFetch,
-  counselors,
+  learners,
   globalScenarios,
   categoryFilter,
   setCategoryFilter,
@@ -37,9 +37,9 @@ export default function AssignmentTab({
   const [showAssignmentForm, setShowAssignmentForm] = useState(false);
 
   // Bulk selection state
-  const [selectedCounselorIds, setSelectedCounselorIds] = useState<Set<string>>(new Set());
+  const [selectedLearnerIds, setSelectedLearnerIds] = useState<Set<string>>(new Set());
   const [selectedScenarioIds, setSelectedScenarioIds] = useState<Set<string>>(new Set());
-  const [counselorSearch, setCounselorSearch] = useState("");
+  const [learnerSearch, setLearnerSearch] = useState("");
   const [assignmentFormData, setAssignmentFormData] = useState({
     due_date: "",
     supervisor_notes: "",
@@ -48,21 +48,21 @@ export default function AssignmentTab({
   const [bulkResult, setBulkResult] = useState<BulkAssignmentResponse | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState(false);
 
-  const filteredCounselors = useMemo(() => {
-    if (!counselorSearch.trim()) return counselors;
-    const term = counselorSearch.toLowerCase();
-    return counselors.filter((c) => {
+  const filteredLearners = useMemo(() => {
+    if (!learnerSearch.trim()) return learners;
+    const term = learnerSearch.toLowerCase();
+    return learners.filter((c) => {
       const name = getUserDisplayName(c).toLowerCase();
       return name.split(/\s+/).some((word: string) => word.startsWith(term));
     });
-  }, [counselors, counselorSearch]);
+  }, [learners, learnerSearch]);
 
-  const allVisibleCounselorsSelected = useMemo(() => {
+  const allVisibleLearnersSelected = useMemo(() => {
     return (
-      filteredCounselors.length > 0 &&
-      filteredCounselors.every((c) => selectedCounselorIds.has(c.id))
+      filteredLearners.length > 0 &&
+      filteredLearners.every((c) => selectedLearnerIds.has(c.id))
     );
-  }, [filteredCounselors, selectedCounselorIds]);
+  }, [filteredLearners, selectedLearnerIds]);
 
   const assignableScenarios = useMemo(() => {
     if (!categoryFilter) return globalScenarios;
@@ -86,7 +86,7 @@ export default function AssignmentTab({
     });
   }, [categoryFilter, assignments, globalScenarios]);
 
-  const assignmentCount = selectedCounselorIds.size * selectedScenarioIds.size;
+  const assignmentCount = selectedLearnerIds.size * selectedScenarioIds.size;
 
   const loadAssignments = useCallback(async () => {
     setAssignmentsLoading(true);
@@ -109,8 +109,8 @@ export default function AssignmentTab({
     loadAssignments();
   }, [loadAssignments]);
 
-  const toggleCounselor = (id: string) => {
-    setSelectedCounselorIds((prev) => {
+  const toggleLearner = (id: string) => {
+    setSelectedLearnerIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -127,16 +127,16 @@ export default function AssignmentTab({
     });
   };
 
-  const toggleAllCounselors = () => {
-    const visibleIds = filteredCounselors.map((c) => c.id);
-    if (allVisibleCounselorsSelected) {
-      setSelectedCounselorIds((prev) => {
+  const toggleAllLearners = () => {
+    const visibleIds = filteredLearners.map((c) => c.id);
+    if (allVisibleLearnersSelected) {
+      setSelectedLearnerIds((prev) => {
         const next = new Set(prev);
         visibleIds.forEach((id) => next.delete(id));
         return next;
       });
     } else {
-      setSelectedCounselorIds((prev) => {
+      setSelectedLearnerIds((prev) => {
         const next = new Set(prev);
         visibleIds.forEach((id) => next.add(id));
         return next;
@@ -165,7 +165,7 @@ export default function AssignmentTab({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          counselorIds: Array.from(selectedCounselorIds),
+          learnerIds: Array.from(selectedLearnerIds),
           scenarioIds: Array.from(selectedScenarioIds),
           dueDate: assignmentFormData.due_date || undefined,
           supervisorNotes: assignmentFormData.supervisor_notes || undefined,
@@ -194,9 +194,9 @@ export default function AssignmentTab({
           setShowAssignmentForm(false);
           setBulkResult(null);
           setPendingConfirmation(false);
-          setSelectedCounselorIds(new Set());
+          setSelectedLearnerIds(new Set());
           setSelectedScenarioIds(new Set());
-          setCounselorSearch("");
+          setLearnerSearch("");
           setAssignmentFormData({ due_date: "", supervisor_notes: "" });
         }, 1500);
       }
@@ -259,7 +259,7 @@ export default function AssignmentTab({
       <div className="flex justify-between items-center mb-4">
         <button
           onClick={() => setShowAssignmentForm(true)}
-          disabled={assignableScenarios.length === 0 || counselors.length === 0}
+          disabled={assignableScenarios.length === 0 || learners.length === 0}
           className="bg-brand-orange hover:bg-brand-orange-hover
                      text-white font-marfa font-bold py-2 px-4 rounded
                      disabled:opacity-50 disabled:cursor-not-allowed"
@@ -313,7 +313,7 @@ export default function AssignmentTab({
                       )}
                     </div>
                     <p className="text-gray-400 text-sm mt-1">
-                      Assigned to: {assignment.counselorName || "Unknown"}
+                      Assigned to: {assignment.learnerName || "Unknown"}
                     </p>
                     {assignment.dueDate && (
                       <p className="text-gray-500 text-xs mt-1">
@@ -348,32 +348,32 @@ export default function AssignmentTab({
             <h2 className="text-xl font-marfa text-white mb-4">Create Assignments</h2>
 
             <div className="space-y-4">
-              {/* Counselor Selection */}
+              {/* Learner Selection */}
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-sm font-medium text-gray-300 font-marfa">
-                    Select Counselors ({selectedCounselorIds.size} selected)
+                    Select Learners ({selectedLearnerIds.size} selected)
                   </label>
                   <button
                     type="button"
-                    onClick={toggleAllCounselors}
+                    onClick={toggleAllLearners}
                     className="text-xs text-brand-orange hover:text-brand-orange-light font-marfa"
                   >
-                    {allVisibleCounselorsSelected ? "Clear All" : "Select All"}
+                    {allVisibleLearnersSelected ? "Clear All" : "Select All"}
                   </button>
                 </div>
                 <input
                   type="text"
-                  value={counselorSearch}
-                  onChange={(e) => setCounselorSearch(e.target.value)}
+                  value={learnerSearch}
+                  onChange={(e) => setLearnerSearch(e.target.value)}
                   placeholder="Search by name..."
                   className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 mb-2 text-white font-marfa focus:outline-none focus:border-brand-orange"
                 />
                 <div className="max-h-48 overflow-y-auto border border-gray-600 rounded-md p-2 bg-gray-800">
-                  {filteredCounselors.length === 0 ? (
-                    <p className="text-gray-500 text-sm py-2 px-2">No counselors found</p>
+                  {filteredLearners.length === 0 ? (
+                    <p className="text-gray-500 text-sm py-2 px-2">No learners found</p>
                   ) : (
-                    filteredCounselors.map((c) => (
+                    filteredLearners.map((c) => (
                       <div
                         key={c.id}
                         className="flex items-center justify-between py-1.5 px-2 hover:bg-gray-700 rounded"
@@ -381,18 +381,18 @@ export default function AssignmentTab({
                         <label className="flex items-center gap-2 text-white cursor-pointer flex-grow">
                           <input
                             type="checkbox"
-                            checked={selectedCounselorIds.has(c.id)}
-                            onChange={() => toggleCounselor(c.id)}
+                            checked={selectedLearnerIds.has(c.id)}
+                            onChange={() => toggleLearner(c.id)}
                             className="w-4 h-4 accent-brand-orange"
                           />
                           <span className="font-marfa">{getUserDisplayName(c)}</span>
                         </label>
                         <a
-                          href={`/counselor?userId=${c.id}`}
+                          href={`/learner?userId=${c.id}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs text-blue-400 hover:text-blue-300 font-marfa ml-2"
-                          title="View counselor dashboard"
+                          title="View learner dashboard"
                         >
                           View
                         </a>
@@ -482,8 +482,8 @@ export default function AssignmentTab({
                 <div className="bg-gray-700 p-3 rounded text-sm text-gray-300 font-marfa">
                   Creating{" "}
                   <span className="text-brand-orange font-bold">{assignmentCount}</span>{" "}
-                  assignment{assignmentCount !== 1 ? "s" : ""} ({selectedCounselorIds.size}{" "}
-                  counselor{selectedCounselorIds.size !== 1 ? "s" : ""} ×{" "}
+                  assignment{assignmentCount !== 1 ? "s" : ""} ({selectedLearnerIds.size}{" "}
+                  learner{selectedLearnerIds.size !== 1 ? "s" : ""} ×{" "}
                   {selectedScenarioIds.size} scenario
                   {selectedScenarioIds.size !== 1 ? "s" : ""})
                 </div>
@@ -496,7 +496,7 @@ export default function AssignmentTab({
                   {bulkResult.requiresConfirmation && bulkResult.warnings && bulkResult.warnings.length > 0 && (
                     <div className="p-3 rounded-lg font-marfa bg-yellow-900/30 border border-yellow-700">
                       <p className="text-yellow-300 font-medium mb-2">
-                        {bulkResult.warnings.length} counselor(s) have already completed this scenario
+                        {bulkResult.warnings.length} learner(s) have already completed this scenario
                       </p>
                       <p className="text-gray-300 text-sm mb-3">
                         Do you want to assign it again for additional practice?
@@ -555,7 +555,7 @@ export default function AssignmentTab({
                     type="button"
                     onClick={() => {
                       setShowAssignmentForm(false);
-                      setSelectedCounselorIds(new Set());
+                      setSelectedLearnerIds(new Set());
                       setSelectedScenarioIds(new Set());
                       setBulkResult(null);
                       setPendingConfirmation(false);

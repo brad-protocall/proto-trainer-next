@@ -74,9 +74,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       )
     }
 
-    // Counselors cannot change their own role
-    if (currentUser.role === 'counselor' && result.data.role !== undefined) {
-      return forbidden('Counselors cannot change their role')
+    // Learners cannot change their own role
+    if (currentUser.role === 'learner' && result.data.role !== undefined) {
+      return forbidden('Learners cannot change their role')
     }
 
     const user = await prisma.user.update({
