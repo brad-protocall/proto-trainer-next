@@ -9,7 +9,7 @@ interface AccountSearchDropdownProps {
   selectedAccountId: string | null;
   onSelect: (accountId: string | null) => void;
   authFetch: AuthFetchFn;
-  onAccountsChanged: () => void;
+  onAccountsChanged: () => void | Promise<void>;
 }
 
 export default function AccountSearchDropdown({
@@ -56,10 +56,10 @@ export default function AccountSearchDropdown({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Reset highlight when filtered results change
+  // Reset highlight when search text changes
   useEffect(() => {
     setHighlightIndex(0);
-  }, [filtered.length]);
+  }, [search]);
 
   const handleSelect = useCallback(
     (accountId: string) => {

@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Account, ScenarioCategory, ScenarioMode, User, ApiResponse, ProcedureHistoryEntry } from "@/types";
+import { useState, useEffect, useMemo } from "react";
+import { Account, ScenarioCategory, ScenarioMode, User } from "@/types";
 import type { GeneratedScenario } from "@/lib/validators";
 import { VALID_SKILLS, type CrisisSkill } from "@/lib/skills";
 import type { AuthFetchFn } from "@/lib/fetch";
 import { formatSkillLabel, CATEGORY_OPTIONS } from "@/lib/labels";
 import AccountSearchDropdown from "./supervisor/account-search-dropdown";
+import AccountProceduresUpload from "./supervisor/account-procedures-upload";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -17,7 +18,7 @@ interface GenerateScenarioModalProps {
   authFetch: AuthFetchFn;
   counselors?: User[];
   accounts?: Account[];
-  onAccountsChanged?: () => void;
+  onAccountsChanged: () => void | Promise<void>;
 }
 
 type EditableScenario = GeneratedScenario & { mode: ScenarioMode };
@@ -27,14 +28,18 @@ interface ExtractedAccountInfo {
   number: string | null;
 }
 
-/** Extract account name and number from complaint text (template-based, consistent format) */
+/**
+ * Extract account name and number from complaint text.
+ * Assumes template-based format with "Account Name:" and "Account Number:" labels.
+ * Name regex captures to end of line; number requires 4+ digits.
+ */
 function extractAccountInfo(text: string): ExtractedAccountInfo | null {
   const nameMatch = text.match(/Account\s*Name:\s*(.+)/i);
   if (!nameMatch) return null;
   const numberMatch = text.match(/Account\s*(?:Number|#|No\.?):\s*(\d{4,})/i);
   return {
-    name: nameMatch[1].trim(),
-    number: numberMatch?.[1] ?? null,
+    name: nameMatch[1].trim().substring(0, 255),
+    number: numberMatch?.[1]?.substring(0, 20) ?? null,
   };
 }
 
@@ -58,7 +63,6 @@ export default function GenerateScenarioModal({
   // Account detection state
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [detectedInfo, setDetectedInfo] = useState<ExtractedAccountInfo | null>(null);
-  const [accountDetectionMessage, setAccountDetectionMessage] = useState<string | null>(null);
 
   // Generation/editing state
   const [generatedScenario, setGeneratedScenario] =
@@ -73,18 +77,13 @@ export default function GenerateScenarioModal({
   useEffect(() => {
     if (!complaintText || complaintText.length < 20) {
       setDetectedInfo(null);
-      setAccountDetectionMessage(null);
       return;
     }
 
     const info = extractAccountInfo(complaintText);
     setDetectedInfo(info);
 
-    if (!info) {
-      setAccountDetectionMessage(null);
-      // Don't clear selectedAccountId — user may have manually selected
-      return;
-    }
+    if (!info) return; // Don't clear selectedAccountId — user may have manually selected
 
     // Try to match against existing accounts (case-insensitive exact match on name)
     const match = accounts.find(
@@ -93,17 +92,20 @@ export default function GenerateScenarioModal({
 
     if (match) {
       setSelectedAccountId(match.id);
-      const label = info.number ? `${info.name} [${info.number}]` : info.name;
-      setAccountDetectionMessage(`Account detected: ${label}`);
     } else {
-      // Don't auto-select — user must use + New
       setSelectedAccountId(null);
-      const label = info.number ? `${info.name} [${info.number}]` : info.name;
-      setAccountDetectionMessage(
-        `Account "${label}" not found — use + New to create it`
-      );
     }
   }, [complaintText, accounts]);
+
+  // Derive detection message from state (no separate useState needed)
+  const accountDetectionMessage = useMemo(() => {
+    if (!detectedInfo) return null;
+    const label = detectedInfo.number
+      ? `${detectedInfo.name} [${detectedInfo.number}]`
+      : detectedInfo.name;
+    if (selectedAccountId) return `Account detected: ${label}`;
+    return `Account "${label}" not found — use + New to create it`;
+  }, [detectedInfo, selectedAccountId]);
 
   const resetState = () => {
     setComplaintText("");
@@ -116,7 +118,6 @@ export default function GenerateScenarioModal({
     setAssignTo("");
     setSelectedAccountId(null);
     setDetectedInfo(null);
-    setAccountDetectionMessage(null);
   };
 
   const handleClose = () => {
@@ -559,7 +560,7 @@ export default function GenerateScenarioModal({
                 selectedAccountId={selectedAccountId}
                 onSelect={setSelectedAccountId}
                 authFetch={authFetch}
-                onAccountsChanged={onAccountsChanged ?? (() => {})}
+                onAccountsChanged={onAccountsChanged}
               />
               {/* Account detection info in review phase */}
               {detectedInfo && !selectedAccountId && (
@@ -570,12 +571,12 @@ export default function GenerateScenarioModal({
             </div>
 
             {/* Account Procedures Upload — when account is selected */}
-            {selectedAccountId && selectedAccount && onAccountsChanged && (
-              <AccountProceduresUploadInline
-                accountId={selectedAccountId}
+            {selectedAccount && (
+              <AccountProceduresUpload
                 account={selectedAccount}
                 authFetch={authFetch}
                 onAccountsChanged={onAccountsChanged}
+                showHistory={false}
               />
             )}
 
@@ -700,96 +701,6 @@ export default function GenerateScenarioModal({
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-/** Lightweight procedure upload widget for the complaint generator review phase */
-function AccountProceduresUploadInline({
-  accountId,
-  account,
-  authFetch,
-  onAccountsChanged,
-}: {
-  accountId: string;
-  account: Account;
-  authFetch: AuthFetchFn;
-  onAccountsChanged: () => void;
-}) {
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
-
-  const history = (account.procedureHistory ?? []) as ProcedureHistoryEntry[];
-  const latestUpload = history.length > 0 ? history[history.length - 1] : null;
-
-  const handleUpload = async (file: File) => {
-    setUploading(true);
-    setUploadError(null);
-    setUploadSuccess(null);
-
-    try {
-      const form = new FormData();
-      form.append("policiesFile", file);
-
-      const response = await authFetch(`/api/accounts/${accountId}`, {
-        method: "PATCH",
-        body: form,
-      });
-
-      const data: ApiResponse<Account> = await response.json();
-      if (!data.ok) throw new Error(data.error.message);
-
-      setUploadSuccess(`Uploaded ${file.name}`);
-      onAccountsChanged();
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  return (
-    <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-gray-300">
-          {latestUpload ? (
-            <span>
-              <span className="text-green-400">&#9679;</span>{" "}
-              {latestUpload.filename} &middot;{" "}
-              {new Date(latestUpload.uploadedAt).toLocaleDateString()}
-            </span>
-          ) : (
-            <span className="text-gray-500">No procedures uploaded</span>
-          )}
-        </div>
-        <label
-          className={`cursor-pointer px-3 py-1 text-xs rounded font-marfa ${
-            uploading
-              ? "bg-gray-600 text-gray-400 cursor-wait"
-              : "bg-blue-600 hover:bg-blue-500 text-white"
-          }`}
-        >
-          {uploading ? "Uploading..." : latestUpload ? "Replace PDF" : "Upload Procedures PDF"}
-          <input
-            type="file"
-            accept=".pdf"
-            disabled={uploading}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleUpload(file);
-              e.target.value = "";
-            }}
-            className="hidden"
-          />
-        </label>
-      </div>
-      {uploadError && (
-        <p className="text-xs text-red-400 mt-2">{uploadError}</p>
-      )}
-      {uploadSuccess && (
-        <p className="text-xs text-green-400 mt-2">{uploadSuccess}</p>
-      )}
     </div>
   );
 }
